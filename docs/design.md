@@ -2,12 +2,11 @@
 
 当前阶段：设计草案，尚无可运行实现。
 
-总体架构与共享图示由 [MusicFS](https://github.com/fnMrRice/MusicFS/blob/main/docs/architecture.md) 管理；OpenAPI、事件协议与协议 SDK 由 [MusicFS-server](https://github.com/fnMrRice/MusicFS-server) 管理。
+Server 与客户端共同遵守的协议和行为由 [MusicFS](../../docs/architecture.md) 管理；OpenAPI、事件协议与协议 SDK 由 [Server 仓库](../../server/)维护。Client 的内部模块和插件设计由本仓库管理，桌面 UI 框架、渲染方式及与 Web 的复用方式待验证后确定。
 
-桌面端优先 Tauri：内嵌版本固定的 Web UI 包，提供播放适配器、桌面歌词窗口与 managed-local 启动器。remote 与 external-local 模式只连接；宿主命令采用白名单。需原型验证音频格式、sidecar 生命周期、窗口穿透与多实例启动。
+- [Client 架构](architecture.md)：PlayerCore、UI、插件宿主、连接适配、本地启动器和桌面歌词的分层与职责。
+- [音频与插件设计](audio-processing.md)：主题、解复用/解码、DSP、WMF/FFmpeg 候选、可配置淡出淡入及外部控制 API。
+- [歌单与来源选择线框](prototypes/client.salt.puml)。
+- [连接、插件与歌词设置线框](prototypes/settings.salt.puml)。
 
-[歌单与来源选择线框](https://github.com/fnMrRice/MusicFS/blob/main/docs/prototypes/client.salt.puml)
-
-[连接与歌词设置线框](https://github.com/fnMrRice/MusicFS/blob/main/docs/prototypes/settings.salt.puml)
-
-线框以 PlantUML Salt 源码交付；布局不是最终视觉设计。协议 SDK 与 UI 包通过发布版本关联，跨仓库变更需声明兼容范围。
+线框以 PlantUML Salt 源码交付，布局不是最终视觉设计。协议 SDK 按发布版本关联；若复用 Web 组件或资源，也需记录对应版本。跨仓库变更需声明兼容范围。相对路径按 MusicFS 根目录下的 `client`、`server`、`web` 并列检出布局解析。

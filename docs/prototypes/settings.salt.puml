@@ -1,0 +1,100 @@
+@startsalt
+{
+  MusicFS - Settings and Desktop Lyrics
+  {+
+    Server connection
+    { Mode | ^Managed local^ }
+    { Server URL | "http://127.0.0.1:PORT" }
+    { Status | Ready / MusicFS / API v1 }
+    { [Test connection] | [Open logs] | [Retry] }
+    Managed local: start packaged server when needed
+    Remote: connect only
+  }
+  {+
+    Music Providers
+    {#
+      Provider | Account | Sync | Action
+      Local Files / NAS | Not required | Ready | [Configure]
+      Cloud A | Signed out | Paused | [Sign in]
+      Cloud B | Signed in | Cached | [Refresh]
+    }
+  }
+  {+
+    Local Files / NAS Provider
+    { Allowed roots | "/srv/music; /mnt/nas/music" | [Edit roots] }
+    NAS paths must be mounted on the server
+    { [X] Watch changes | [Scan now] | [Retry failed scans] }
+  }
+  {+
+    Scraper Plugins
+    {#
+      Scraper | Enabled | Order | Account | Action
+      Scraper A | [X] | 1 | Not required | [Configure]
+      Scraper B | [ ] | 2 | Signed out | [Configure]
+    }
+    Scrapers have independent configuration and credentials
+    { [X] Automatic scrape | Output directory | "/srv/musicfs/media" }
+    { [ ] Write original audio files | [Configure roots and fields] }
+    Lyrics and artwork are stored as separate files by default
+  }
+  {+
+    Manual Scrape
+    { Target | ^Track / Album / Batch^ | [Select music] }
+    { Fields | ^Lyrics / Artwork / Metadata^ }
+    { Scraper | ^Choose scraper^ | Query | "Artist / Title / Album" }
+    { [Search] | [Preview and select fields] | [Apply selected] | [Retry failed] }
+    { [Edit metadata] | [Import lyrics / artwork] }
+    Manual selections are protected from automatic overwrite
+  }
+  {+
+    Server Audio Processing
+    { Processing | ^Automatic / Original bytes / Processed^ }
+    { Decoder plugin | ^Automatic^ | DSP chain | [Configure] }
+    { Web output profile | ^Automatic / Compatible profile^ }
+    { [Configure plugins] | [Check capabilities] }
+    Automatic selects processing for format compatibility or requested DSP
+    Supported seeking restarts processed output at the requested time
+  }
+  {+
+    Client Plugins
+    {#
+      Plugin | Role | Enabled | Action
+      Default theme | Declarative theme | [X] | [Configure]
+      WMF (Windows) | Demux / Decoder | [X] | [Configure]
+      Bundled FFmpeg | Demux / Decoder | [X] | [Configure]
+      Built-in gain | DSP / Track fades | [X] | [Configure]
+      External control | control.api | [ ] | [Configure]
+    }
+    { [Add plugin] | [Check compatibility] }
+  }
+  {+
+    Desktop Audio Processing
+    { Decoder | ^Automatic / WMF (Windows) / Bundled FFmpeg^ }
+    { DSP chain | [Configure plugins] | Output device | ^System default^ }
+    { [ ] Track fades | Fade-out ms | "200" | Fade-in ms | "200" }
+    Fade out, switch track, then fade in; tracks do not overlap
+    Decoder adapters and plugin support require technical validation
+  }
+  {+
+    External Player Control
+    { [ ] Enable control.api | Listen address | "127.0.0.1" }
+    { Port | "Automatic" | [Connection details] }
+    { Token scopes | ^Playback control / Read state^ | [Manage tokens] }
+    Authentication is required; tokens are not displayed here
+    Disabling external control does not interrupt playback
+  }
+  {+
+    Appearance
+    { Theme | ^System / Light / Dark^ }
+    { Theme plugin | ^Default^ }
+  }
+  {+
+    Desktop lyrics
+    { [X] Enabled | [X] Always on top | [ ] Click through | [ ] Locked }
+    { Font size | "28" | Offset ms | "0" }
+    { [Preview] | [Reset position] }
+    Example lyric line
+    Next lyric line
+  }
+}
+@endsalt

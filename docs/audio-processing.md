@@ -1,6 +1,6 @@
 # MusicFS-client 音频与插件设计
 
-状态：设计草案；2026-10-09。本文定义 Client 内部插件与音频链，尚无可运行实现。模块边界见[Client 架构](architecture.md)，跨端行为见[共同协议与行为](../../docs/architecture.md)。Server 的处理链、调度与输出缓存见[Server 音频处理设计](../../server/docs/audio-processing.md)。
+状态：React + Tauri 实施设计；2026-10-10。本文定义 Client 内部插件与音频链，尚无可运行实现。模块边界见[Client 架构](architecture.md)，工程与阶段见[实现方案](implementation.md)，跨端行为见[共同协议与行为](../../docs/architecture.md)。Server 的处理链、调度与输出缓存见[Server 音频处理设计](../../server/docs/audio-processing.md)。
 
 ## 1. 插件宿主与契约
 
@@ -10,7 +10,7 @@ manifest 声明插件及接口版本、目标平台/架构、能力、输入输�
 
 控制面使用版本化接口，覆盖能力查询、构建/配置、启动、取消、seek/reset、flush/drain、错误与释放。高频音频数据使用有界二进制帧队列或受控共享缓冲，不连续通过 JSON/Base64 传送 PCM。PCM 块明确采样格式、采样率、声道数及布局、帧数、时间戳和时间基准；采样率或声道布局转换由显式节点承担。DSP 报告延迟、尾音和时间映射，PlayerCore 据此维护输出时钟与歌词位置。
 
-进程边界和装载方式仍待验证。第一阶段可内置受信任适配器；第三方原生插件开放前须验证权限与故障隔离，不能仅凭权限清单视为沙箱化。不直接采用跨编译器 C++ ABI；若使用进程内扩展，边界限版本化 C 兼容数据和不透明句柄，语言对象、异常及分配器所有权不得跨界。
+采用 Rust Client Plugin Host，用户可安装包与 Tauri 框架插件分开。第一阶段受信任内置适配器可进程内运行，兼容用户原生包由独立 PluginWorker 装载；第三方开放前须验证各平台权限、故障隔离和实时数据面，不能仅凭清单或子进程视为沙箱化。进程内扩展边界限版本化 C 兼容数据和不透明句柄，Rust/C++ 语言对象、异常及分配器所有权不得跨界。安装、动态装载、安全卸载与回滚见[插件实施](implementation/plugins.md)；二进制 SDK 和机制仍待实现验证。
 
 ## 2. 原生音频链与解码后端
 
@@ -19,7 +19,7 @@ Authorized input -> Demux -> Decode -> PCM
                  -> Client DSP -> Transition gain -> Device output
 ```
 
-音频引擎独立于桌面 UI 技术，不以 Tauri/WebView 为前提。本机设备输出不需要再编码。Server 已处理的效果通过播放描述进入 Client 的实际生效链；同一效果仅由指定端执行。桌面切歌淡出淡入在 Client 输出链完成，不要求 Server 预先写入音频流。
+音频引擎独立于 React/Tauri 界面运行；解码、DSP、播放时钟与设备输出留在原生层，不通过 WebView 传送 PCM。本机设备输出不需要再编码。Server 已处理的效果通过播放描述进入 Client 的实际生效链；同一效果仅由指定端执行。桌面切歌淡出淡入在 Client 输出链完成，不要求 Server 预先写入音频流。
 
 Windows 的候选后端为 Windows Media Foundation（WMF）：通过 Media Source/Source Reader 读取媒体并使用可用 decoder MFT 获得 PCM；Source Reader 不承担播放器时钟或设备输出。另一条路径为随发行包内置的 FFmpeg 解复用/解码插件。实际格式覆盖取决于系统组件或 FFmpeg 构建，须经过能力探测和打开验证，不宣称任一后端支持全部格式。
 
@@ -43,7 +43,7 @@ PlayerCore 上报当前尝试、观察到的错误和曲目时间，只应用当
 
 ## 5. 主题插件
 
-主题使用插件注册、安装、启停与版本管理；初期为声明式资源、颜色、字体和布局 token，不执行任意脚本。兼容声明绑定后续选定的 UI 渲染接口。内置默认主题使用相同契约，主题加载失败可回到默认资源；更换主题不得重启音频引擎或修改播放状态。
+主题使用插件注册、安装、启停与版本管理；初期为声明式资源、颜色、字体和布局 token，不执行任意脚本。兼容声明绑定版本化 React 主题接口，资源/token 由既定组件消费，不允许主题自行调用 Tauri 原生命令。内置默认主题使用相同契约，主题加载失败可回到默认资源；更换主题不得重启音频引擎或修改播放状态。
 
 ## 6. 外部控制 API 插件
 

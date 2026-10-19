@@ -58,14 +58,22 @@
   {+
     Client Plugins
     {#
-      Plugin | Role | Enabled | Action
-      Default theme | Declarative theme | [X] | [Configure]
-      WMF (Windows) | Demux / Decoder | [X] | [Configure]
-      Bundled FFmpeg | Demux / Decoder | [X] | [Configure]
-      Built-in gain | DSP / Track fades | [X] | [Configure]
-      External control | control.api | [ ] | [Configure]
+      Plugin | Role | Current | Next start | Action
+      Default theme | Declarative theme | Active | [X] | [Configure]
+      WMF (Windows) | Demux / Decoder | Active | [X] | [Configure]
+      Bundled FFmpeg | Demux / Decoder | Active | [X] | [Configure]
+      Built-in gain | DSP / Track fades | Active | [ ] | [Configure]
+      Device backend | Audio output | Active | [X] | [Configure]
+      Spectrum | Audio visualizer | Inactive | [ ] | [Configure]
+      Media controls | System integration | Active | [X] | [Configure]
+      External control | control.api | Inactive | [ ] | [Configure]
     }
-    { [Add plugin] | [Check compatibility] }
+    { [Add plugin] | [Check compatibility] | [Restart Client] }
+    Enable, disable, update and rollback apply after restart
+    Built-in gain: active now; disabled after restart
+    Native plugins run inside Client with host permissions
+    Libraries remain loaded until Client exits; no uninstall action
+    A faulty plugin may crash Client
   }
   {+
     Desktop Audio Processing
@@ -77,11 +85,11 @@
   }
   {+
     External Player Control
-    { [ ] Enable control.api | Listen address | "127.0.0.1" }
+    { [ ] Enable control.api after restart | Listen address | "127.0.0.1" }
     { Port | "Automatic" | [Connection details] }
     { Token scopes | ^Playback control / Read state^ | [Manage tokens] }
     Authentication is required; tokens are not displayed here
-    Disabling external control does not interrupt playback
+    Disable applies after restart; token revocation applies immediately
   }
   {+
     Appearance

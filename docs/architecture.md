@@ -1,12 +1,12 @@
 # MusicFS-client 架构设计
 
-状态：React + Tauri 实施设计；2026-10-10，尚无可运行实现。本文管理桌面 Client 的内部设计；Server 与客户端共同遵守的 API、数据语义和行为由[共同协议与行为](../../docs/architecture.md)管理。
+状态：React + Tauri 实施设计；2026-10-11，尚无可运行实现。本文管理桌面 Client 的内部设计；Server 与客户端共同遵守的 API、数据语义和行为由[共同协议与行为](../../docs/architecture.md)管理。
 
 ## 1. 职责与边界
 
 Client 负责桌面交互、播放队列与原生音频输出、主题、桌面歌词、外部控制及受控的本地 Server 启动。音乐库、Provider 推荐、匹配与刮削结果通过 Server 协议获取，Client 不另建一套来源解析、音乐匹配或推荐算法。
 
-桌面采用 TypeScript + React 界面、Tauri 2 宿主与 Rust 原生核心，目标 Windows、macOS、Linux。原生音频引擎独立于 UI，C/C++ 库可通过版本化 C ABI 接入；输出库、解码构建和平台能力仍待原型验证。Web 的展示组件、资源及纯逻辑按版本复用，浏览器音频、同源 fetch 和页面生命周期由桌面适配替换。具体工程和分阶段交付见[实现方案](implementation.md)。
+桌面采用 TypeScript + React 界面、Tauri 2 宿主与 Rust 原生核心，目标 Windows、macOS、Linux。原生音频引擎独立于 UI；需要 C++ 的插件统一使用 CMake/C++23 开发，经版本化 C ABI 接入，既有 C 依赖无需重写。输出库、解码构建和平台能力仍待原型验证。Web 的展示组件、资源及纯逻辑按版本复用，浏览器音频、同源 fetch 和页面生命周期由桌面适配替换。具体工程和分阶段交付见[实现方案](implementation.md)，共同构建规则见[原生插件规范](../../docs/native-plugins.md)。
 
 ## 2. 内部分层
 
@@ -15,15 +15,15 @@ Client 负责桌面交互、播放队列与原生音频输出、主题、桌面�
 | React UI / View Models | 导航、搜索、歌单、来源选择、Provider 推荐、设置及任务进度 | 经 Tauri 桥接消费快照与发送类型化命令，不直接调解码器或启动任意进程 |
 | Rust PlayerCore | 队列、播放代次、状态机、时钟、音量、转场及统一命令调度 | 唯一播放状态所有者；UI、快捷键、控制 API 共用入口，不依赖窗口存活 |
 | Native Audio Engine | 构建音频图、解码预取、缓冲、DSP、转场增益与设备输出 | 输出回调与 UI/网络/阻塞控制调用隔离，使用 PlayerCore 决定的尝试和配置 |
-| Client Plugin Host | 发现、校验、配置和管理主题、解复用/解码、DSP、外部控制插件 | 控制能力与资源范围，不赋予插件直接改写核心状态的权限 |
+| Client Plugin Host | 发现、校验、配置和管理主题、解复用/解码、DSP、输出、可视化及控制扩展 | 插件启停与版本切换在重启后生效；契约不提供直接改写核心状态的接口；原生代码同进程并非沙箱 |
 | Server Connection / Protocol Adapter | 连接配置、认证、版本检查、协议 SDK、事件恢复、播放会话适配 | 隔离 Server 协议与 UI，丢弃已取消播放代次的响应 |
 | Managed-local Launcher | 本地实例发现、受控启动、就绪与退出通知、升级协调入口 | 仅在配置允许的模式启动，通过固定目标和参数白名单调用 |
 | Lyrics / Window Adapter | 歌词状态、当前播放时间、独立窗口及平台窗口行为 | 使用 PlayerCore 时钟和 Server 选定内容，不独立刮削或猜测跨源时间映射 |
 | Settings / Credential Store | 连接与插件配置、主题和转场偏好、受限凭据 | 机密存储与普通设置分离，不将凭据暴露给主题或外部控制调用方 |
 
-插件能力、数据通道、WMF/FFmpeg 候选、淡出淡入和控制 API 见[音频与插件设计](audio-processing.md)。内置插件也遵守相同契约；全面插件化不意味着将权限检查、播放状态和生命周期责任交给任意插件。
+插件能力、数据通道、WMF/FFmpeg 候选、淡出淡入和控制 API 见[音频与插件设计](audio-processing.md)。内置插件也遵守相同契约；全面插件化不意味着将权限检查、播放状态和生命周期责任交给任意插件。新增能力与保留在宿主的机制见[插件能力与宿主边界](plugin-capabilities.md)。现有宿主/音频图支持继续扩展插件；输出、平台集成及可视化角色需先补齐契约和验证，不作为已有功能。
 
-Tauri 框架插件与 MusicFS 用户安装插件分开管理。受信任内置音频适配器可进程内运行；第三方原生插件通过独立 PluginWorker 方案验证后开放，进程隔离不自动提供权限沙箱。React/Tauri 通道只传命令、状态与摘要，PCM 留在原生有界队列或受控共享缓冲。详见[插件实施](implementation/plugins.md)和[桌面组件图](diagrams/desktop-components.puml)。
+Tauri 框架插件与 MusicFS 用户安装插件分开管理。全部 MusicFS 原生插件在同一原生宿主进程内装载：Windows 使用 DLL，macOS 使用 dylib，Linux 使用 so，不设置插件子进程或插件 IPC 运行模式。Tauri/WebView 自身可能使用系统辅助进程，这不改变插件与 Rust 宿主同进程的约束。原生插件拥有宿主进程的系统权限，声明权限只约束宿主 API，不能形成沙箱；内存破坏或崩溃可能终止整个 Client。React/Tauri 通道只传命令、状态与摘要，PCM 留在进程内有界队列或有租约的缓冲。详见[插件实施](implementation/plugins.md)和[桌面组件图](diagrams/desktop-components.puml)。
 
 ## 3. 交互与状态
 
@@ -51,6 +51,6 @@ Rust 适配器持有私有 Cookie/CSRF、SSE 和续租任务；WebView 不保存
 
 ## 6. 原型与验证
 
-按[实现方案](implementation.md)先验证 React/Tauri 三平台运行、PlayerCore 与 UI 解耦、真实插件装载/取消、FFmpeg 及设备输出、转场与歌词时钟，再固定依赖和平台支持范围。并行验证多实例启动、本地连接恢复、窗口能力和外部控制权限；已选择技术路线，但在实测前不承诺格式全覆盖、平台功能一致或第三方二进制兼容。
+按[实现方案](implementation.md)先验证 React/Tauri 三平台运行、PlayerCore 与 UI 解耦、真实插件装载/协作取消、重启启停与恢复、FFmpeg 及设备输出、转场与歌词时钟，再固定依赖和平台支持范围。并行验证多实例启动、本地连接恢复、窗口能力和外部控制权限；已选择技术路线，但在实测前不承诺格式全覆盖、平台功能一致或第三方二进制兼容。本期不提供插件卸载功能；已装载动态库保持引用至原生宿主进程退出，不主动卸载库。插件停用只记录下次启动禁用，当前运行能力保持到退出；卡死不能安全强停线程，崩溃后的禁用启动恢复路径也须验收。
 
 交互草案见[歌单与来源线框](prototypes/client.salt.puml)和[连接、插件与歌词设置线框](prototypes/settings.salt.puml)。PlantUML Salt 源码可编辑，线框不是最终视觉设计或已实现功能；跨仓库变更需评估共同协议与客户端兼容性。

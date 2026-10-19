@@ -1,12 +1,13 @@
 # MusicFS-client 设计入口
 
-当前阶段：已选择 React + Tauri 实施路线，2026-10-10；尚无可运行实现。
+当前阶段：已选择 React + Tauri 与单进程原生插件实施路线，2026-10-11；尚无可运行实现。
 
 Server 与客户端共同遵守的协议和行为由 [MusicFS](../../docs/architecture.md) 管理；OpenAPI、事件协议与协议 SDK 由 [Server 仓库](../../server/)维护。Client 采用 React/TypeScript 界面、Tauri 2 宿主和 Rust 原生核心；与 Web 复用展示组件及适用纯逻辑，原生播放与插件宿主独立实现。具体库、平台能力和协议增量按计划验证。
 
 - [桌面实现方案](implementation.md)：工程、桥接、音频与 C0—C7 阶段。
 - [Server 接入与界面复用](implementation/server-integration.md)：原生协商前置项、会话、媒体读取与 Web 迁移。
-- [插件实施](implementation/plugins.md)：可安装插件包、动态装载、隔离、卸载与回滚。
+- [插件实施](implementation/plugins.md)：可安装插件包、单进程动态库、重启启停与版本回滚。
+- [插件能力与宿主边界](plugin-capabilities.md)：扩展角色、CMake/C++23 与 C ABI、宿主服务及同进程限制。
 - [跨平台交付与验证](implementation/platforms-validation.md)：Windows/macOS/Linux 能力矩阵、制品与证据模板。
 - [桌面组件图](diagrams/desktop-components.puml)：尚未渲染验收的 PlantUML 源码。
 - [Client 架构](architecture.md)：PlayerCore、UI、插件宿主、连接适配、本地启动器和桌面歌词的分层与职责。

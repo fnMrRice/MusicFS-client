@@ -11,14 +11,16 @@ package "WebView 界面" {
   Lyrics --> Bridge
 }
 
-package "Tauri 原生主进程（Rust）" {
+package "单一原生宿主进程（Rust + 同进程原生插件）" {
   component "命令校验 / 窗口权限" as Commands
   component "PlayerCore\n唯一播放状态与输出时钟" as Core
   component "Server Adapter\nCookie / CSRF / 协商 / SSE" as Adapter
-  component "Client Plugin Host\n包校验 / 生命周期 / C ABI" as Host
+  component "Client Plugin Host\n包校验 / C ABI / 期望与当前状态\n重启启停与版本切换" as Host
   component "原生音频引擎\n读取 / 解码 / DSP / 有界 PCM" as Audio
   component "设备输出\n后端待验证" as Output
   component "平台适配\n凭据 / 窗口 / 托盘 / 启动与租约" as Platform
+  component "原生插件动态库\nDLL / dylib / so\nC++ 插件：CMake / C++23" as NativePlugin
+  component "声明式主题包\n校验资源 / token" as Theme
   Commands --> Core : 播放命令
   Commands --> Host : 受限插件管理
   Commands --> Adapter : 类型化业务请求
@@ -29,15 +31,18 @@ package "Tauri 原生主进程（Rust）" {
   Adapter --> Audio : 原生受权读取接口
   Audio --> Output : PCM
   Output --> Core : 输出帧 / 延迟 / 设备状态
+  Host --> NativePlugin : 启动装载 / C ABI\n库句柄保留到进程退出
+  NativePlugin --> Commands : 受控播放命令 / 事件
+  Audio <--> NativePlugin : 进程内有界 PCM / 借用与租约
+  NativePlugin --> Output : audio.output 设备适配
+  Host --> Theme : 完整校验 / 原子切换
 }
 
-component "PluginWorker\n第三方原生插件（开放前验证隔离）" as Worker
 component "MusicFS Server\n精确协议由 Server 维护" as Server
 
 Bridge --> Commands : 有界命令 / 查询
 Core --> Bridge : 快照 / 状态事件 / 时钟摘要
-Host --> Worker : 版本化控制 / 生命周期
-Audio <--> Worker : 私有二进制队列或共享缓冲\n不经 WebView 传 PCM
+Theme --> Bridge : 允许的主题 token / 资源
 Adapter --> Server : HTTP / 会话 / 播放 / SSE
 Platform --> Adapter : 原生定时续租
 Platform ..> Server : 仅 managed-local 受控启动
@@ -47,9 +52,18 @@ note bottom of Server
   remote / external-local 不自动启动本机 Server。
 end note
 
-note bottom of Worker
+note bottom of NativePlugin
   Tauri 框架插件与 MusicFS 用户插件分开。
-  原生子进程不自动获得权限沙箱。
+  全部原生插件与宿主同进程，无插件子进程。
+  清单权限非沙箱；原生崩溃可能结束整个 Client。
+  插件启停 / 更新 / 回滚重启后生效，不提供卸载。
+  实例仍正常取消回收；库保留到进程退出。
+  卡死不能强杀线程，排空失败保留引用。
   原生音频和续租不依赖 React 定时器。
+end note
+
+note left of UI
+  Tauri / WebView 可有系统辅助进程，
+  不在其中运行 MusicFS 原生插件。
 end note
 @enduml

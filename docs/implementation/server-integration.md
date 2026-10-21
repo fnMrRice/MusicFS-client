@@ -60,7 +60,7 @@ Client 内部 PlayerCore 快照/事件是另一套版本化协议；Server 能�
 
 播放控制遵循主计划的串行 seek/recover、原键重试和 attempt 更新；客户端不得从 HTTP 取消推断服务端操作已经撤销。跨来源时间证据、处理配置和不可续播提示保持共同语义。
 
-租约以 [Server 生命周期](../../../server/docs/lifecycle.md)为准：只有真实 loopback 上的 client-managed 实例接受租约，默认有效 30 秒、建议每 10 秒续租；创建请求带实例 ID/客户端 ID/幂等键，续租按上次成功序号加一，重试使用相同序号。续租任务由 Rust 驱动，不能依赖 React 定时器或窗口可见性。
+租约以 [Server 生命周期](../../../server/docs/operations/lifecycle.md)为准：只有真实 loopback 上的 client-managed 实例接受租约，默认有效 30 秒、建议每 10 秒续租；创建请求带实例 ID/客户端 ID/幂等键，续租按上次成功序号加一，重试使用相同序号。续租任务由 Rust 驱动，不能依赖 React 定时器或窗口可见性。
 
 正常退出并注销的顺序为：停止新操作 → 有界停止播放/插件任务 → 取消并等待续租任务结束 → 使用仍有效的会话发起注销 → 清理本地凭据与资源并退出。Server 的[会话撤销回调](../../../server/src/app/bootstrap/composition.go)会一并撤销该会话的播放和所有租约，注销后无需再发 release。最后租约 release 会立即触发 draining，因此不能将“先 release 再保证注销成功”写成正常路径。
 

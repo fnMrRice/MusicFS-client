@@ -38,7 +38,7 @@ Rust Server Adapter 为每个连接/账号管理独立 Cookie jar、CSRF 与身�
 | 本地 | API `http://127.0.0.1:8080/api/v1`；Origin `http://127.0.0.1:8080` | 显式 loopback 监听、`allowLoopbackHttp=true`、允许列表包含该 Origin |
 | 远程 | API `https://music.example.test/api/v1`；Origin `https://music.example.test` | 管理员显式允许该 Origin，正常 TLS 证书校验；域名仅为文档示例 |
 
-当前[配置校验](../../../server/src/config/validate.go)只接受规定的 HTTP(S) Origin，不能直接假定 `tauri://` 或 `http://tauri.localhost` 已可用。Rust 原生网络请求不需要通过通配 CORS 绕过 WebView 限制；不修改 Server 浏览器会话保护来适配桌面。部署不满足既有规则时显示配置要求，协议调整另由 Server 验证。
+当前[配置校验](../../../server/src/core/config/validate.go)只接受规定的 HTTP(S) Origin，不能直接假定 `tauri://` 或 `http://tauri.localhost` 已可用。Rust 原生网络请求不需要通过通配 CORS 绕过 WebView 限制；不修改 Server 浏览器会话保护来适配桌面。部署不满足既有规则时显示配置要求，协议调整另由 Server 验证。
 
 账号切换、会话失效或退出时增加连接代次，取消在途查询/播放、失效内容句柄和清空用户缓存。有效会话的 Cookie/CSRF 保留到第 3 节必要收尾请求完成或有界失败后再清除，不在发出注销前丢弃。会话到期不得无限尝试旧凭据；重新授权由明确流程触发。退出平台账号与退出 MusicFS 会话是不同操作，沿用 Server 的账号代次、绑定与撤销语义。
 
@@ -62,7 +62,7 @@ Client 内部 PlayerCore 快照/事件是另一套版本化协议；Server 能�
 
 租约以 [Server 生命周期](../../../server/docs/lifecycle.md)为准：只有真实 loopback 上的 client-managed 实例接受租约，默认有效 30 秒、建议每 10 秒续租；创建请求带实例 ID/客户端 ID/幂等键，续租按上次成功序号加一，重试使用相同序号。续租任务由 Rust 驱动，不能依赖 React 定时器或窗口可见性。
 
-正常退出并注销的顺序为：停止新操作 → 有界停止播放/插件任务 → 取消并等待续租任务结束 → 使用仍有效的会话发起注销 → 清理本地凭据与资源并退出。Server 的[会话撤销回调](../../../server/src/bootstrap/composition.go)会一并撤销该会话的播放和所有租约，注销后无需再发 release。最后租约 release 会立即触发 draining，因此不能将“先 release 再保证注销成功”写成正常路径。
+正常退出并注销的顺序为：停止新操作 → 有界停止播放/插件任务 → 取消并等待续租任务结束 → 使用仍有效的会话发起注销 → 清理本地凭据与资源并退出。Server 的[会话撤销回调](../../../server/src/app/bootstrap/composition.go)会一并撤销该会话的播放和所有租约，注销后无需再发 release。最后租约 release 会立即触发 draining，因此不能将“先 release 再保证注销成功”写成正常路径。
 
 仅在保留会话、主动脱离托管实例的流程中单独 release，此后不保证实例仍接受其他请求。注销/释放响应丢失时按现有接口语义有界处理，不无限等待；无法确认服务端注销则只报告本地退出/未确认撤销，并依靠租约期限回收。休眠恢复先重新检查身份、实例与租约，过期租约不可复活。remote 不申请本机租约，external-local 不改变实例原始归属。
 

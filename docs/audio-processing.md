@@ -37,7 +37,7 @@ Windows 的候选后端为 Windows Media Foundation（WMF）：通过 Media Sour
 
 ## 4. 播放协议适配
 
-Server 会话的创建、恢复与定位通过协议适配层对接 `/playback/sessions`、`/playback/sessions/{id}/recover`、`/playback/sessions/{id}/seek`（公共 API 前缀见共同协议）；这些是 Server 共同 API，不是下述 Client 控制 API 的路由。会话、资源身份和跨源续播条件以[共同协议与行为](../../docs/architecture.md)为准。
+Server 会话的创建、停止、恢复与定位计划经 Rust 协议适配层发送到 `/api/v1/control` 的 `musicfs.control.v1` WebSocket。request 内 method/path 对应 `/playback/sessions` 及 seek/recover/recover-source 子路径，音频仍由 HTTP 读取器按返回的 streamUrl 获取。这些是 Server 共同 API，不是下述 Client 对外控制 API；后者的传输选择独立验证。会话、资源身份和跨源续播条件以[共同协议与行为](../../docs/architecture.md)为准。
 
 PlayerCore 上报当前尝试、观察到的错误和曲目时间，只应用当前播放代次对应的响应。每次新尝试加载新 URL，清理旧输出缓冲；按共同协议返回的时间映射恢复，不能续接旧字节偏移。条件不满足或定位失败时呈现从头播放/取消选择，不自行猜测位置。Server 的来源重试、转码状态和缓存算法由[Server 音频处理设计](../../server/docs/playback/audio-processing.md)管理。
 

@@ -1,6 +1,6 @@
 # MusicFS-client
 
-MusicFS 的桌面客户端仓库，负责桌面交互、播放队列、原生音频输出、桌面歌词和受控的本地 Server 启动。当前处于架构设计阶段，尚无可运行实现。
+MusicFS 的桌面客户端仓库，负责桌面交互、播放队列、原生音频输出、桌面歌词和受控的本地 Server 启动。当前处于架构设计阶段，尚无可运行实现。Server 接入计划采用 Rust 持有的 WebSocket 控制/状态通道和显式租约续期，音频仍通过 HTTP 读取；协议见 [Server 接入](docs/implementation/server-integration.md)。
 
 设计包括：
 

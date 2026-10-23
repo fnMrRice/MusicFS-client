@@ -51,7 +51,7 @@ client/
     bridge/               # TypeScript 命令与事件适配、运行时校验
     contracts/            # Rust/TS 边界 DTO、Schema 及受控生成入口
     player-core/          # Rust crate：唯一播放状态、命令串行与时钟
-    server-adapter/       # Rust crate：HTTP、会话、SSE、播放协商
+    server-adapter/       # Rust crate：HTTP、会话、WS 控制/状态、播放协商
     audio-engine/         # Rust crate：读取、解码、PCM 图、设备输出
     plugin-host/          # Rust crate：安装、注册、C ABI 与动态库引用管理
     platform/             # Rust crate：窗口、凭据、启动器与系统集成
@@ -102,7 +102,7 @@ Tauri 原生主进程组合 Rust 模块。PlayerCore、Server 连接、租约续
 
 ### 5.1 数据与时钟
 
-原生 HTTP 读取器消费 Server 返回的固定表示，向解复用/解码器提供有界输入；凭据由读取器管理，不作为插件配置或前端 URL 参数。解码得到 PCM 后经显式采样格式/声道转换、Client DSP、转场增益与设备输出。Server 已执行的效果通过 `effectiveProcessing` 排除，避免重复处理。
+原生 HTTP 读取器消费 Server 返回的固定表示，向解复用/解码器提供有界输入；凭据由读取器管理，不作为插件配置或前端 URL 参数。播放创建、停止、seek 与恢复通过 Rust 持有的 WS 控制连接发送，媒体字节不经过该连接。解码得到 PCM 后经显式采样格式/声道转换、Client DSP、转场增益与设备输出。Server 已执行的效果通过 `effectiveProcessing` 排除，避免重复处理。
 
 优先验证 FFmpeg 的库级接口与受控 I/O；简单执行 `ffmpeg` 命令生成整首文件不能作为原生流式播放或可插拔解码链的完成证据。WMF 只补充 Windows，不能成为 macOS/Linux 的共同前置条件。实际采用版本、编译选项和分发依赖写入验收记录。
 
@@ -115,7 +115,7 @@ PlayerCore 的播放位置来源于实际输出帧及明确的设备/DSP 延迟�
 - `play/pause/stop/seek/next/prev/volume`、系统媒体键和 `control.api` 都进入同一命令入口。快速 A/B/A 切歌废弃旧代次，晚到的网络和 PCM 输出均不得恢复旧曲。
 - 同一会话 seek/recover 串行，最多一个请求在途；连续定位只保留最新待执行目标。在途返回先确认其 attemptId，再发下一请求，遵守[共同控制语义](../../docs/implementation.md#32-播放描述与客户端状态)。
 - byteRange 验证资源身份、长度和服务端实际能力；timeRestart 加载新的表示和曲目起点。新表示清理旧缓冲，不沿用旧字节偏移。
-- 网络结果不明使用原幂等键有界重试；取消本地请求不代表服务端撤销。无法确认当前尝试时停止自动控制并提示重新播放。
+- 控制通道不自动重放已发送修改；区分尚未发送的网络失败与发送后结果未知。业务层若显式重试须沿用原幂等键，取消本地请求不代表服务端撤销。无法确认当前尝试时停止自动控制并提示重新播放。
 - 解码后端回退、设备切换、同源刷新和跨源恢复分别处理。跨源续播只有 Server 返回满足资产版本与时间证据的决定后执行，无法安全恢复时由用户选择重播。
 - 纯本机 DSP、输出设备或本机解码图改变推进 `graphGeneration` 并清理旧图；不因此要求 Server 创建新 attempt。只有需要改变服务端来源、资产、表示或处理输出时才按协议重新协商；已有输入是否可重读/定位仍以当前表示能力为准。
 - 转场沿用顺序“淡出旧曲 → 切换 → 新 PCM 就绪后淡入”，首版默认关闭；不把缓冲等待计入淡入，也不把同曲恢复伪装成换曲。

@@ -4,16 +4,16 @@
 
 ## 1. 当前契约与原生播放前置项
 
-共同语义以[总体架构](../../../docs/architecture.md)为准，精确接口属于 [Server OpenAPI](../../../server/docs/contracts/openapi.yaml)及 [HTTP Schema](../../../server/docs/contracts/http.schema.json)。当前库和 Web 的实现范围不能从长期架构中的目标路由推断。
+共同语义以[总体架构](../../../docs/architecture.md)为准，精确接口属于 [Server OpenAPI](../../../server/docs/contracts/openapi.yaml)、[HTTP Schema](../../../server/docs/contracts/http.schema.json)及 [WS 控制通道](../../../server/docs/contracts/control-channel.md)。当前库和 Web 的实现范围不能从长期架构中的目标路由推断；以下 Rust 适配均为计划，尚未实现或联调。
 
 | 项目 | 当前事实 | 桌面实施要求 |
 | --- | --- | --- |
 | 登录 | 引导 Bearer + 允许 Origin 换取 Cookie 与 CSRF；没有原生 access/refresh token API | Rust 管理私有会话并验证真实握手，不臆造 token 接口 |
-| 播放能力 | `Capabilities` 必填 `htmlAudio=true`；创建逻辑拒绝 false | Server 先增加向后兼容的原生播放器能力模型，Client 不冒报浏览器能力 |
+| 播放能力 | `Capabilities` 必填 `htmlAudio=true`；创建逻辑拒绝 false | Server 增加原生播放器能力模型并同步消费者，Client 不冒报浏览器能力 |
 | 输出传输 | `OutputProfile.transport` 当前固定为 `htmlAudio` | Server 明确原生 HTTP 读取/解码的传输语义，并同步 Schema、SDK 与选择逻辑 |
 | 交付模式 | 当前 Schema 接受 `proxy` / `processed`，流地址是同源相对路径 | 首版消费这两类；`direct` 保留为后续协议增量 |
-| SSE | 当前只有 `capabilities.changed` | Rust 统一订阅并重新获取授权能力；其他变化按已交付查询/轮询契约处理 |
-| 本地生命周期 | Cookie、真实 loopback TCP；修改另验 Origin/CSRF | 仅对实际 client-managed 实例维护租约，不接管 standalone |
+| 控制与通知 | `/control`、`musicfs.control.v1`；播放请求、心跳与 `capabilities.changed`，本机另有 `lifecycle.changed` | Rust 统一连接、鉴权、关联响应、重连并重新获取授权能力；其他变化按已交付查询契约处理 |
+| 本地生命周期 | WS request 显式申请/续期/释放，Cookie/Origin/首帧 CSRF 和实际 loopback 检查 | 仅对实际 client-managed 实例维护租约；ping 不续租，不接管 standalone |
 
 能力限制同时存在于 Schema 与[创建逻辑](../../../server/src/playback/create.go)，不能仅在客户端重新解释 `htmlAudio` 就宣称原生播放已兼容。C0 可以用授权测试样本验证本机解码/输出，真实 Server 原生播放交付必须先完成 C1 的兼容增量。
 
@@ -27,7 +27,7 @@ Server 增量的需求为：区分浏览器媒体元素与原生播放器；接�
 
 React 登录表单可将用户输入的引导凭据提交给专用 Rust 登录命令，随后清空输入；该凭据没有一次使用后自动失效的语义。凭据不进入 URL、localStorage、通用事件、遥测或普通日志。保存登录信息仅在用户选择且平台安全存储可用时启用；安全存储不可用时仅维持本次内存会话。
 
-Rust Server Adapter 为每个连接/账号管理独立 Cookie jar、CSRF 与身份摘要。`POST /auth/session` 使用引导 Bearer 及允许的 Origin；后续请求使用私有 Cookie，状态修改附带 Origin 和 `X-CSRF-Token`。不把引导 Bearer 附加到所有请求，不向 WebView 返回 Cookie/CSRF 或平台凭据。现有 Cookie 的 HttpOnly、SameSite、Secure、路径、过期及注销语义仍适用，原生 Cookie 实现不能跳过 TLS/作用域校验。
+Rust Server Adapter 为每个连接/账号管理独立 Cookie jar、CSRF 与身份摘要。`POST /auth/session` 使用引导 Bearer 及允许的 Origin；后续 HTTP 请求使用私有 Cookie，状态修改附带 Origin 和 `X-CSRF-Token`。WS 升级发送 Cookie、允许的 Origin 及 `musicfs.control.v1`，升级后 5 秒内首帧发送 `{type:"auth",csrfToken}`，收到 ready 才提交控制请求。每次心跳和命令由 Server 复核登录。不把引导 Bearer 附加到所有请求，不向 WebView 返回 Cookie/CSRF 或平台凭据。现有 Cookie 的 HttpOnly、SameSite、Secure、路径、过期及注销语义仍适用，原生 Cookie 实现不能跳过 TLS/作用域校验。
 
 连接配置包含 Server API 基址与配套 `desktopOrigin`。该 Origin 必须由可信部署配置明确允许，不能让普通界面在每次请求时指定任意值，也不枚举允许项试探登录。Rust 可以发送 HTTP(S) Origin，但 Origin 本身不是客户端身份，实际认证仍由会话完成。
 
@@ -54,13 +54,17 @@ Rust Server Adapter 为每个连接/账号管理独立 Cookie jar、CSRF 与身�
 
 ## 3. 事件、并发和生命周期
 
-每个活动连接由 Rust 维护一条 SSE 订阅，多窗口共享结果。收到 `capabilities.changed`、首次连接或重连后重新读取 Server 权威能力；不能把通知当作完整事件日志或假定支持 Last-Event-ID 重放。能力刷新绑定连接/会话代次，采用单在途读取与脏标记：读取期间再次收到变化，则完成后再读取一次，只发布当前代次结果；变化后的旧快照不能用于新敏感操作，Server 仍逐请求鉴权。revision 是不透明字符串，不按字典序比较新旧。鉴权失败进入会话恢复，其他断线有界退避，退出时关闭订阅。
+每个活动 Server 连接由 Rust 维护一条 WS 控制通道，多窗口共享结果，取代 SSE 订阅。ready 返回 instanceId、heartbeatIntervalMs=10000 和 heartbeatTimeoutMs=30000；Rust 原生定时发送 ping 并处理 pong，不依赖 React 定时器。收到 `capabilities.changed`、首次连接或重连后重新读取 Server 权威能力；不能把通知当作完整事件日志或假定支持事件重放。能力刷新绑定连接/会话代次，采用单在途读取与脏标记：读取期间再次收到变化，则完成后再读取一次，只发布当前代次结果；变化后的旧快照不能用于新敏感操作，Server 仍逐请求鉴权。revision 是不透明字符串，不按字典序比较新旧。鉴权失败进入会话恢复，其他断线有界退避并重新完成首帧鉴权。
+
+本机连接接收 `lifecycle.changed` 初始快照及后续状态，停机事件尽力送达；断线后仍须重新发现实例，不能假定一定收到最后通知。request 使用独立的响应关联 id 和业务 idempotencyKey，正文遵循 Server Schema。单条 WS 同时承载播放与租约：Server 为两类命令各维护容量 8 的独立队列与工作协程，播放保持串行，续租不等待慢播放命令；响应必须按 id 关联，不能假定跨队列顺序。通知独立产生，共享容量 32 的出站队列。HTTP 控制端点只作管理入口，不在 WS 断线后自动回退。音频保持独立 HTTP 流。
+
+服务端每条命令从读取并受理时开始计时，排队与执行共限 15 秒；排队过期不会进入业务。Rust 适配须同时约束等待和迟到结果的清理窗口，不能把客户端取消等待当作服务端撤销。
 
 Client 内部 PlayerCore 快照/事件是另一套版本化协议；Server 能力事件不能代替本机队列、设备或播放状态。页面请求绑定连接、账号、查询和请求代次；迟到响应不得跨账号显示。分页沿用不透明游标和固定修订，不将未知能力、空数据与读取失败混为一类。
 
-播放控制遵循主计划的串行 seek/recover、原键重试和 attempt 更新；客户端不得从 HTTP 取消推断服务端操作已经撤销。跨来源时间证据、处理配置和不可续播提示保持共同语义。
+播放控制遵循主计划的串行 seek/recover 和 attempt 更新；通道不自动重放已发送修改，客户端不得从 WS 断线或取消等待推断服务端操作已经撤销。计划中的 Rust 适配须区分未发送的网络失败与发送后未知结果；业务层显式重试时沿用原键，不能确认当前尝试则提示重新播放。跨来源时间证据、处理配置和不可续播提示保持共同语义。
 
-租约以 [Server 生命周期](../../../server/docs/operations/lifecycle.md)为准：只有真实 loopback 上的 client-managed 实例接受租约，默认有效 30 秒、建议每 10 秒续租；创建请求带实例 ID/客户端 ID/幂等键，续租按上次成功序号加一，重试使用相同序号。续租任务由 Rust 驱动，不能依赖 React 定时器或窗口可见性。
+租约以 [Server 生命周期](../../../server/docs/operations/lifecycle.md)为准：只有真实 loopback 上的 client-managed 实例接受租约，默认有效 30 秒、建议每 10 秒通过 WS request 显式续租；创建请求带实例 ID/客户端 ID/幂等键，续租按上次成功序号加一，重试使用相同序号。连接 ping 不续租，断线宽限只由原租约期限决定，过期不能复活。续租任务由 Rust 驱动，不能依赖 React 定时器或窗口可见性。
 
 正常退出并注销的顺序为：停止新操作 → 有界停止播放/插件任务 → 取消并等待续租任务结束 → 使用仍有效的会话发起注销 → 清理本地凭据与资源并退出。Server 的[会话撤销回调](../../../server/src/app/bootstrap/composition.go)会一并撤销该会话的播放和所有租约，注销后无需再发 release。最后租约 release 会立即触发 draining，因此不能将“先 release 再保证注销成功”写成正常路径。
 
@@ -75,7 +79,7 @@ Client 内部 PlayerCore 快照/事件是另一套版本化协议；Server 能�
 | 图标、主题变量、展示组件、曲目表和页面布局 | 审计平台假设后抽出展示层；沿用中文交互、动态加载、来源身份与真实能力显示 |
 | 不可变 store、查询键、游标/修订逻辑与测试样本 | 复用纯逻辑或按相同规则移植；保留运行时校验和账号隔离 |
 | React 服务注入 | 抽成服务端口，Web 实现浏览器适配，Client 实现类型化 Rust 桥接；组件不直接导入 Tauri |
-| Web `ApiClient` / EventSource | 替换为 Rust HTTP/SSE；不直接复用同源 fetch 和 JS CSRF 存储 |
+| Web `ApiClient` / WS 控制通道 | 替换为 Rust HTTP/WS；不直接复用浏览器 Cookie、同源 fetch 和 JS CSRF 存储 |
 | 浏览器 audio adapter / 播放控制器 | 由 Rust PlayerCore 与原生引擎替换；迁移代次、幂等和恢复测试，不运行两套可写核心 |
 | 歌词/封面读取与 `MediaPanel` | 改为服务端口和受控资源句柄，不能依赖 WebView 自动携带原生 Cookie |
 | `pagehide` 停播、`window.location.origin` | 改为桌面关闭策略与真实 Server 连接摘要；页面销毁不直接停播或注销 |
@@ -92,7 +96,7 @@ Client 内部 PlayerCore 快照/事件是另一套版本化协议；Server 能�
 - 新原生协商模型由 Server 定义并通过 Schema/实现/SDK 对齐检查；旧 Web 请求和输出格式回归通过。
 - 真实 Rust 登录、恢复、到期、退出、Origin 不允许、CSRF 错误和 TLS 错误均有明确结果；没有虚构的原生 token 端点。
 - 原生音频及封面/歌词通过各自授权读取，跨用户、旧句柄、过期尝试、跨源重定向不能泄露内容或凭据。
-- UI 重建、多窗口、账号切换、SSE 重连和查询晚响应不创建重复播放器、不显示上一用户数据。
+- UI 重建、多窗口、账号切换、WS 重连和查询晚响应不创建重复播放器、不显示上一用户数据；握手超时、心跳超时、登录撤销和未知结果原键重试均有明确状态。
 - proxy/processed 真实发声；byteRange/timeRestart、连续 seek、结果未知重试、取消旧代次符合共同状态语义。
 - 托管模式续租在主窗口隐藏或 WebView 重建后继续；注销撤销会话租约，单独 release 与正常注销分开验收，独立/远程 Server 不被接管或停止。
 

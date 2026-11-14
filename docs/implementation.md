@@ -16,7 +16,7 @@
 | [平台与验收](implementation/platforms-validation.md) | 三平台能力、打包、测试与证据 |
 | [桌面组件图](diagrams/desktop-components.puml) | React、Tauri、PlayerCore、音频及插件数据通道 |
 
-[共同架构](../../docs/architecture.md)定义跨端语义；[Server 契约](../../server/docs/contracts/README.md)拥有精确接口。本文提出的桌面命令、插件字段和原生播放协商均须在对应实施阶段落地，不能当作现有 API 使用。本次只编写文档，不建立空实现或改变 Server/Web 行为。
+[共同架构](../../docs/architecture.md)定义跨端语义；[Server 契约](../../server/docs/contracts/README.md)拥有精确接口。桌面命令、插件字段与原生播放适配仍待实施；Server 已提供 `nativeHttp` 传输协商。本次只编写文档，不建立空实现或改变 Server/Web 行为。
 
 ## 2. 技术决策与验证边界
 
@@ -129,7 +129,7 @@ PlayerCore 的播放位置来源于实际输出帧及明确的设备/DSP 延迟�
 | 阶段 | 交付内容 | 完成门槛 |
 | --- | --- | --- |
 | C0 技术原型 | 三平台 React/Tauri 构建与窗口、测试音频设备输出、CMake/C++23 DSP 动态库及 C ABI、协作取消/实例回收/重启启停与恢复、自定义目录验证 | 每个平台记录实际运行；输出库/FFmpeg 构建有候选证据；定位协议缺口并形成 Server 变更清单；接受同进程崩溃边界 |
-| C1 工程与会话 | 固定工具链、锁文件、桥接 DTO/权限、Rust 会话存储、来源列表；Server 原生播放契约增量 | 真实 Cookie/CSRF 握手及退出；浏览器旧能力回归通过；原生能力不能冒报 htmlAudio |
+| C1 工程与会话 | 固定工具链、锁文件、桥接 DTO/权限、Rust 会话存储、来源列表与 Rust 原生播放协商 | 真实 Cookie/CSRF 握手及退出；声明 `nativeHttp`，校验输出描述及授权读取 |
 | C2 首次原生播放 | remote/external-local 连接；真实库点播、暂停、停止、队列、byteRange 和实际时钟 | Windows/macOS/Linux 分别实际听音、非零定位与快速切歌；隐藏/重建界面不改变核心状态，显式退出正确停止 |
 | C3 处理与动态插件 | processed/timeRestart、恢复、DSP/转场；解码/DSP/输出包安装、启动装载、待重启启停/更新/回滚；外部控制 API | 兼容新包无需重编译，重启后从磁盘装载；当前/期望状态一致呈现；实例回收与故障恢复通过，库始终保留到退出；外控鉴权/撤销通过 |
 | C4 桌面呈现 | 主题、歌词/迷你窗口、托盘、媒体键、输出设置、多屏缩放；可视化/系统控制角色扩展 | 功能矩阵逐项记录三平台实际结果；新角色从包加载并符合数据/回调约束；不支持项明确呈现并有可用退路 |

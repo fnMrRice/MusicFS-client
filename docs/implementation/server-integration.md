@@ -1,6 +1,6 @@
 # Server 接入与 React 界面复用
 
-状态：实施计划；2026-10-10。已核对当前 Server 契约与实现；尚未以 Rust/Tauri 客户端联调。本文列出可沿用机制、必须扩展的协议和界面迁移边界，阶段见[桌面实施计划](../implementation.md)。
+状态：桌面实施计划，2026-11-14。Server 已支持原生 HTTP 传输协商，Rust/Tauri 客户端仍待接入。阶段见[桌面实施计划](../implementation.md)。
 
 ## 1. 当前契约与原生播放前置项
 
@@ -9,17 +9,13 @@
 | 项目 | 当前事实 | 桌面实施要求 |
 | --- | --- | --- |
 | 登录 | 引导 Bearer + 允许 Origin 换取 Cookie 与 CSRF；没有原生 access/refresh token API | Rust 管理私有会话并验证真实握手，不臆造 token 接口 |
-| 播放能力 | `Capabilities` 必填 `htmlAudio=true`；创建逻辑拒绝 false | Server 增加原生播放器能力模型并同步消费者，Client 不冒报浏览器能力 |
-| 输出传输 | `OutputProfile.transport` 当前固定为 `htmlAudio` | Server 明确原生 HTTP 读取/解码的传输语义，并同步 Schema、SDK 与选择逻辑 |
+| 播放能力 | `capabilities` 使用 `htmlAudio: true` 或 `nativeHttp: true`，二者互斥，`formats` 必填 | Rust 声明 `nativeHttp: true`，按实际可解码能力填写 MIME |
+| 输出传输 | `outputProfile.transport` 回显协商的 `nativeHttp` 或 `htmlAudio` | 核对 `nativeHttp` 和实际输出格式，经 Rust HTTP 读取器加载授权音频 |
 | 交付模式 | 当前 Schema 接受 `proxy` / `processed`，流地址是同源相对路径 | 首版消费这两类；`direct` 保留为后续协议增量 |
 | 控制与通知 | `/control`、`musicfs.control.v1`；播放请求、心跳与 `capabilities.changed`，本机另有 `lifecycle.changed` | Rust 统一连接、鉴权、关联响应、重连并重新获取授权能力；其他变化按已交付查询契约处理 |
 | 本地生命周期 | WS request 显式申请/续期/释放，Cookie/Origin/首帧 CSRF 和实际 loopback 检查 | 仅对实际 client-managed 实例维护租约；ping 不续租，不接管 standalone |
 
-能力限制同时存在于 Schema 与[创建逻辑](../../../server/src/playback/create.go)，不能仅在客户端重新解释 `htmlAudio` 就宣称原生播放已兼容。C0 可以用授权测试样本验证本机解码/输出，真实 Server 原生播放交付必须先完成 C1 的兼容增量。
-
-Server 增量的需求为：区分浏览器媒体元素与原生播放器；接收原生实际可用的编码/容器/采样格式和定位能力；返回双方理解的输出传输描述；未知或不支持能力给出明确错误。具体字段、枚举和版本策略由 Server 仓库设计与维护，本文件不预先发布新的线上字段。
-
-该增量须同时更新 OpenAPI、JSON Schema、SDK/样本、请求校验、输出选择及兼容记录，并验证：现有 Web 的请求/响应继续可用；新桌面面对旧 Server 明确提示不兼容；原生能力缺失或格式不匹配时不返回无法处理的输出。桌面自身可解码不代表上游授权、Apple Music 裸流或任一在线来源已可用。
+服务端原生传输已在[创建逻辑](../../../server/src/playback/create.go)实现。C0 用授权样本验证本机解码，C1 以 Rust 适配器联调播放创建、格式不匹配及实际 HTTP 读取。真实上游账号和在线交付能力按来源另外验收。
 
 ## 2. 原生鉴权与网络边界
 

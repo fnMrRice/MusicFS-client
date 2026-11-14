@@ -45,7 +45,7 @@ UI、快捷键和 `control.api` 将操作提交到 PlayerCore；PlayerCore 完�
 
 协议 SDK 按发布版本关联，网络断开后重新读取权威快照并恢复订阅。账号访问凭据、Client 对 Server 的会话和外部控制 token 分开存储与撤销；日志不记录 token、敏感请求头或私有来源地址。
 
-Rust 适配器计划持有私有 Cookie/CSRF、WebSocket 控制连接和显式续租任务，多窗口共享连接状态；WebView 不保存会话秘密，也不直接访问受鉴权音频。`/api/v1/control` 的 `musicfs.control.v1` 承载播放控制、连接心跳及能力/本机生命周期通知，音频仍由原生 HTTP 读取器消费。WS ping 不续租，断线宽限由租约期限决定。当前 Server 的 `htmlAudio` 能力/传输限制仍须扩展原生协商，不能冒报浏览器能力；精确前置项见[Server 接入](implementation/server-integration.md)，本段不代表 Rust 连接或原生播放已经实现。
+Rust 适配器计划持有私有 Cookie/CSRF、WebSocket 控制连接和显式续租任务，多窗口共享连接状态；WebView 不保存会话秘密，也不直接访问受鉴权音频。`/api/v1/control` 的 `musicfs.control.v1` 承载播放控制、连接心跳及能力/本机生命周期通知，音频仍由原生 HTTP 读取器消费。WS ping 不续租，断线宽限由租约期限决定。Server 已提供 `nativeHttp` 传输协商，Rust 播放器需按本机实际格式接入。适配和验收见[Server 接入](implementation/server-integration.md)。
 
 ## 5. 主题、歌词与平台适配
 

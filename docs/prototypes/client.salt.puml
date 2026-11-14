@@ -2,12 +2,23 @@
 {
   MusicFS - Aggregate Playlist
   {+
-    { Home | Search | Library | Settings }
+    { Home | Search | Settings }
     {#
-      Playlist | Tracks | Status
-      Favorites | 128 | Ready
-      Daily Mix | 42 | Cached
-      NAS Collection | 360 | Ready
+      {T
+        + 作品库
+        ++ 曲目列表
+        ++ CD专辑
+        ++ ASMR
+        ++ 电台
+        + 歌单管理
+      }
+      |
+      {#
+        Playlist | Tracks | Status
+        Favorites | 128 | Ready
+        Daily Mix | 42 | Cached
+        NAS Collection | 360 | Ready
+      }
     }
   }
   {+

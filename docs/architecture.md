@@ -31,6 +31,10 @@ UI、快捷键和 `control.api` 将操作提交到 PlayerCore；PlayerCore 完�
 
 歌单、搜索、匹配候选、Provider 推荐和刮削工作流通过协议适配层请求 Server。界面显示来源、账号状态、逐项失败与人工选择；打开推荐项与导入到用户歌单分为独立操作。Client 只维护必要的展示缓存和本地偏好，Server 仍是音乐库与服务端任务状态的事实来源。
 
+桌面作品库计划沿用[共享作品库线框](../../docs/prototypes/work-library.salt.puml)。展开后首项是“曲目列表”，其后按 Server 内容插件声明的顺序展示“CD专辑”“ASMR”“电台”。CD专辑沿用原抓轨入口的光盘图标。每个插件入口只查询自己的作品。普通音乐专辑仍可从曲目列表的专辑视图浏览。
+
+在 CD 专辑的编辑表单中，用户可勾选“在曲目列表中显示”。该设置按专辑保存在 Server，默认关闭；启用后同一批音轨也可从普通曲目列表、筛选及播放全部访问。ASMR 和电台的音轨只在各自作品库中浏览。桌面接入方式见[Server 接入与界面复用](implementation/server-integration.md)。
+
 ## 4. 连接与本地生命周期
 
 连接适配层处理 remote、external-local、managed-local 三种模式，校验 Server 身份和协议兼容范围后建立授权连接。仅明确配置为 managed-local 时允许自动启动；remote 与 external-local 只连接。实例实际启动归属、租约、多个 Client 并存和升级协调遵守[共同协议与行为](../../docs/architecture.md)。

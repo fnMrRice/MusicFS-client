@@ -10,11 +10,16 @@ name = "musicfs-desktop"
 path = "main.rs"
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+winresource = "0.1"
 
 [dependencies]
-tauri = { version = "2", features = [] }
+eframe = { version = "=0.31.1", default-features = false, features = ["accesskit", "default_fonts", "glow", "wayland", "x11"] }
+directories = "6"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 musicfs-player-core = { path = "../player-core" }
 musicfs-server-adapter = { path = "../server-adapter" }
 serde = { version = "1", features = ["derive"] }
-tokio = { version = "1", features = ["sync", "time"] }
+serde_json = "1"
+tempfile = "3"
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time"] }
+uuid = { version = "1", features = ["v4"] }

@@ -1,6 +1,0 @@
-{
-  "identifier": "mini",
-  "description": "迷你播放器的当前曲目、播放控制和主窗口入口",
-  "windows": ["mini"],
-  "permissions": ["allow-compact-snapshot", "allow-player-command", "allow-restore-main"]
-}

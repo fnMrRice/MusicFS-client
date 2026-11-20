@@ -1,32 +1,12 @@
 fn main() {
-    const COMMANDS: &[&str] = &[
-        "current_session",
-        "connect",
-        "disconnect",
-        "list_tracks",
-        "list_playlists",
-        "playlist_tracks",
-        "set_favorite",
-        "cover",
-        "player_snapshot",
-        "play_tracks",
-        "player_command",
-        "open_compact",
-        "restore_main",
-        "compact_snapshot",
-        "current_lyrics",
-        "categories",
-        "category_tracks",
-        "add_to_playlist",
-        "rebuild_playlist",
-        "content_types",
-        "list_works",
-        "work_detail",
-        "work_history",
-        "recommendation_feed",
-        "recommendation_playlist",
-    ];
-    let manifest = tauri_build::AppManifest::new().commands(COMMANDS);
-    tauri_build::try_build(tauri_build::Attributes::new().app_manifest(manifest))
-        .expect("Could not build MusicFS Desktop");
+    if std::env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        println!("cargo:rerun-if-changed=icons/icon.ico");
+        winresource::WindowsResource::new()
+            .set_icon("icons/icon.ico")
+            .set("ProductName", "MusicFS")
+            .set("FileDescription", "MusicFS Desktop")
+            .set("OriginalFilename", "musicfs-desktop.exe")
+            .compile()
+            .expect("Could not build the Windows application resource");
+    }
 }

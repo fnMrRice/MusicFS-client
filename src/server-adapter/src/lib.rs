@@ -12,7 +12,6 @@ use std::sync::{
 };
 use std::time::Duration;
 
-use base64::{engine::general_purpose::STANDARD, Engine};
 use reqwest::{
     cookie::{CookieStore, Jar},
     header, Client, Method, Response, StatusCode,
@@ -26,7 +25,7 @@ pub use playback::StreamLease;
 pub use playlist_edit::PlaylistChange;
 pub use reader::StreamReader;
 pub use recommendations::{RecommendationFeed, RecommendedPlaylistDetail};
-pub use works::{Work, WorkDetail, WorkHistoryEntry, WorkType};
+pub use works::{AudioNode, PackageAudio, Work, WorkDetail, WorkHistoryEntry, WorkType};
 
 type Result<T> = std::result::Result<T, String>;
 const API_TIMEOUT: Duration = Duration::from_secs(20);
@@ -282,7 +281,7 @@ impl ServerSession {
         checked(reply).await.map(|_| ())
     }
 
-    pub async fn cover(&self, id: &str) -> Result<String> {
+    pub async fn cover_bytes(&self, id: &str) -> Result<Vec<u8>> {
         let url = self.url(&format!("media/{}", check_id(id)?));
         let response = self.send(Method::GET, url, None).await?;
         let mime = response
@@ -297,11 +296,10 @@ impl ServerSession {
             .to_owned();
         if !matches!(
             mime.as_str(),
-            "image/png" | "image/jpeg" | "image/webp" | "image/gif" | "image/avif"
+            "image/png" | "image/jpeg" | "image/webp" | "image/gif"
         ) {
             return Err("Unsupported cover image format.".into());
         }
-        let bytes = limited(response, 8 * 1024 * 1024).await?;
-        Ok(format!("data:{mime};base64,{}", STANDARD.encode(bytes)))
+        limited(response, 8 * 1024 * 1024).await
     }
 }

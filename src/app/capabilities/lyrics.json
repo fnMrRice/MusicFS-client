@@ -1,6 +1,0 @@
-{
-  "identifier": "lyrics",
-  "description": "桌面歌词窗口只读取当前曲目摘要与歌词",
-  "windows": ["lyrics"],
-  "permissions": ["allow-compact-snapshot", "allow-current-lyrics", "allow-restore-main"]
-}

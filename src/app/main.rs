@@ -1,64 +1,67 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod commands;
-mod compact;
+#[path = "../desktop/browse/mod.rs"]
+mod browse;
+#[path = "../desktop/connection.rs"]
 mod connection;
-mod library;
-mod recommendations;
-mod works;
+#[path = "../desktop/fonts.rs"]
+mod fonts;
+#[path = "../desktop/model.rs"]
+mod model;
+#[path = "../desktop/player_ui/mod.rs"]
+mod player_ui;
+#[path = "../desktop/task.rs"]
+mod task;
+#[path = "../desktop/ui/mod.rs"]
+mod ui;
 
-use commands::*;
-use compact::*;
-use connection::{connect, current_session, disconnect, Desktop};
-use library::*;
-use recommendations::*;
+use eframe::egui;
 use std::time::Duration;
-use tauri::Manager;
-use works::*;
 
-fn main() {
-    tauri::Builder::default()
-        .manage(Desktop::default())
-        .invoke_handler(tauri::generate_handler![
-            current_session,
-            connect,
-            disconnect,
-            list_tracks,
-            list_playlists,
-            playlist_tracks,
-            set_favorite,
-            cover,
-            player_snapshot,
-            play_tracks,
-            player_command,
-            open_compact,
-            restore_main,
-            compact_snapshot,
-            current_lyrics,
-            categories,
-            category_tracks,
-            add_to_playlist,
-            rebuild_playlist,
-            content_types,
-            list_works,
-            work_detail,
-            work_history,
-            recommendation_feed,
-            recommendation_playlist
-        ])
-        .on_window_event(|window, event| {
-            if window.label() == "main" && matches!(event, tauri::WindowEvent::Destroyed) {
-                window.app_handle().exit(0);
-            }
-        })
-        .build(tauri::generate_context!())
-        .expect("Could not initialize MusicFS Desktop")
-        .run(|app, event| {
-            if let tauri::RunEvent::Exit = event {
-                tauri::async_runtime::block_on(async {
-                    let desktop = app.state::<Desktop>();
-                    let _ = tokio::time::timeout(Duration::from_secs(4), desktop.close()).await;
-                });
-            }
-        });
+struct MusicFs {
+    state: model::DesktopState,
+    ui: ui::DesktopUi,
+}
+
+impl eframe::App for MusicFs {
+    fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
+        self.state.update();
+        self.ui.show(ctx, &mut self.state);
+    }
+
+    fn on_exit(&mut self, _: Option<&eframe::glow::Context>) {
+        self.state.shutdown();
+    }
+}
+
+fn main() -> eframe::Result<()> {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("Could not start the MusicFS runtime");
+    let handle = runtime.handle().clone();
+    let icon = eframe::icon_data::from_png_bytes(include_bytes!("icons/128x128.png"))
+        .expect("Could not read the MusicFS icon");
+    let options = eframe::NativeOptions {
+        viewport: egui::ViewportBuilder::default()
+            .with_app_id("io.github.fnMrRice.musicfs.desktop")
+            .with_inner_size([1232.0, 800.0])
+            .with_min_inner_size([660.0, 500.0])
+            .with_icon(icon),
+        centered: true,
+        ..Default::default()
+    };
+    let result = eframe::run_native(
+        "MusicFS",
+        options,
+        Box::new(move |creation| {
+            fonts::install(&creation.egui_ctx);
+            Ok(Box::new(MusicFs {
+                state: model::DesktopState::new(handle),
+                ui: ui::DesktopUi::default(),
+            }))
+        }),
+    );
+    runtime.shutdown_timeout(Duration::from_secs(2));
+    result
 }

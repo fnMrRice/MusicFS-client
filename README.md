@@ -2,7 +2,7 @@
 
 简体中文 · [English](docs/README.en.md)
 
-MusicFS 桌面播放器面向 Windows、macOS 和 Linux。当前仓库提供架构设计与界面原型，尚无可运行版本。计划使用 React 和 Tauri 2 构建桌面界面，由 Rust 核心管理播放队列、音频输出和桌面歌词。
+MusicFS 桌面播放器面向 Windows、macOS 和 Linux。[初始开发版本](VERSION)为 `0.1.0`。当前仓库提供架构设计与界面原型，尚无可运行版本。计划使用 React 和 Tauri 2 构建桌面界面，由 Rust 核心管理播放队列、音频输出和桌面歌词。
 
 ## 界面设计稿
 

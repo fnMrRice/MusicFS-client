@@ -2,13 +2,17 @@
 
 [简体中文](../README.md) · English
 
-MusicFS Desktop is a planned music player for Windows, macOS, and Linux. This repository contains its architecture and UI prototypes. There is no runnable desktop release yet. The design uses React and Tauri 2 for the interface, with a Rust core for the playback queue, audio output, and desktop lyrics.
+MusicFS Desktop connects to a running MusicFS Server. The interface, server connection and audio player are written in Rust. Eframe and egui draw the native windows, with navigation and playback controls based on the Web design.
 
-## Design preview
+![Windows desktop library and playback controls](screenshots/windows-library.png)
 
-![Track list design showing the library, source filters, and playback controls](prototypes/track-list-preview-v5.png)
+## Getting started
 
-The image shows the proposed track list. The [playlist wireframe](prototypes/client.salt.puml) illustrates how listeners would merge playlists and choose an audio source.
+Open MusicFS and sign in with the server URL and administrator token. For a local server the default URL is `http://127.0.0.1:8080`. Use HTTPS for remote servers. The library, search, favorites and playlists use your server's catalog. Double-click a track to play, or open the queue, mini player and lyrics from the main window. Sessions last for the lifetime of the app.
+
+From the repository root, run `cargo run --locked --release -p musicfs-desktop` with the [pinned Rust toolchain](../rust-toolchain.toml). Windows builds require MSVC and the Windows SDK. Linux builds require the system windowing, OpenGL and ALSA development libraries. Install a CJK system font to display Chinese text. On Windows x64, use `./scripts/package-windows.ps1` with NSIS to create an installer. The original [playlist wireframe](prototypes/client.salt.puml) and the documents below describe the longer-term design.
+
+The Windows installer bundles the required Visual C++ runtime. Running the standalone executable requires the x64 Visual C++ runtime on the system.
 
 ## Design documents
 

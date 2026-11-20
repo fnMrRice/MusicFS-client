@@ -78,6 +78,11 @@ h1, h2, h3, p { margin: 0; }
 .nav-link span, .header h1, .track-info > *, .playlist-tile strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nav-link:hover { background: var(--hover); }
 .nav-link[aria-current="page"] { background: var(--accent); color: white; box-shadow: 0 5px 20px #ff365817; }
+.library-toggle { border: 0; width: 100%; background: none; justify-content: flex-start; }
+.library-toggle.active { color: white; background: var(--accent); }
+.library-toggle i { margin-left: auto; display: inline-flex; }
+.library-children { margin-left: 12px; padding-left: 4px; border-left: 1px solid var(--line); }
+.library-children .nav-link { min-height: 36px; padding-block: 7px; font-size: 13px; }
 .nav-group { border-top: 1px solid var(--line); margin-top: 21px; padding-top: 12px; }
 .group-toggle { color: var(--muted); background: transparent; border: 0; gap: 10px; padding-left: 13px; }
 .group-toggle span { display: inline-flex; }

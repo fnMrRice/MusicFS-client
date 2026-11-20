@@ -6,32 +6,32 @@ use std::collections::HashMap;
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecommendedPlaylist {
-    external_id: String,
-    title: String,
-    track_count: Option<u64>,
-    creator: Option<String>,
+    pub external_id: String,
+    pub title: String,
+    pub track_count: Option<u64>,
+    pub creator: Option<String>,
 }
 #[derive(Deserialize, Serialize)]
 pub struct Recommendation {
-    playlist: RecommendedPlaylist,
-    reason: String,
+    pub playlist: RecommendedPlaylist,
+    pub reason: String,
 }
 #[derive(Deserialize, Serialize)]
 pub struct SourceFailure {
-    code: String,
+    pub code: String,
 }
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Source {
-    instance_id: String,
+    pub instance_id: String,
     #[serde(rename(deserialize = "name"))]
-    display_name: Option<String>,
+    pub display_name: Option<String>,
     #[serde(skip_serializing)]
     account_id: Option<String>,
-    items: Vec<Recommendation>,
-    stale: bool,
-    last_success_at: Option<String>,
-    error: Option<SourceFailure>,
+    pub items: Vec<Recommendation>,
+    pub stale: bool,
+    pub last_success_at: Option<String>,
+    pub error: Option<SourceFailure>,
 }
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -60,21 +60,21 @@ struct Plugin {
 }
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct ObservedEntry {
-    position: u64,
-    external_track_id: String,
+pub struct ObservedEntry {
+    pub position: u64,
+    pub external_track_id: String,
     #[serde(default)]
-    track: Option<TrackInfo>,
+    pub track: Option<TrackInfo>,
     #[serde(default)]
-    unavailable: bool,
+    pub unavailable: bool,
 }
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct TrackInfo {
-    external_id: String,
-    title: String,
-    artists: Vec<String>,
-    duration_ms: Option<u64>,
+pub struct TrackInfo {
+    pub external_id: String,
+    pub title: String,
+    pub artists: Vec<String>,
+    pub duration_ms: Option<u64>,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -95,11 +95,11 @@ struct TrackPage {
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecommendedPlaylistDetail {
-    playlist: RecommendedPlaylist,
-    entries: Vec<ObservedEntry>,
-    complete: bool,
-    observed_at: String,
-    next_cursor: Option<String>,
+    pub playlist: RecommendedPlaylist,
+    pub entries: Vec<ObservedEntry>,
+    pub complete: bool,
+    pub observed_at: String,
+    pub next_cursor: Option<String>,
 }
 
 impl ServerSession {

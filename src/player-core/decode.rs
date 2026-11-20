@@ -17,13 +17,21 @@ pub struct Lifecycle {
 
 impl Drop for Lifecycle {
     fn drop(&mut self) {
-        if let Some(close) = self.close.take() { close(); }
+        if let Some(close) = self.close.take() {
+            close();
+        }
     }
 }
 
 pub enum Event {
     Opened(Lifecycle),
-    Ready { revision: u64, source: Box<PcmSource>, clock: Clock, duration_ms: Option<u64>, seekable: bool },
+    Ready {
+        revision: u64,
+        source: Box<PcmSource>,
+        clock: Clock,
+        duration_ms: Option<u64>,
+        seekable: bool,
+    },
     Failed(String),
 }
 
@@ -41,32 +49,56 @@ pub struct Worker {
 }
 
 impl Worker {
-    pub fn new(loader: impl Fn(&Track) -> Result<Media, String> + Send + 'static) -> Result<Self, String> {
+    pub fn new(
+        loader: impl Fn(&Track) -> Result<Media, String> + Send + 'static,
+    ) -> Result<Self, String> {
         let (jobs, incoming) = channel::<Job>();
         let (send, events) = channel();
         let generation = Arc::new(AtomicU64::new(0));
         let active = generation.clone();
-        thread::Builder::new().name("player-decode".into()).spawn(move || {
-            while let Ok(job) = incoming.recv() {
-                if job.generation != active.load(Ordering::Acquire) { continue; }
-                let result = loader(&job.track).and_then(|media| decode(&job, &active, &send, media));
-                if let Err(error) = result { let _ = send.send((job.generation, Event::Failed(error))); }
-            }
-        }).map_err(|e| e.to_string())?;
-        Ok(Self { jobs, events, generation })
+        thread::Builder::new()
+            .name("player-decode".into())
+            .spawn(move || {
+                while let Ok(job) = incoming.recv() {
+                    if job.generation != active.load(Ordering::Acquire) {
+                        continue;
+                    }
+                    let result =
+                        loader(&job.track).and_then(|media| decode(&job, &active, &send, media));
+                    if let Err(error) = result {
+                        let _ = send.send((job.generation, Event::Failed(error)));
+                    }
+                }
+            })
+            .map_err(|e| e.to_string())?;
+        Ok(Self {
+            jobs,
+            events,
+            generation,
+        })
     }
 
-    pub fn cancel(&self) -> u64 { self.generation.fetch_add(1, Ordering::AcqRel) + 1 }
+    pub fn cancel(&self) -> u64 {
+        self.generation.fetch_add(1, Ordering::AcqRel) + 1
+    }
 
     pub fn load(&self, generation: u64, track: Track) -> Result<Sender<SeekRequest>, String> {
         let (seeks, receiver) = channel();
-        self.jobs.send(Job { generation, track, seeks: receiver }).map_err(|_| "Decoder is unavailable.")?;
+        self.jobs
+            .send(Job {
+                generation,
+                track,
+                seeks: receiver,
+            })
+            .map_err(|_| "Decoder is unavailable.")?;
         Ok(seeks)
     }
 }
 
 impl Drop for Worker {
-    fn drop(&mut self) { self.cancel(); }
+    fn drop(&mut self) {
+        self.cancel();
+    }
 }
 
 // 解码库的迭代接口以 None 表示读尽；保存底层读取错误，避免把断线当作正常曲终。
@@ -88,47 +120,85 @@ impl Read for ObservedReader {
 }
 
 impl Seek for ObservedReader {
-    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> { self.input.seek(pos) }
+    fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
+        self.input.seek(pos)
+    }
 }
 
-fn decode(job: &Job, active: &AtomicU64, events: &Sender<(u64, Event)>, media: Media) -> Result<(), String> {
+fn decode(
+    job: &Job,
+    active: &AtomicU64,
+    events: &Sender<(u64, Event)>,
+    media: Media,
+) -> Result<(), String> {
     let lifecycle = Lifecycle {
-        started: Some(media.on_started), close: Some(media.on_close),
-        source_id: media.source_track_id, seek_range_ms: media.seek_range_ms,
+        started: Some(media.on_started),
+        close: Some(media.on_close),
+        source_id: media.source_track_id,
+        seek_range_ms: media.seek_range_ms,
     };
     let current = || job.generation == active.load(Ordering::Acquire);
-    if !current() { return Ok(()); }
-    let emit = |event| events.send((job.generation, event)).map_err(|_| "Player stopped.".to_string());
+    if !current() {
+        return Ok(());
+    }
+    let emit = |event| {
+        events
+            .send((job.generation, event))
+            .map_err(|_| "Player stopped.".to_string())
+    };
     emit(Event::Opened(lifecycle))?;
     let error = Arc::new(Mutex::new(None));
-    let input = BufReader::new(ObservedReader { input: media.reader, error: error.clone() });
+    let input = BufReader::new(ObservedReader {
+        input: media.reader,
+        error: error.clone(),
+    });
     let mut builder = Decoder::builder().with_data(input);
-    if let Some(bytes) = media.byte_length { builder = builder.with_byte_len(bytes); }
+    if let Some(bytes) = media.byte_length {
+        builder = builder.with_byte_len(bytes);
+    }
     let seekable = media.seekable && media.byte_length.is_some();
-    let mut decoder = builder.with_seekable(seekable).build().map_err(|e| format!("Audio decoding failed: {e}"))?;
+    let mut decoder = builder
+        .with_seekable(seekable)
+        .build()
+        .map_err(|e| format!("Audio decoding failed: {e}"))?;
     let duration_ms = decoder.total_duration().map(|d| d.as_millis() as u64);
     let mut seek = (0, 0);
     while current() {
         let (revision, origin_ms) = seek;
         if revision != 0 {
-            decoder.try_seek(Duration::from_millis(origin_ms)).map_err(|e| format!("Audio seek failed: {e}"))?;
+            decoder
+                .try_seek(Duration::from_millis(origin_ms))
+                .map_err(|e| format!("Audio seek failed: {e}"))?;
         }
         let channels = decoder.channels();
         let rate = decoder.sample_rate();
-        if channels == 0 || rate == 0 { return Err("Unsupported audio format.".into()); }
+        if channels == 0 || rate == 0 {
+            return Err("Unsupported audio format.".into());
+        }
         let (producer, source, clock) = PcmSource::pipe(channels, rate, origin_ms);
-        let mut ready = Some(Event::Ready { revision, source: Box::new(source), clock, duration_ms, seekable });
+        let mut ready = Some(Event::Ready {
+            revision,
+            source: Box::new(source),
+            clock,
+            duration_ms,
+            seekable,
+        });
         let mut producer = Some(producer);
         let mut pending = None;
         loop {
-            if !current() { return Ok(()); }
+            if !current() {
+                return Ok(());
+            }
             if let Some(next) = job.seeks.try_iter().last() {
                 seek = next;
                 break;
             }
             let Some(tx) = &producer else {
                 match job.seeks.recv_timeout(Duration::from_millis(50)) {
-                    Ok(next) => { seek = job.seeks.try_iter().last().unwrap_or(next); break; }
+                    Ok(next) => {
+                        seek = job.seeks.try_iter().last().unwrap_or(next);
+                        break;
+                    }
                     Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => return Ok(()),
                     Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
                 }
@@ -143,19 +213,31 @@ fn decode(job: &Job, active: &AtomicU64, events: &Sender<(u64, Event)>, media: M
                 block
             });
             if block.len == 0 {
-                if let Some(message) = error.lock().unwrap().take() { return Err(message); }
-                if ready.is_some() && revision == 0 { return Err("No audio samples were decoded.".into()); }
-                if let Some(ready) = ready.take() { emit(ready)?; }
+                if let Some(message) = error.lock().unwrap().take() {
+                    return Err(message);
+                }
+                if ready.is_some() && revision == 0 {
+                    return Err("No audio samples were decoded.".into());
+                }
+                if let Some(ready) = ready.take() {
+                    emit(ready)?;
+                }
                 drop(producer.take());
                 continue;
             }
             match tx.try_send(block) {
-                Ok(()) => { if let Some(ready) = ready.take() { emit(ready)?; } }
+                Ok(()) => {
+                    if let Some(ready) = ready.take() {
+                        emit(ready)?;
+                    }
+                }
                 Err(TrySendError::Full(block)) => {
                     pending = Some(block);
                     thread::sleep(Duration::from_millis(4));
                 }
-                Err(TrySendError::Disconnected(_)) => { drop(producer.take()); }
+                Err(TrySendError::Disconnected(_)) => {
+                    drop(producer.take());
+                }
             }
         }
     }

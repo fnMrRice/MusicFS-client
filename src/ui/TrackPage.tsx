@@ -17,11 +17,11 @@ function readPage(route: Route, cursor: string | null, revision?: number, catego
   }
 }
 
-const emptyTitles = { library: "音乐库还很安静", favorites: "还没有收藏", history: "还没有播放记录", playlists: "歌单为空", search: "没有找到相关曲目", settings: "" };
-const emptyHints = {
+const emptyTitles: Partial<Record<Route["section"], string>> = { library: "音乐库还很安静", favorites: "还没有收藏", history: "还没有播放记录", playlists: "歌单为空", search: "没有找到相关曲目" };
+const emptyHints: Partial<Record<Route["section"], string>> = {
   library: "在 MusicFS Server 添加音乐目录并完成扫描后，曲目会出现在这里。",
   favorites: "使用曲目右侧的收藏按钮，将喜欢的音乐加入这里。",
-  history: "播放音乐后，在这里找到最近听过的曲目。", playlists: "", search: "试试其他歌名、歌手或专辑。", settings: "",
+  history: "播放音乐后，在这里找到最近听过的曲目。", search: "试试其他歌名、歌手或专辑。",
 };
 
 export function TrackPage({ route, player, playlist, playlists, reloadPlaylists, categoryFilter }: {

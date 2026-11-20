@@ -9,6 +9,7 @@ import "./compact.css";
 
 interface Summary {
   instance: number;
+  generation: number;
   title: string | null;
   artists: string[];
   sourceId: string | null;
@@ -44,7 +45,7 @@ function useSummary() {
 function Lyrics({ summary }: { summary: Summary | null }) {
   const source = summary?.sourceId;
   const instance = summary?.instance;
-  const key = source ? instance + "/" + source : "";
+  const key = source ? instance + "/" + summary?.generation + "/" + source : "";
   const [retry, setRetry] = useState(0);
   const [result, setResult] = useState({ key: "", text: "", error: "" });
   useEffect(() => {

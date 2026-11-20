@@ -8,6 +8,8 @@ import { readPreference, savePreference, themeNames, type Theme } from "./prefer
 import { TrackPage } from "./TrackPage";
 import { usePlayer } from "./usePlayer";
 import { CategoryBrowser } from "./CategoryBrowser";
+import { Recommendations } from "./Recommendations";
+import { useWorkTypes, WorkHistory, workPath, Works } from "./Works";
 
 const sections: Record<Section, { name: string; icon: IconName }> = {
   search: { name: "搜索", icon: "search" },
@@ -16,6 +18,8 @@ const sections: Record<Section, { name: string; icon: IconName }> = {
   favorites: { name: "我的收藏", icon: "heart" },
   history: { name: "最近播放", icon: "clock" },
   settings: { name: "设置", icon: "user" },
+  recommendations: { name: "推荐", icon: "home" },
+  works: { name: "作品库", icon: "album" },
 };
 type SettingsProps = { session: Session; theme: Theme; setTheme: (value: Theme) => void; onDisconnect: () => void };
 
@@ -70,6 +74,10 @@ export function Shell(props: SettingsProps) {
   const { session, theme, setTheme } = props;
   const route = useRoute();
   const player = usePlayer();
+  const works = useWorkTypes();
+  const scope = JSON.stringify([session.endpoint, session.userName]);
+  const [worksOpen, setWorksOpen] = useState(() => readPreference("works." + scope) === "open");
+  const [historyTypeId, setHistoryTypeId] = useState("");
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [playlistError, setPlaylistError] = useState("");
   const [playlistBusy, setPlaylistBusy] = useState(true);
@@ -103,8 +111,35 @@ export function Shell(props: SettingsProps) {
   const nav = (key: Section) => <a className="nav-link" href={"#/" + key} title={sections[key].name}
     aria-current={route.section === key && !route.playlistId ? "page" : undefined}><Icon name={sections[key].icon} /><span>{sections[key].name}</span></a>;
   const selected = playlists.find(item => item.id === route.playlistId);
-  const title = route.playlistId ? selected?.name || "歌单详情" : sections[route.section].name;
-  const listRoot = route.section === "playlists" && !route.playlistId;
+  const workType = works.types.find(type => type.id === route.workTypeId);
+  const historyTypes = works.types.filter(type => type.separateHistory);
+  const historyType = historyTypes.find(type => type.id === historyTypeId);
+  const title = route.workId ? "作品详情" : workType ? workType.name : route.playlistId ? selected?.name || "歌单详情" : sections[route.section].name;
+  const backHref = route.workId && workType ? workPath(workType.id) : route.playlistId ? "#/playlists" : "#/library";
+  const backLabel = route.workId && workType ? "返回" + workType.name : route.playlistId ? "返回歌单列表" : "返回曲目列表";
+  const trackProps = { player, route, playlists, reloadPlaylists: loadPlaylists };
+  function content() {
+    switch (route.section) {
+      case "settings": return <Settings {...props} />;
+      case "recommendations": return <Recommendations />;
+      case "works": return workType ? <Works type={workType} workId={route.workId} /> : works.loading
+        ? <p className="loading">正在读取作品类型…</p>
+        : <Notice error={works.error || "未找到此作品类型。"} retry={works.refresh} />;
+      case "library": return <CategoryBrowser>{filter => <TrackPage key={filter?.kind + "/" + filter?.id} {...trackProps} categoryFilter={filter} />}</CategoryBrowser>;
+      case "playlists":
+        if (!route.playlistId) return <PlaylistList playlists={playlists} error={playlistError} loading={playlistBusy} reload={() => void loadPlaylists()} />;
+        if (!selected) return playlistBusy ? <p className="loading">正在读取歌单…</p> : <Notice error={playlistError || "未找到此歌单。"} retry={() => void loadPlaylists()} />;
+        return <TrackPage key={selected.snapshotRevision} {...trackProps} playlist={selected} />;
+      case "history": return <>
+        {historyTypes.length > 0 && <nav className="category-tabs" aria-label="播放历史分类">
+          <button aria-pressed={!historyType} onClick={() => setHistoryTypeId("")}>音乐</button>
+          {historyTypes.map(type => <button key={type.id} aria-pressed={type.id === historyTypeId} onClick={() => setHistoryTypeId(type.id)}>{type.name}</button>)}
+        </nav>}
+        {historyType ? <WorkHistory type={historyType} /> : <TrackPage {...trackProps} />}
+      </>;
+      default: return <TrackPage {...trackProps} />;
+    }
+  }
   async function reconnect() {
     try { await desktop.disconnect(); }
     catch (reason) {
@@ -115,7 +150,20 @@ export function Shell(props: SettingsProps) {
   return <Reconnect.Provider value={() => void reconnect()}><div className="shell">
     <aside className="sidebar"><a className="brand-link" href="#/library" aria-label="MusicFS 曲目列表"><Brand /></a>
       <nav className="navigation" aria-label="主导航">
-        {nav("search")}{nav("library")}{nav("playlists")}
+        {nav("search")}{nav("recommendations")}
+        <button className={"library-toggle nav-link" + (!worksOpen && ["library","works"].includes(route.section) ? " active" : "")}
+          aria-label={worksOpen ? "收起作品库" : "展开作品库"} aria-expanded={worksOpen} aria-controls="work-menu"
+          onClick={() => { setWorksOpen(!worksOpen); savePreference("works." + scope, worksOpen ? "closed" : "open"); }}>
+          <Icon name="album" /><span>作品库</span><i className={worksOpen ? "" : "collapsed"}><Icon name="chevron" size={15} /></i>
+        </button>
+        <div className="library-children" id="work-menu" hidden={!worksOpen}>
+          {nav("library")}
+          {works.types.map(type => <a key={type.id} href={workPath(type.id)} className="nav-link" title={type.name}
+            aria-current={route.workTypeId === type.id ? "page" : undefined}>
+            <Icon name={type.icon === "radio" || type.icon === "headphones" ? type.icon : "disc"} size={18} /><span>{type.name}</span></a>)}
+          {works.error && <button className="nav-retry" onClick={works.refresh}>重新读取作品分类</button>}
+        </div>
+        {nav("playlists")}
         <Group label="我的">{nav("favorites")}{nav("history")}</Group>
         <Group label="歌单">{playlists.map(item => <a key={item.id} href={playlistPath(item.id)} className="nav-link playlist-link"
           aria-current={route.playlistId === item.id ? "page" : undefined} title={item.name}><Icon name="album" size={18} /><span>{item.name}</span></a>)}
@@ -126,8 +174,7 @@ export function Shell(props: SettingsProps) {
       </nav>
     </aside>
     <main className="main"><header className="header">
-      {route.section !== "library" && <a className="icon-button back" aria-label={route.playlistId ? "返回歌单列表" : "返回曲目列表"}
-        href={route.playlistId ? "#/playlists" : "#/library"}><Icon name="back" /></a>}
+      {route.section !== "library" && <a className="icon-button back" aria-label={backLabel} href={backHref}><Icon name="back" /></a>}
       <h1 title={title}>{title}</h1>
       <div className="tools">
         <a className="server-state" href="#/settings" title={session.endpoint}><i /><span>已连接</span></a>
@@ -141,15 +188,9 @@ export function Shell(props: SettingsProps) {
         <a className="icon-button user-button" href="#/settings" aria-label="账号与设置" title={"账号与设置 · " + session.userName}><Icon name="user" size={18} /></a>
       </div>
     </header>
-      <div className="content" key={[route.section, route.playlistId, route.query].join("/")}>
+      <div className="content" key={[route.section, route.playlistId, route.workTypeId, route.workId, route.query].join("/")}>
         {reconnectError && <Notice error={reconnectError} retry={() => void reconnect()} />}
-        {route.section === "settings" ? <Settings {...props} /> : listRoot ?
-          <PlaylistList playlists={playlists} error={playlistError} loading={playlistBusy} reload={() => void loadPlaylists()} /> :
-          route.playlistId && !selected ? (playlistBusy ? <p className="loading">正在读取歌单…</p> :
-            <Notice error={playlistError || "未找到此歌单。"} retry={() => void loadPlaylists()} />) :
-            route.section === "library" ? <CategoryBrowser>{filter =>
-              <TrackPage key={filter?.kind + "/" + filter?.id} player={player} route={route} categoryFilter={filter} playlists={playlists} reloadPlaylists={loadPlaylists} />}
-            </CategoryBrowser> : <TrackPage key={selected?.snapshotRevision} player={player} route={route} playlist={selected} playlists={playlists} reloadPlaylists={loadPlaylists} />}
+        {content()}
       </div>
     </main>
     <PlayerBar player={player} />

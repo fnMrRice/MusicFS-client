@@ -30,27 +30,27 @@ struct Library {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkType {
-    id: String,
-    name: String,
-    icon: String,
-    separate_history: bool,
+    pub id: String,
+    pub name: String,
+    pub icon: String,
+    pub separate_history: bool,
 }
 
 #[derive(Deserialize, Serialize)]
 pub struct Credit {
-    role: String,
-    name: String,
+    pub role: String,
+    pub name: String,
 }
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Work {
-    work_id: String,
-    content_type: String,
-    title: String,
-    description: String,
-    credits: Vec<Credit>,
-    tags: Vec<String>,
+    pub work_id: String,
+    pub content_type: String,
+    pub title: String,
+    pub description: String,
+    pub credits: Vec<Credit>,
+    pub tags: Vec<String>,
 }
 
 #[derive(Deserialize)]
@@ -98,41 +98,41 @@ struct Source {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AudioNode {
-    id: String,
-    group: String,
-    directory: String,
-    title: String,
-    order: u32,
-    artists: Vec<String>,
-    duration_ms: Option<u64>,
-    source_track_id: Option<String>,
-    cover_object_id: Option<String>,
-    album: Option<String>,
+    pub id: String,
+    pub group: String,
+    pub directory: String,
+    pub title: String,
+    pub order: u32,
+    pub artists: Vec<String>,
+    pub duration_ms: Option<u64>,
+    pub source_track_id: Option<String>,
+    pub cover_object_id: Option<String>,
+    pub album: Option<String>,
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PackageAudio {
-    id: String,
-    name: String,
-    kind: String,
-    audio: Vec<AudioNode>,
+    pub id: String,
+    pub name: String,
+    pub kind: String,
+    pub audio: Vec<AudioNode>,
 }
 
 #[derive(Serialize)]
 pub struct WorkDetail {
-    work: Work,
-    packages: Vec<PackageAudio>,
+    pub work: Work,
+    pub packages: Vec<PackageAudio>,
 }
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WorkHistoryEntry {
-    work_id: String,
-    work_title: String,
-    source_track_id: String,
-    track_title: String,
-    recorded_at: String,
+    pub work_id: String,
+    pub work_title: String,
+    pub source_track_id: String,
+    pub track_title: String,
+    pub recorded_at: String,
 }
 
 impl Package {

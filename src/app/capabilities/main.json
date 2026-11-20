@@ -6,6 +6,8 @@
     "allow-current-session", "allow-connect", "allow-disconnect", "allow-list-tracks",
     "allow-list-playlists", "allow-playlist-tracks", "allow-set-favorite", "allow-cover",
     "allow-player-snapshot", "allow-play-tracks", "allow-player-command", "allow-open-compact",
-    "allow-categories", "allow-category-tracks", "allow-add-to-playlist", "allow-rebuild-playlist"
+    "allow-categories", "allow-category-tracks", "allow-add-to-playlist", "allow-rebuild-playlist",
+    "allow-content-types", "allow-list-works", "allow-work-detail", "allow-work-history",
+    "allow-recommendation-feed", "allow-recommendation-playlist"
   ]
 }

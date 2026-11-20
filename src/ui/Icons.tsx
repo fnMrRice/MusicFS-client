@@ -31,6 +31,9 @@ const symbols = {
   mini: "M3 4h18v16H3zM12 12h7v6h-7z",
   lyrics: "M4 5h16M4 10h10M4 15h16M4 20h10",
   add: "M3 5h13M3 11h10M3 17h7m7-5v9m-4.5-4.5h9",
+  home: "m3 11 9-8 9 8v10H3zM9 21v-8h6v8",
+  headphones: "M4 14v-3a8 8 0 0 1 16 0v3M4 12H3v8h4v-8Zm16 0h1v8h-4v-8Z",
+  radio: "M3 8h18v13H3zM5 8l14-5M13 12h5m-5 4h3m-6-2a2 2 0 1 1-4 0 2 2 0 0 1 4 0",
 } as const;
 
 export type IconName = keyof typeof symbols;

@@ -9,6 +9,7 @@ mod tests;
 use serde::{Deserialize, Serialize};
 use std::io::{Read, Seek};
 use std::sync::mpsc::{channel, Sender};
+use std::sync::Arc;
 use std::thread;
 
 pub const SUPPORTED_MIMES: &[&str] = &["audio/mpeg", "audio/flac", "audio/wav", "audio/x-wav"];
@@ -55,7 +56,7 @@ pub enum Status {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PlayerSnapshot {
-    pub queue: Vec<Track>,
+    pub queue: Arc<Vec<Track>>,
     pub index: Option<usize>,
     pub status: Status,
     pub position_ms: u64,
@@ -70,7 +71,7 @@ pub struct PlayerSnapshot {
 impl Default for PlayerSnapshot {
     fn default() -> Self {
         Self {
-            queue: Vec::new(),
+            queue: Arc::default(),
             index: None,
             status: Status::Idle,
             position_ms: 0,

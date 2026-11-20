@@ -87,7 +87,7 @@ impl Actor {
                 if tracks.iter().any(|t| t.id.is_empty()) {
                     return Err("Missing track identifier.".into());
                 }
-                self.state.queue = tracks;
+                self.state.queue = Arc::new(tracks);
                 self.select(start)
             }
             Operation::Command(command) => self.command(command),
@@ -123,7 +123,7 @@ impl Actor {
                 if matches!(command, PlayerCommand::Clear) {
                     self.state.index = None;
                     self.state.duration_ms = None;
-                    self.state.queue.clear();
+                    self.state.queue = Arc::default();
                 }
                 Ok(())
             }

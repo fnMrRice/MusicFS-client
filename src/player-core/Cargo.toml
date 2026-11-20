@@ -9,4 +9,4 @@ path = "lib.rs"
 
 [dependencies]
 rodio = { version = "=0.21.1", default-features = false, features = ["playback", "mp3", "flac", "wav"] }
-serde = { version = "1", features = ["derive"] }
+serde = { version = "1", features = ["derive", "rc"] }

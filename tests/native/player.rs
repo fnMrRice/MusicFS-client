@@ -131,13 +131,13 @@ fn clear_invalidates_a_blocked_load_and_closes_its_late_lease() {
     assert!(player
         .command(PlayerCommand::Volume { volume: 2.0 })
         .is_err());
-    assert_eq!(
-        player.command(PlayerCommand::Pause).unwrap().status,
-        Status::Paused
-    );
-    let snapshot = player.command(PlayerCommand::Clear).unwrap();
-    assert!(snapshot.queue.is_empty());
-    assert_eq!(snapshot.index, None);
+    let paused = player.command(PlayerCommand::Pause).unwrap();
+    assert_eq!(paused.status, Status::Paused);
+    assert!(Arc::ptr_eq(&snapshot.queue, &paused.queue));
+    let cleared = player.command(PlayerCommand::Clear).unwrap();
+    assert!(cleared.queue.is_empty());
+    assert_eq!(cleared.index, None);
+    assert_eq!(snapshot.queue[0].id, "a");
     *gate.0.lock().unwrap() = true;
     gate.1.notify_one();
     release.recv_timeout(Duration::from_secs(3)).unwrap();

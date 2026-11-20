@@ -5,6 +5,7 @@ mod favorites;
 mod login;
 mod nav_icons;
 mod navigation;
+mod settings;
 mod style;
 mod table;
 
@@ -201,39 +202,7 @@ impl SignedUi {
                     ui.colored_label(ui.visuals().error_fg_color, error);
                 }
                 if self.screen == Screen::Settings {
-                    ui.heading("连接与账号");
-                    ui.add_space(8.0);
-                    egui::Grid::new("identity")
-                        .min_col_width(100.0)
-                        .spacing([20.0, 16.0])
-                        .show(ui, |ui| {
-                            for (label, value) in [
-                                ("当前账号", &svc.server.info.user_name),
-                                ("服务器", &svc.server.info.endpoint),
-                                ("服务器版本", &svc.server.info.server_version),
-                            ] {
-                                ui.weak(label);
-                                ui.label(value);
-                                ui.end_row();
-                            }
-                        });
-                    ui.add_space(18.0);
-                    if ui
-                        .add_enabled(!busy, egui::Button::new("退出登录"))
-                        .clicked()
-                    {
-                        action = Some(HostAction::Logout);
-                    }
-                    ui.add_space(15.0);
-                    ui.separator();
-                    ui.heading("外观");
-                    ui.horizontal_wrapped(|ui| {
-                        for (value, name) in themes() {
-                            if ui.selectable_label(theme == value, name).clicked() {
-                                action = Some(HostAction::Theme(value.into()));
-                            }
-                        }
-                    });
+                    settings::show(ui, &svc.server.info, theme, busy, &mut action);
                 } else {
                     self.page(ui, svc);
                 }

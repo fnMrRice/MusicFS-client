@@ -1,5 +1,7 @@
 mod catalog;
+mod lyrics;
 mod playback;
+mod playlist_edit;
 mod reader;
 
 use std::sync::{atomic::{AtomicBool, Ordering}, Arc};
@@ -11,8 +13,9 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::Value;
 use url::{Host, Url};
 
-pub use catalog::{Page, Playlist, Track};
+pub use catalog::{Category, CategoryKind, Page, Playlist, Track};
 pub use playback::StreamLease;
+pub use playlist_edit::PlaylistChange;
 pub use reader::StreamReader;
 
 type Result<T> = std::result::Result<T, String>;

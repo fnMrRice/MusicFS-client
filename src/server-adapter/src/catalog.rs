@@ -5,6 +5,10 @@ use url::Url;
 
 use super::{check_id, decode, Result, ServerSession};
 
+#[path = "categories.rs"]
+mod categories;
+pub use categories::{Category, CategoryKind};
+
 #[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Track {
@@ -25,6 +29,8 @@ pub struct Playlist {
     pub id: String,
     pub name: String,
     pub snapshot_revision: u64,
+    pub rule_revision: u64,
+    pub stale: bool,
 }
 
 #[derive(Serialize)]
@@ -106,6 +112,10 @@ impl ServerSession {
     pub async fn tracks(&self, query: &str, cursor: Option<&str>) -> Result<Page<Track>> {
         let mut url = self.page_url("library/tracks", "after", cursor);
         if !query.trim().is_empty() { url.query_pairs_mut().append_pair("q", query.trim()); }
+        self.track_page(url).await
+    }
+
+    async fn track_page(&self, url: Url) -> Result<Page<Track>> {
         let page: WirePage<MusicTrack> = self.get(url).await?;
         Ok(Page { items: page.items.into_iter().map(|t| t.into_track(None)).collect(), next_cursor: page.next_cursor })
     }

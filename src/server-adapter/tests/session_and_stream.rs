@@ -10,7 +10,7 @@ async fn rejects_unsafe_or_ambiguous_endpoints_before_login() {
 }
 
 // 使用专用测试实例，库内至少包含一个可按字节读取的 WAV/MP3/FLAC。
-// 该用例会更新该实例测试账号的收藏与最近播放。
+// 该用例会更新该实例测试账号的收藏，并创建一份测试歌单。
 #[tokio::test]
 #[ignore = "requires an isolated MusicFS server and a seeded music library"]
 async fn isolated_server_round_trip() {
@@ -23,7 +23,19 @@ async fn isolated_server_round_trip() {
     session.set_favorite(&track.id, true).await.unwrap();
     assert!(session.favorites(None).await.unwrap().items.iter().any(|t| t.id == track.id));
     session.set_favorite(&track.id, false).await.unwrap();
-    session.playlists(None).await.unwrap();
+    let source_ids = vec![track.source_track_id.clone().unwrap()];
+    let operation = uuid::Uuid::new_v4().to_string();
+    let created = session.create_playlist("Desktop integration", &source_ids, &operation).await.unwrap();
+    let replayed = session.create_playlist("Desktop integration", &source_ids, &operation).await.unwrap();
+    assert_eq!(created.playlist_id, replayed.playlist_id);
+    let updated = session.append_playlist(&created.playlist_id, created.rule_revision, &source_ids, &uuid::Uuid::new_v4().to_string()).await.unwrap();
+    let revision = session.rebuild_playlist(&created.playlist_id, updated.rule_revision, &uuid::Uuid::new_v4().to_string()).await.unwrap();
+    let playlist = session.playlists(None).await.unwrap().items.into_iter().find(|p| p.id == created.playlist_id).unwrap();
+    assert!(!playlist.stale);
+    assert_eq!(revision, playlist.snapshot_revision);
+    let entries = session.playlist_tracks(&playlist.id, revision, None).await.unwrap();
+    assert!(entries.items.iter().any(|t| t.source_track_id == track.source_track_id));
+    session.lyrics(&source_ids[0]).await.unwrap();
 
     let lease = session.create_playback(&track.id, track.source_track_id.as_deref().unwrap(), None,
         &["audio/wav", "audio/mpeg", "audio/flac"]).await.unwrap();

@@ -124,6 +124,10 @@ fn compact_header(ui: &mut egui::Ui, now: &Presentation, visible: &AtomicBool) {
     });
 }
 
+#[cfg(test)]
+#[path = "../../../tests/native/windows.rs"]
+mod tests;
+
 fn mini(ui: &mut egui::Ui, player: &Player, now: &Presentation, visible: &AtomicBool) {
     compact_header(ui, now, visible);
     let enabled = now.title.is_some();

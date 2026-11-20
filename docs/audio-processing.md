@@ -1,6 +1,6 @@
 # MusicFS-client 音频与插件设计
 
-状态：React + Tauri 实施设计；2026-10-11。本文定义 Client 内部插件与音频链，尚无可运行实现。模块边界见[Client 架构](architecture.md)，工程与阶段见[实现方案](implementation.md)，跨端行为见[共同协议与行为](../../docs/architecture.md)。Server 的处理链、调度与输出缓存见[Server 音频处理设计](../../server/docs/playback/audio-processing.md)。
+本文定义 Client 内部插件与音频链的长期设计。首个原生播放实现采用 rodio，已接入的能力见[桌面验证记录](validation/desktop.md)。模块边界见[Client 架构](architecture.md)，工程与阶段见[实现方案](implementation.md)，跨端行为见[共同协议与行为](../../docs/architecture.md)。Server 的处理链、调度与输出缓存见[Server 音频处理设计](../../server/docs/playback/audio-processing.md)。
 
 ## 1. 插件宿主与契约
 
@@ -10,7 +10,7 @@ manifest 声明插件及接口版本、目标平台/架构、能力、输入输�
 
 控制面使用版本化接口，覆盖能力查询、构建/配置、启动、取消、seek/reset、flush/drain、错误与释放。高频音频数据使用进程内有界二进制帧队列或有租约的缓冲，不连续通过 JSON/Base64 传送 PCM。PCM 块明确采样格式、采样率、声道数及布局、帧数、时间戳和时间基准；采样率或声道布局转换由显式节点承担。DSP 报告延迟、尾音和时间映射，PlayerCore 据此维护输出时钟与歌词位置。
 
-采用 Rust Client Plugin Host，用户可安装包与 Tauri 框架插件分开。内置和用户原生插件统一在 Rust 宿主同一进程内加载动态库；Windows DLL、macOS dylib、Linux so 的实际支持逐 target 验证。需要 C++ 的插件采用 CMake/C++23，进程内扩展边界限版本化 C 兼容数据和不透明句柄，Rust/C++ 语言对象、异常及分配器所有权不得跨界。原生插件并无权限或故障隔离，崩溃/内存破坏可能终止 Client；C++ 异常捕获不保证拦截访问违例或其他未定义行为。安装、动态装载、重启启停与版本切换见[插件实施](implementation/plugins.md)；二进制 SDK 和机制仍待实现验证。
+后续由 Rust Client Plugin Host 管理可安装包。内置和用户原生插件统一在 Rust 宿主同一进程内加载动态库；Windows DLL、macOS dylib、Linux so 的实际支持逐 target 验证。需要 C++ 的插件采用 CMake/C++23，进程内扩展边界限版本化 C 兼容数据和不透明句柄，Rust/C++ 语言对象、异常及分配器所有权不得跨界。原生插件并无权限或故障隔离，崩溃/内存破坏可能终止 Client；C++ 异常捕获不保证拦截访问违例或其他未定义行为。安装、动态装载、重启启停与版本切换见[插件实施](implementation/plugins.md)；二进制 SDK 和机制仍待实现验证。
 
 ## 2. 原生音频链与解码后端
 
@@ -19,7 +19,7 @@ Authorized input -> Demux -> Decode -> PCM
                  -> Client DSP -> Transition gain -> Device output
 ```
 
-音频引擎独立于 React/Tauri 界面运行；解码、DSP、播放时钟与设备输出留在原生层，不通过 WebView 传送 PCM。本机设备输出不需要再编码。Server 已处理的效果通过播放描述进入 Client 的实际生效链；同一效果仅由指定端执行。桌面切歌淡出淡入在 Client 输出链完成，不要求 Server 预先写入音频流。
+音频引擎独立于窗口事件循环。解码、播放时钟与设备输出由播放器管理，PCM 保留在音频通路中。本机设备输出不需要再编码。Server 已处理的效果通过播放描述进入 Client 的实际生效链；同一效果仅由指定端执行。桌面切歌淡出淡入在 Client 输出链完成，不要求 Server 预先写入音频流。
 
 Windows 的候选后端为 Windows Media Foundation（WMF）：通过 Media Source/Source Reader 读取媒体并使用可用 decoder MFT 获得 PCM；Source Reader 不承担播放器时钟或设备输出。另一条路径为随发行包内置的 FFmpeg 解复用/解码插件。实际格式覆盖取决于系统组件或 FFmpeg 构建，须经过能力探测和打开验证，不宣称任一后端支持全部格式。
 
@@ -43,7 +43,7 @@ PlayerCore 上报当前尝试、观察到的错误和曲目时间，只应用当
 
 ## 5. 主题插件
 
-主题使用插件注册、安装、启停与版本管理；初期为声明式资源、颜色、字体和布局 token，不执行任意脚本。兼容声明绑定版本化 React 主题接口，资源/token 由既定组件消费，不允许主题自行调用 Tauri 原生命令。内置默认主题使用相同契约，主题加载失败可回到默认资源；在本次已启用主题之间更换资源可即时生效，不得重启音频引擎或修改播放状态。主题插件启停或版本变更仍在重启后生效。
+主题使用插件注册、安装、启停与版本管理；初期为声明式资源、颜色、字体和布局 token，不执行任意脚本。兼容声明绑定版本化原生主题接口，资源/token 由既定组件消费，不允许主题自行调用 播放与系统控制接口。内置默认主题使用相同契约，主题加载失败可回到默认资源；在本次已启用主题之间更换资源可即时生效，不得重启音频引擎或修改播放状态。主题插件启停或版本变更仍在重启后生效。
 
 ## 6. 外部控制 API 插件
 

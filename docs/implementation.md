@@ -1,6 +1,6 @@
-# 桌面端实现方案：React + Tauri
+# Rust 原生桌面端实现方案
 
-状态：实施依据 v0.2；2026-10-11。已选择 TypeScript + React、Tauri 2 与 Rust 原生核心；尚无可运行桌面实现，本文所有阶段均待实施。原生插件统一与 Rust 宿主同进程运行；选定路线不等于三平台兼容、重启恢复或音频性能已经通过验证。
+桌面程序由 Cargo 构建。egui 与 eframe 负责原生界面和窗口，Rust 播放器与 Server 适配器独立管理音频和会话。本文将现有工程与长期计划分别说明；各平台的实际结果见[桌面验证记录](validation/desktop.md)。
 
 ## 1. 范围与文档分工
 
@@ -11,92 +11,58 @@
 | [Client 架构](architecture.md) | 模块职责与状态所有权 |
 | [音频与插件设计](audio-processing.md) | 音频链、转场、插件能力的长期约束 |
 | [插件能力与宿主边界](plugin-capabilities.md) | 可替换角色、固定宿主职责、输出/分析/系统控制扩展 |
-| [Server 接入与界面复用](implementation/server-integration.md) | 当前协议缺口、原生鉴权、播放协商、React 复用边界 |
+| [Server 接入与界面复用](implementation/server-integration.md) | 当前协议缺口、原生鉴权、播放协商、原生页与 Web 的设计对应 |
 | [插件实施](implementation/plugins.md) | 用户安装包、单进程动态库、C ABI、重启启停与版本切换 |
 | [平台与验收](implementation/platforms-validation.md) | 三平台能力、打包、测试与证据 |
-| [桌面组件图](diagrams/desktop-components.puml) | React、Tauri、PlayerCore、音频及插件数据通道 |
+| [桌面组件图](diagrams/desktop-components.puml) | egui、PlayerCore、音频及插件数据通道 |
 
-[共同架构](../../docs/architecture.md)定义跨端语义；[Server 契约](../../server/docs/contracts/README.md)拥有精确接口。桌面命令、插件字段与原生播放适配仍待实施；Server 已提供 `nativeHttp` 传输协商。本次只编写文档，不建立空实现或改变 Server/Web 行为。
+[共同架构](../../docs/architecture.md)定义跨端语义；[Server 契约](../../server/docs/contracts/README.md)拥有精确接口。桌面端通过 Rust 适配器接入 `nativeHttp`。插件 SDK、托管 Server 和完整的平台集成按下列阶段推进。
 
 ## 2. 技术决策与验证边界
 
 | 层次 | 选择 | 尚需验证 |
 | --- | --- | --- |
-| 界面 | TypeScript 严格模式、React、Vite；CSS Modules + CSS 变量；hash 路由 | 与现有 Web 组件的实际兼容、三种系统 WebView、输入法与长列表 |
-| 桌面宿主 | Tauri 2；本地打包的前端静态资源 | 窗口、托盘、快捷键、安装包与权限配置 |
+| 界面 | egui 控件、主题和导航状态，参考 Web 的侧栏、内容区和底部播放器 | 各目标系统的输入法、辅助功能、缩放与长列表 |
+| 桌面窗口 | eframe 原生事件循环、主窗口、迷你播放器和歌词窗口 | 多屏、托盘、快捷键与安装包 |
 | 应用核心 | Rust；PlayerCore、Server 适配器、插件管理与生命周期 | 并发、异步取消、状态恢复与原生 FFI 边界 |
-| 解复用与解码 | 优先验证 FFmpeg 库适配；Windows 可增加 WMF 适配 | 构建、格式覆盖、seek、部署依赖；不默认启用 FFmpeg 全部功能 |
-| 设备输出 | `audio.output` 插件契约；Rust/CPAL 为首轮内置适配候选 | 设备枚举、格式协商、热插拔、输出帧时钟与各平台后端；库尚未最终选定 |
+| 解码 | rodio 与其解码后端；FFmpeg、WMF 属于后续插件候选 | 可用格式、时间定位、依赖发布 |
+| 设备输出 | rodio 使用系统默认输出设备 | 枚举、独占模式、热插拔与各平台后端 |
 | 本机 DSP | 原生音频图；Rust 实现或 C ABI 接入 CMake/C++23 插件 | 有界缓冲、延迟报告、切图与实例资源回收 |
 | 用户插件 | MusicFS 插件 SDK/宿主，原生包在同一宿主进程内动态装载 | DLL/dylib/so 逐 target 验证；同进程不提供原生权限或故障隔离 |
 
-Node.js/npm 只用于前端构建，不默认作为安装后的运行时依赖。Rust 不要求所有音频代码重写；需要 C++ 的插件统一使用 CMake/C++23，既有 C 库保持原有实现，通过版本化 C ABI 接入。Tauri 的 IPC 与窗口工具不承担解码、DSP 或播放时钟。共同规则见[原生插件规范](../../docs/native-plugins.md)。
+桌面应用与播放器均为 Rust 工程。后续原生插件可以使用 CMake/C++23 或既有 C 库，通过版本化 C ABI 接入。[原生插件规范](../../docs/native-plugins.md)。
 
-C0 记录确切 Node/npm、React、Vite、Rust 工具链、Tauri JS/Rust 配套版本、CMake、C++23 编译器/标准库、FFmpeg 构建配置和目标三元组；C1 提交锁文件及复现步骤。不得把 Web 的锁文件直接复制成已验证的桌面环境，也不使用不固定版本的依赖作为发布依据。
+依赖版本由 Cargo.lock 锁定。每次发布记录 Rust 工具链、目标三元组、系统图形与音频后端。引入新的插件工具链时，同时记录编译器、链接器、ABI 与依赖版本。
 
 ## 3. 工程布局
 
-以下是计划布局，按阶段逐步创建。源文件放 `src/`，入口放 `src/app/`，测试统一放根 `tests/`；单个源文件尽量不超过 400 行。
+当前代码按职责拆分。仓库根目录是 Cargo workspace。
 
-```text
-client/
-  package.json / package-lock.json
-  Cargo.toml / Cargo.lock / rust-toolchain.toml
-  index.html / vite.config.ts / tsconfig.json
-  src/
-    app/                  # React main.tsx；Tauri main.rs/lib.rs、Cargo.toml、build.rs
-      tauri.conf.json
-      capabilities/
-    ui/                   # 外壳、页面、展示组件、主题、歌词视图
-    bridge/               # TypeScript 命令与事件适配、运行时校验
-    contracts/            # Rust/TS 边界 DTO、Schema 及受控生成入口
-    player-core/          # Rust crate：唯一播放状态、命令串行与时钟
-    server-adapter/       # Rust crate：HTTP、会话、WS 控制/状态、播放协商
-    audio-engine/         # Rust crate：读取、解码、PCM 图、设备输出
-    plugin-host/          # Rust crate：安装、注册、C ABI 与动态库引用管理
-    platform/             # Rust crate：窗口、凭据、启动器与系统集成
-    plugins/              # 按角色拆分的内置/示例实现；C++ 使用 CMake/C++23
-  sdk/client-plugin/      # C ABI 头文件、角色接口、Schema 与 CMake 接入配置
-  tests/
-    unit/                 # React、桥接和独立领域逻辑
-    native/               # Rust 集成、FFI、协议与插件生命周期
-    e2e/                  # 真实 Server、桌面窗口及播放
-    fixtures/             # 可分发测试音频和测试插件
-  docs/
-    implementation.md
-    implementation/
-    diagrams/
-```
+| 路径 | 职责 |
+| --- | --- |
+| `src/app/` | 可执行程序入口、Windows 资源与构建配置 |
+| `src/desktop/` | 原生桌面窗口、egui 页面、会话任务、用户偏好和播放器控件 |
+| `src/player-core/` | 播放命令、队列、代次、解码与原生设备输出 |
+| `src/server-adapter/` | 授权会话、业务查询、WS 播放协商、HTTP 音频读取 |
+| `tests/native/` | 音频、作品包和隔离 Server 的集成测试 |
 
-Rust 使用根 Cargo workspace，各领域 crate 的 `[lib].path` 指向本目录的 `lib.rs`；应用 `[lib]` / `[[bin]]` 显式指向 `src/app/` 内入口，避免再生成一层业务 `src/`。Rust 集成测试通过各 manifest 的 `[[test]]` 与相对路径指向根 `tests/native/`；不把测试散入源目录。
-
-Tauri 项目目录采用 `src/app/`，不同于脚手架默认 `src-tauri/`。前端脚本在仓库根运行，桌面脚本显式以 `src/app/` 为工作目录调用本地锁定的 Tauri CLI；前端构建 hook 的工作目录显式回到仓库根，`frontendDist` 指向 `../../dist`。Vite 的入口仍为根 `index.html`，引用 `src/app/main.tsx`；开发地址使用固定 loopback 端口，端口占用立即报错。C0 必须验证这组自定义路径的开发与生产构建，不能只验证默认模板。
-
-构建产物、缓存和运行时插件目录不入 Git。SDK 及界面共享代码以后按版本发布或受控同步，不能通过运行时跨子模块源码路径形成隐式依赖。
+在根目录执行 `cargo test --locked --workspace` 验证当前工作区，使用 `cargo build --locked --release -p musicfs-desktop` 构建桌面程序。后续插件宿主、SDK、凭据存储和受控本地启动器按阶段增加，各自维护相应测试。
 
 ## 4. 运行结构与状态所有权
 
-Tauri 原生主进程组合 Rust 模块。PlayerCore、Server 连接、租约续期、插件管理和设备输出不依赖任何 React 组件是否挂载。WebView 只呈现界面；主窗口、迷你播放器、歌词窗口均订阅同一核心。
+原生主进程持有桌面状态、Server 连接和播放器。窗口读取同一个 PlayerCore，网络和解码任务在界面线程之外运行。
 
-内置和用户原生插件均在 Tauri 原生宿主同一进程内装载 DLL/dylib/so；不采用插件子进程，也不将音频引擎拆为独立进程。通过任务、线程与有界队列避免音频处理阻塞 UI；这种调度分离不提供原生崩溃隔离。插件启停、更新及回滚统一重启后生效，当前能力保持到退出；不提供插件卸载，已加载库保持引用到进程退出。插件故障可能终止 Client，卡死不能强制停止线程，实例排空失败保持引用，见[插件分册](implementation/plugins.md)。Tauri/WebView 自身的系统辅助进程不承载 MusicFS 原生插件。
+规划中的内置与用户原生插件由宿主进程装载 DLL、dylib 或 so。启停、更新和回滚在重启时生效，已加载库保持到退出。插件故障可能终止整个进程，协作取消与排空属于插件验收内容。见[插件分册](implementation/plugins.md)。
 
-### 4.1 React 与原生桥接
+### 4.1 窗口与播放器
 
-桥接暴露按领域收敛的类型化命令，例如播放、读取快照、来源查询、插件管理和窗口操作；这些是待实现的内部命令，不是 Server 路由。不提供任意 URL 请求、任意进程执行或任意动态库路径的通用入口。
+原生窗口直接使用 Rust 类型，输入草稿、导航和选中项保存在各自的界面模型中。播放、暂停、音量和队列操作提交给 PlayerCore，窗口按返回快照绘制状态。向 Server 发起的后台查询绑定当前会话和页面，切换后丢弃迟到的结果。队列和底部播放器使用同一份播放状态。
 
-- 命令包含请求标识、必要的 `commandId`、播放代次与预期修订；Rust 再次验证结构、权限、当前连接与状态。返回“已接受”与“已完成”分开表达，队列接收成功不等于已经发声。
-- 核心发布带 `coreInstanceId`、可靠状态序号和状态修订的快照/事件；快照状态与序号在同一次原子读取中生成。初始化等待订阅建立确认并暂存事件，再读取快照，只应用该实例中比快照新的连续状态事件。缺口或重启时按相同步骤重取；重取绑定订阅代次，旧响应丢弃，暂存超出上限则重建订阅，不能无限缓存。
-- React 用外部 store 和 `useSyncExternalStore` 读取快照。组件局部状态只保存输入草稿、选择和展开状态，不另建可写的播放队列/音量/活动曲目事实源。
-- 事件按类别有界排队：播放错误和状态变化使用可靠状态序号；频繁位置进度采用独立、允许跳号的进度序列并允许合并，不用进度跳号判定状态缺口。进度绑定核心实例、播放代次和时钟版本，旧曲进度不得覆盖新状态。重连、窗口重建或页面切换不能丢失当前播放状态；前端卸载必须取消自己的订阅。
-- TypeScript 类型不替代运行时校验。桥接 DTO 以版本化 Schema/生成输入为依据，Rust 与 TS 的序列化样本双向校验，时间统一毫秒，未知值保留 null。
+### 4.2 凭据与本地资源
 
-### 4.2 前端权限与内容
+Server 适配器私有保存 Cookie 和 CSRF。封面、歌词与元数据作为数据读取，在适配器校验大小和类型后交给界面显示。默认不保存登录令牌。未来的声明式主题与外部控制，通过受限的宿主接口接入。
 
-按窗口标签声明 capabilities：歌词窗口只接收必要歌词/时钟与受限窗口命令，主窗口和设置入口按领域授权。应用自定义命令必须加入 Tauri 的命令权限生成/清单并显式分配，不能假定仅写窗口 capabilities 就约束了全部自定义命令。
-
-生产仅加载随包静态资源，配置 CSP 和资源读取范围；普通网页与平台授权页不获得桌面桥接权限。主题资源、歌词及媒体元数据作为数据处理，不允许注入任意 HTML/脚本。账号授权跳转按 Server 插件挑战流程处理，回调验证挑战身份和有效期；不向第三方页面注入 MusicFS 凭据。
-
-主窗口关闭行为区分“隐藏到后台”与“退出应用”。默认退出；用户启用后台驻留且有已验证的恢复入口时隐藏主窗口，继续播放并保持续租。若系统入口不可用，不能把用户关进不可见且无法退出的进程。显式退出按[会话收尾顺序](implementation/server-integration.md#3-事件并发和生命周期)停止输出和续租，释放插件资源并通过会话注销撤销对应租约。
+主窗口正常关闭时退出桌面应用并清理会话。迷你窗口与歌词窗口共享播放器。需要后台驻留、托盘恢复或 managed-local 租约的场景另行验收，设计见[平台与验收](implementation/platforms-validation.md)。
 
 ## 5. 原生音频实施
 
@@ -106,9 +72,9 @@ Tauri 原生主进程组合 Rust 模块。PlayerCore、Server 连接、租约续
 
 优先验证 FFmpeg 的库级接口与受控 I/O；简单执行 `ffmpeg` 命令生成整首文件不能作为原生流式播放或可插拔解码链的完成证据。WMF 只补充 Windows，不能成为 macOS/Linux 的共同前置条件。实际采用版本、编译选项和分发依赖写入验收记录。
 
-音频数据留在同一原生进程内的有界二进制队列/带租约缓冲，React 与 Tauri 命令通道只传控制和摘要。设备回调使用预分配缓冲，不做网络、磁盘、锁等待、动态分配或阻塞插件调用；解码、DSP 和控制处理在非实时任务中运行，可视化使用可丢帧旁支。欠载时输出受控静音并报告状态，缓冲不能无限增长，长期失败不能以无限静音掩盖。
+音频数据留在同一原生进程内的有界二进制队列/带租约缓冲，窗口与 PlayerCore 的消息通道只传控制和摘要。设备回调使用预分配缓冲，不做网络、磁盘、锁等待、动态分配或阻塞插件调用；解码、DSP 和控制处理在非实时任务中运行，可视化使用可丢帧旁支。欠载时输出受控静音并报告状态，缓冲不能无限增长，长期失败不能以无限静音掩盖。
 
-PlayerCore 的播放位置来源于实际输出帧及明确的设备/DSP 延迟模型，结合 `positionOriginMs` 和 Server 时间映射转为曲目时间。暂停、欠载、seek、设备重开和采样率变化必须重设或冻结对应时钟；不能用 React 定时器或下载字节数充当播放进度。歌词窗口可在短时间内插值绘制，但需定期按核心快照校正，断开后停止猜测。
+PlayerCore 的播放位置来源于实际输出帧及明确的设备/DSP 延迟模型，结合 `positionOriginMs` 和 Server 时间映射转为曲目时间。暂停、欠载、seek、设备重开和采样率变化必须重设或冻结对应时钟；不能用 窗口重绘频率或下载字节数充当播放进度。歌词窗口可在短时间内插值绘制，但需定期按核心快照校正，断开后停止猜测。
 
 ### 5.2 控制与恢复
 
@@ -124,25 +90,25 @@ PlayerCore 的播放位置来源于实际输出帧及明确的设备/DSP 延迟�
 
 ## 6. 分阶段实施与完成门槛
 
-所有阶段当前均为待实施；C0 验证材料是技术原型，不等于可交付桌面客户端。
+下表定义完整阶段的验收门槛。当前已交付其中的会话、原生播放和桌面界面，三平台结果按[验证记录](validation/desktop.md)逐项填写。
 
 | 阶段 | 交付内容 | 完成门槛 |
 | --- | --- | --- |
-| C0 技术原型 | 三平台 React/Tauri 构建与窗口、测试音频设备输出、CMake/C++23 DSP 动态库及 C ABI、协作取消/实例回收/重启启停与恢复、自定义目录验证 | 每个平台记录实际运行；输出库/FFmpeg 构建有候选证据；定位协议缺口并形成 Server 变更清单；接受同进程崩溃边界 |
-| C1 工程与会话 | 固定工具链、锁文件、桥接 DTO/权限、Rust 会话存储、来源列表与 Rust 原生播放协商 | 真实 Cookie/CSRF 握手及退出；声明 `nativeHttp`，校验输出描述及授权读取 |
+| C0 技术原型 | 三平台 Rust 原生构建与窗口、测试音频设备输出、CMake/C++23 DSP 动态库及 C ABI、协作取消/实例回收/重启启停与恢复、自定义目录验证 | 每个平台记录实际运行；输出库/FFmpeg 构建有候选证据；定位协议缺口并形成 Server 变更清单；接受同进程崩溃边界 |
+| C1 工程与会话 | 固定工具链、锁文件、Rust 类型及界面可用操作、Rust 会话存储、来源列表与 Rust 原生播放协商 | 真实 Cookie/CSRF 握手及退出；声明 `nativeHttp`，校验输出描述及授权读取 |
 | C2 首次原生播放 | remote/external-local 连接；真实库点播、暂停、停止、队列、byteRange 和实际时钟 | Windows/macOS/Linux 分别实际听音、非零定位与快速切歌；隐藏/重建界面不改变核心状态，显式退出正确停止 |
 | C3 处理与动态插件 | processed/timeRestart、恢复、DSP/转场；解码/DSP/输出包安装、启动装载、待重启启停/更新/回滚；外部控制 API | 兼容新包无需重编译，重启后从磁盘装载；当前/期望状态一致呈现；实例回收与故障恢复通过，库始终保留到退出；外控鉴权/撤销通过 |
 | C4 桌面呈现 | 主题、歌词/迷你窗口、托盘、媒体键、输出设置、多屏缩放；可视化/系统控制角色扩展 | 功能矩阵逐项记录三平台实际结果；新角色从包加载并符合数据/回调约束；不支持项明确呈现并有可用退路 |
-| C5 桌面业务 | 复用已验收 React 展示组件；来源账号、搜索、推荐、歌单、刮削与配置页面 | 逐项核对 Server 实际能力、账号隔离和修订；不复制浏览器播放器、不过度声明平台播放能力 |
+| C5 桌面业务 | 按 Web 交互用 egui 编写页面；来源账号、搜索、推荐、歌单、刮削与配置页面 | 逐项核对 Server 实际能力、账号隔离和修订；不复制浏览器播放器、不过度声明平台播放能力 |
 | C6 本地协作 | managed-local 发现/互斥/启动、租约、多客户端、崩溃回收及升级 | 独立 Server 不被接管；remote 不启动本地进程；升级失败保留恢复入口 |
 | C7 交付验收 | 各目标平台安装、原生依赖、插件目录、签名配置、升级与回归证据 | 安装制品在目标系统实测；无凭据入包；完成所宣称的平台/功能矩阵，发布仍需单独授权 |
 
-主链为 C0 → C1 → C2 → C3 → C7；C4/C5 在桥接稳定后可并行，C6 在原生会话可用后实施。最小可播放版本是 C2；带可安装插件的首版必须通过 C3 与对应 C7，完整桌面交付覆盖 C4—C6。某个平台受限只能缩小实际支持声明并记录未完成项，不能替它勾选通过。
+主链为 C0 → C1 → C2 → C3 → C7；C4/C5 在播放器与会话接口稳定后可并行，C6 在原生会话可用后实施。最小可播放版本是 C2；带可安装插件的首版必须通过 C3 与对应 C7，完整桌面交付覆盖 C4—C6。某个平台受限只能缩小实际支持声明并记录未完成项，不能替它勾选通过。
 
 ## 7. 验收记录与后续交付
 
 实施时在本仓库建立逐阶段验证记录，保存 Client/Server/Web 基线提交、操作系统与架构、依赖、测试命令、人工步骤、期望/实际结果、限制与证据位置。测试材料不得包含私人音乐、账号或凭据；程序日志及测试输出使用英文，文档与用户说明使用中文。
 
-文档、源码和实现提交归 Client 仓库；Server 契约增量归 Server，Web 共享组件提取归 Web。更新实现版本时在主仓库同步对应子模块指针，不能将三个独立仓库改造成主仓库源码目录。
+文档、源码和实现提交归 Client 仓库；Server 契约增量归 Server，Web 页面归 Web。更新实现版本时在主仓库同步对应子模块指针，不能将三个独立仓库改造成主仓库源码目录。
 
-官方依据核对日期为 2026-10-10：[Tauri/Vite 集成](https://v2.tauri.app/start/frontend/vite/)、[进程模型](https://v2.tauri.app/concept/process-model/)、[调用 Rust](https://v2.tauri.app/develop/calling-rust/)、[权限与边界](https://v2.tauri.app/security/capabilities/)、[CPAL 文档](https://docs.rs/cpal/latest/cpal/)、[FFmpeg 库文档](https://ffmpeg.org/doxygen/trunk/index.html)。库文档说明可用机制，不替代 MusicFS 的平台与音频验证。
+工程入口的依赖声明和 Cargo.lock 给出使用的框架与音频库版本。[eframe](https://docs.rs/eframe/0.31.1/eframe/) 与 [egui](https://docs.rs/egui/0.31.1/egui/) 提供窗口和控件 API，平台能力须在目标系统上验证。

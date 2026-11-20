@@ -1,18 +1,18 @@
 # MusicFS-client 架构设计
 
-状态：React + Tauri 实施设计；2026-10-11，尚无可运行实现。本文管理桌面 Client 的内部设计；Server 与客户端共同遵守的 API、数据语义和行为由[共同协议与行为](../../docs/architecture.md)管理。
+桌面界面采用 Rust、egui 和 eframe。本文说明已接入的主窗口、Rust 会话和播放器，并保留插件、托管启动等长期目标。当前平台验证结果见[桌面验证记录](validation/desktop.md)，跨端约定见[共同协议与行为](../../docs/architecture.md)。
 
 ## 1. 职责与边界
 
 Client 负责桌面交互、播放队列与原生音频输出、主题、桌面歌词、外部控制及受控的本地 Server 启动。音乐库、Provider 推荐、匹配与刮削结果通过 Server 协议获取，Client 不另建一套来源解析、音乐匹配或推荐算法。
 
-桌面采用 TypeScript + React 界面、Tauri 2 宿主与 Rust 原生核心，目标 Windows、macOS、Linux。原生音频引擎独立于 UI；需要 C++ 的插件统一使用 CMake/C++23 开发，经版本化 C ABI 接入，既有 C 依赖无需重写。输出库、解码构建和平台能力仍待原型验证。Web 的展示组件、资源及纯逻辑按版本复用，浏览器音频、同源 fetch 和页面生命周期由桌面适配替换。具体工程和分阶段交付见[实现方案](implementation.md)，共同构建规则见[原生插件规范](../../docs/native-plugins.md)。
+桌面使用 egui 绘制界面，由 eframe 管理原生窗口。布局、导航、交互和配色参考 Web 的设计；界面直接使用 Rust 数据类型。后台任务读取 Server，PlayerCore 管理播放状态和音频输出。需要 C++ 的插件仍按计划采用 CMake/C++23，经版本化 C ABI 接入。见[实现方案](implementation.md)和[原生插件规范](../../docs/native-plugins.md)。
 
 ## 2. 内部分层
 
 | 模块 | 职责 | 边界 |
 | --- | --- | --- |
-| React UI / View Models | 导航、搜索、歌单、来源选择、Provider 推荐、设置及任务进度 | 经 Tauri 桥接消费快照与发送类型化命令，不直接调解码器或启动任意进程 |
+| 原生界面 | 导航、搜索、歌单、推荐、主题和窗口 | 使用 Rust 适配器查询业务数据，向 PlayerCore 提交类型化命令，通过快照显示状态 |
 | Rust PlayerCore | 队列、播放代次、状态机、时钟、音量、转场及统一命令调度 | 唯一播放状态所有者；UI、快捷键、控制 API 共用入口，不依赖窗口存活 |
 | Native Audio Engine | 构建音频图、解码预取、缓冲、DSP、转场增益与设备输出 | 输出回调与 UI/网络/阻塞控制调用隔离，使用 PlayerCore 决定的尝试和配置 |
 | Client Plugin Host | 发现、校验、配置和管理主题、解复用/解码、DSP、输出、可视化及控制扩展 | 插件启停与版本切换在重启后生效；契约不提供直接改写核心状态的接口；原生代码同进程并非沙箱 |
@@ -23,7 +23,7 @@ Client 负责桌面交互、播放队列与原生音频输出、主题、桌面�
 
 插件能力、数据通道、WMF/FFmpeg 候选、淡出淡入和控制 API 见[音频与插件设计](audio-processing.md)。内置插件也遵守相同契约；全面插件化不意味着将权限检查、播放状态和生命周期责任交给任意插件。新增能力与保留在宿主的机制见[插件能力与宿主边界](plugin-capabilities.md)。现有宿主/音频图支持继续扩展插件；输出、平台集成及可视化角色需先补齐契约和验证，不作为已有功能。
 
-Tauri 框架插件与 MusicFS 用户安装插件分开管理。全部 MusicFS 原生插件在同一原生宿主进程内装载：Windows 使用 DLL，macOS 使用 dylib，Linux 使用 so，不设置插件子进程或插件 IPC 运行模式。Tauri/WebView 自身可能使用系统辅助进程，这不改变插件与 Rust 宿主同进程的约束。原生插件拥有宿主进程的系统权限，声明权限只约束宿主 API，不能形成沙箱；内存破坏或崩溃可能终止整个 Client。React/Tauri 通道只传命令、状态与摘要，PCM 留在进程内有界队列或有租约的缓冲。详见[插件实施](implementation/plugins.md)和[桌面组件图](diagrams/desktop-components.puml)。
+后续 MusicFS 原生插件计划在同一 Rust 宿主进程内装载：Windows 使用 DLL，macOS 使用 dylib，Linux 使用 so，不设置插件子进程或插件 IPC 运行模式。原生插件拥有宿主进程的系统权限，声明权限只约束宿主 API，不能形成沙箱；内存破坏或崩溃可能终止整个 Client。窗口只接收命令结果、状态与摘要，PCM 留在进程内有界队列或有租约的缓冲。详见[插件实施](implementation/plugins.md)和[桌面组件图](diagrams/desktop-components.puml)。
 
 ## 3. 交互与状态
 
@@ -31,13 +31,13 @@ UI、快捷键和 `control.api` 将操作提交到 PlayerCore；PlayerCore 完�
 
 歌单、搜索、匹配候选、Provider 推荐和刮削工作流通过协议适配层请求 Server。界面显示来源、账号状态、逐项失败与人工选择；打开推荐项与导入到用户歌单分为独立操作。Client 只维护必要的展示缓存和本地偏好，Server 仍是音乐库与服务端任务状态的事实来源。
 
-桌面作品库计划沿用[共享作品库线框](../../docs/prototypes/work-library.salt.puml)。展开后首项是“曲目列表”，其后按 Server 内容插件声明的顺序展示“CD专辑”“ASMR”“电台”。CD专辑沿用原抓轨入口的光盘图标。每个插件入口只查询自己的作品。普通音乐专辑仍可从曲目列表的专辑视图浏览。
+桌面作品库沿用[共享作品库线框](../../docs/prototypes/work-library.salt.puml)。展开后首项是“曲目列表”，其后按 Server 内容插件声明的顺序展示“CD专辑”“ASMR”“电台”。CD专辑沿用原抓轨入口的光盘图标。每个插件入口只查询自己的作品。普通音乐专辑仍可从曲目列表的专辑视图浏览。
 
-在 CD 专辑的编辑表单中，用户可勾选“在曲目列表中显示”。该设置按专辑保存在 Server，默认关闭；启用后同一批音轨也可从普通曲目列表、筛选及播放全部访问。ASMR 和电台的音轨只在各自作品库中浏览。桌面接入方式见[Server 接入与界面复用](implementation/server-integration.md)。
+后续规划的 CD 专辑编辑表单中，用户可勾选“在曲目列表中显示”。该设置按专辑保存在 Server，默认关闭；启用后同一批音轨也可从普通曲目列表、筛选及播放全部访问。ASMR 和电台的音轨只在各自作品库中浏览。桌面接入方式见[Server 接入与界面复用](implementation/server-integration.md)。
 
 ## 4. 连接与本地生命周期
 
-连接适配层处理 remote、external-local、managed-local 三种模式，校验 Server 身份和协议兼容范围后建立授权连接。仅明确配置为 managed-local 时允许自动启动；remote 与 external-local 只连接。实例实际启动归属、租约、多个 Client 并存和升级协调遵守[共同协议与行为](../../docs/architecture.md)。
+现有适配器连接远程或已运行的本地 Server；规划中的 managed-local 模式由启动器管理，校验 Server 身份和协议兼容范围后建立授权连接。仅明确配置为 managed-local 时允许自动启动；remote 与 external-local 只连接。实例实际启动归属、租约、多个 Client 并存和升级协调遵守[共同协议与行为](../../docs/architecture.md)。
 
 启动器先检查现有实例，再获取用户级启动互斥锁并二次检查；结合受限进程身份信息、配置与端口身份判断是否可启动。健康检查失败不等于进程未运行，端口被其他进程占用时报告冲突；就绪须校验产品身份、协议与实例标识并完成授权，不能只检查 HTTP 200。
 
@@ -45,16 +45,16 @@ UI、快捷键和 `control.api` 将操作提交到 PlayerCore；PlayerCore 完�
 
 协议 SDK 按发布版本关联，网络断开后重新读取权威快照并恢复订阅。账号访问凭据、Client 对 Server 的会话和外部控制 token 分开存储与撤销；日志不记录 token、敏感请求头或私有来源地址。
 
-Rust 适配器计划持有私有 Cookie/CSRF、WebSocket 控制连接和显式续租任务，多窗口共享连接状态；WebView 不保存会话秘密，也不直接访问受鉴权音频。`/api/v1/control` 的 `musicfs.control.v1` 承载播放控制、连接心跳及能力/本机生命周期通知，音频仍由原生 HTTP 读取器消费。WS ping 不续租，断线宽限由租约期限决定。Server 已提供 `nativeHttp` 传输协商，Rust 播放器需按本机实际格式接入。适配和验收见[Server 接入](implementation/server-integration.md)。
+Rust 适配器持有私有 Cookie 和 CSRF。当前播放控制通过短时 WebSocket 连接完成，子协议为 `musicfs.control.v1`。播放器使用 `nativeHttp` 协商并读取授权的 HTTP 音频流。托管模式租约、长期事件订阅及重连恢复属于后续阶段；协议中的 WS ping 与租约续期独立。见[Server 接入](implementation/server-integration.md)。
 
 ## 5. 主题、歌词与平台适配
 
-主题使用声明式资源与布局 token，绑定版本化 React 主题接口；主题更换只影响呈现。桌面歌词为独立窗口，置顶、穿透、锁定、缩放等交由平台适配层。Windows、macOS、Linux 分别验证，Linux X11/Wayland 分列证据；能力不支持时保留窗口内歌词等明确退路，详见[平台矩阵](implementation/platforms-validation.md)。
+内置外观由 egui 样式控制。规划中的主题包使用声明式资源与布局 token，由原生界面解释版本化主题字段；主题更换只影响呈现。桌面歌词为独立窗口，置顶、穿透、锁定、缩放等交由平台适配层。Windows、macOS、Linux 分别验证，Linux X11/Wayland 分列证据；能力不支持时保留窗口内歌词等明确退路，详见[平台矩阵](implementation/platforms-validation.md)。
 
 歌词内容及当前版本由 Server 返回，歌词显示与 PlayerCore 的实际输出时钟保持一致；来源/资产/处理链变化后的有效性遵守共同协议。用户歌词偏移是显式设置，不能作为自动确认不同来源时间轴一致的证据。窗口开关或样式变化不得重启音频引擎。
 
 ## 6. 原型与验证
 
-按[实现方案](implementation.md)先验证 React/Tauri 三平台运行、PlayerCore 与 UI 解耦、真实插件装载/协作取消、重启启停与恢复、FFmpeg 及设备输出、转场与歌词时钟，再固定依赖和平台支持范围。并行验证多实例启动、本地连接恢复、窗口能力和外部控制权限；已选择技术路线，但在实测前不承诺格式全覆盖、平台功能一致或第三方二进制兼容。本期不提供插件卸载功能；已装载动态库保持引用至原生宿主进程退出，不主动卸载库。插件停用只记录下次启动禁用，当前运行能力保持到退出；卡死不能安全强停线程，崩溃后的禁用启动恢复路径也须验收。
+按[实现方案](implementation.md)先验证 egui/eframe 三平台运行、PlayerCore 与 UI 解耦、真实插件装载/协作取消、重启启停与恢复、FFmpeg 及设备输出、转场与歌词时钟，再固定依赖和平台支持范围。并行验证多实例启动、本地连接恢复、窗口能力和外部控制权限；已选择技术路线，但在实测前不承诺格式全覆盖、平台功能一致或第三方二进制兼容。本期不提供插件卸载功能；已装载动态库保持引用至原生宿主进程退出，不主动卸载库。插件停用只记录下次启动禁用，当前运行能力保持到退出；卡死不能安全强停线程，崩溃后的禁用启动恢复路径也须验收。
 
 交互草案见[歌单与来源线框](prototypes/client.salt.puml)和[连接、插件与歌词设置线框](prototypes/settings.salt.puml)。PlantUML Salt 源码可编辑，线框不是最终视觉设计或已实现功能；跨仓库变更需评估共同协议与客户端兼容性。

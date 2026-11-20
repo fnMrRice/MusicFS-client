@@ -1,0 +1,16 @@
+.recommendation-feed, .rec-detail, .rec-source { display: grid; gap: 18px; align-content: start; }
+.rec-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+.rec-actions span, .rec-info small, .rec-detail-head small { color: var(--muted); font-size: 13px; }
+.rec-source h2, .rec-detail-head h2 { font-size: 20px; }
+.rec-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(225px,100%), 1fr)); gap: 12px; }
+.rec-card { padding: 12px; display: flex; gap: 14px; justify-content: flex-start; text-align: left; }
+.rec-info { display: grid; gap: 4px; min-width: 0; }
+.rec-info strong { font-weight: 600; font-size: 15px; overflow-wrap: anywhere; }
+.rec-art { width: 62px; height: 62px; display: grid; place-items: center; flex: 0 0 auto; color: var(--accent); background: var(--accent-soft); border-radius: 8px; }
+.rec-detail > button, .rec-entries > button { justify-self: start; }
+.rec-detail-head { display: flex; align-items: center; gap: 16px; }
+.rec-detail-head div { display: grid; gap: 6px; }
+.rec-entries h3 { font-size: 15px; }
+.rec-entries li { color: var(--muted); border-bottom: 1px solid var(--line); padding: 8px; }
+.rec-entries li span { color: var(--text); overflow-wrap: anywhere; }
+.rec-entries li small { display: block; margin-top: 4px; color: var(--muted); }

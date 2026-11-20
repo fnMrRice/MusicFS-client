@@ -8,6 +8,10 @@ mod navigation;
 mod style;
 mod table;
 
+#[cfg(test)]
+#[path = "../../../tests/native/playlist_pages.rs"]
+mod playlist_pages;
+
 use crate::{browse::BrowseUi, model::DesktopState, player_ui::PlayerUi};
 use actions::Actions;
 use catalog::Catalog;
@@ -234,7 +238,9 @@ impl SignedUi {
                     self.page(ui, svc);
                 }
             });
-        self.actions.show_editor(ctx, svc, &self.lists.items);
+        if self.actions.show_editor(ctx, svc, &self.lists) {
+            self.load_lists(ctx, svc);
+        }
         action
     }
     fn page(&mut self, ui: &mut egui::Ui, svc: Services<'_>) {
@@ -284,7 +290,18 @@ impl SignedUi {
                 let Some(p) = self.lists.items.iter().find(|p| p.id == id) else {
                     if self.lists.busy() {
                         ui.spinner();
-                    } else if ui.button("返回歌单列表").clicked() {
+                    } else if let Some(error) = &self.lists.error {
+                        ui.colored_label(ui.visuals().error_fg_color, error);
+                        if ui.button("重试读取歌单").clicked() {
+                            self.lists = Pages::default();
+                        }
+                    } else if self.lists.next.is_some() {
+                        self.load_lists(ui.ctx(), svc);
+                        ui.spinner();
+                    } else {
+                        ui.weak("此歌单已删除或无法访问。");
+                    }
+                    if ui.button("返回歌单列表").clicked() {
                         self.navigate(Screen::Playlists);
                     }
                     return;

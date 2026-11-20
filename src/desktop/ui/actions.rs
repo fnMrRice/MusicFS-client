@@ -1,4 +1,4 @@
-use super::data::Services;
+use super::data::{Pages, Services};
 use super::favorites::Favorites;
 use super::style;
 use crate::task::Task;
@@ -126,12 +126,18 @@ impl Actions {
         }
         update
     }
-    pub fn show_editor(&mut self, ctx: &egui::Context, svc: Services<'_>, lists: &[Playlist]) {
+    pub fn show_editor(
+        &mut self,
+        ctx: &egui::Context,
+        svc: Services<'_>,
+        lists: &Pages<Playlist>,
+    ) -> bool {
         let busy = self.busy();
         let Some(ed) = &mut self.editor else {
-            return;
+            return false;
         };
         let mut close = false;
+        let mut more = false;
         let mut apply = None;
         egui::Window::new("加入歌单")
             .id(egui::Id::new("add-to-playlist"))
@@ -143,16 +149,31 @@ impl Actions {
                 ui.strong(&ed.title);
                 ui.separator();
                 ui.add_enabled_ui(!busy, |ui| {
-                    let existing = lists.iter().find(|p| Some(&p.id) == ed.target_id.as_ref());
+                    let existing = lists
+                        .items
+                        .iter()
+                        .find(|p| Some(&p.id) == ed.target_id.as_ref());
                     egui::ComboBox::from_label("目标歌单")
-                        .selected_text(existing.map(|p| p.name.as_str()).unwrap_or("新建歌单…"))
+                        .selected_text(match (existing, &ed.target_id) {
+                            (Some(p), _) => &p.name,
+                            (None, Some(_)) => "未找到已选歌单",
+                            (None, None) => "新建歌单…",
+                        })
                         .show_ui(ui, |ui| {
                             ui.selectable_value(&mut ed.target_id, None, "新建歌单…");
-                            for p in lists {
+                            for p in &lists.items {
                                 ui.selectable_value(&mut ed.target_id, Some(p.id.clone()), &p.name);
                             }
                         });
-                    if ed.target_id.is_none() || existing.is_none() {
+                    if lists.busy() {
+                        ui.spinner();
+                    } else if let Some(error) = &lists.error {
+                        ui.colored_label(ui.visuals().error_fg_color, error);
+                        more = ui.button("重试读取歌单").clicked();
+                    } else if lists.next.is_some() {
+                        more = ui.button("读取更多目标歌单").clicked();
+                    }
+                    if ed.target_id.is_none() {
                         ui.label("新歌单名称");
                         ui.add(
                             egui::TextEdit::singleline(&mut ed.name)
@@ -165,12 +186,16 @@ impl Actions {
                     ui.colored_label(ui.visuals().error_fg_color, error);
                 }
                 ui.horizontal(|ui| {
-                    let existing = lists.iter().find(|p| Some(&p.id) == ed.target_id.as_ref());
+                    let existing = lists
+                        .items
+                        .iter()
+                        .find(|p| Some(&p.id) == ed.target_id.as_ref());
                     let name = ed.name.trim();
                     if style::primary(
                         ui,
                         if busy { "正在保存…" } else { "保存" },
-                        !busy && (existing.is_some() || !name.is_empty()),
+                        !busy
+                            && (existing.is_some() || (ed.target_id.is_none() && !name.is_empty())),
                     )
                     .clicked()
                     {
@@ -208,5 +233,6 @@ impl Actions {
                 Ok(Change::Playlist)
             }));
         }
+        more
     }
 }

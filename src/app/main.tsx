@@ -4,6 +4,7 @@ import { desktop, type Session } from "../bridge";
 import { Connection, message } from "../ui/Connection";
 import { Brand } from "../ui/Icons";
 import { Shell } from "../ui/Shell";
+import Compact from "../ui/Compact";
 import { useTheme } from "../ui/preferences";
 import "../ui/base.css";
 import "../ui/pages.css";
@@ -29,4 +30,6 @@ function App() {
   }} />;
 }
 
-createRoot(document.getElementById("app")!).render(<StrictMode><App /></StrictMode>);
+const compact = window.location.hash.slice(2);
+createRoot(document.getElementById("app")!).render(<StrictMode>{compact === "mini" || compact === "lyrics"
+  ? <Compact kind={compact} /> : <App />}</StrictMode>);

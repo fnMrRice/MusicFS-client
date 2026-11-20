@@ -14,6 +14,20 @@
 .track-table th:first-child { border-top-left-radius: 9px; }
 .track-table th:last-child { border-top-right-radius: 9px; }
 .track-table th:first-child, .track-table td:first-child, .track-table th:last-child, .track-table td:last-child { width: 44px; padding: 5px 3px; text-align: center; }
+.track-table th:last-child, .track-table td:last-child { width: 70px; }
+.track-actions { display: inline-flex; }
+.track-actions .icon-button { width: 30px; height: 30px; }
+.track-actions svg { width: 17px; height: 17px; }
+.add-dialog { width: min(390px,calc(100vw - 40px)); padding: 0; border: 1px solid var(--line); border-radius: 12px; color: var(--text); background: var(--panel); box-shadow: 0 20px 54px var(--shadow); }
+.add-dialog::backdrop { background: #05080b88; }
+.add-dialog form { display: grid; gap: 10px; padding: 14px 21px 23px; }
+.add-dialog form label { font-size: 13px; margin-top: 4px; }
+.add-dialog select { width: 100%; }
+.add-dialog .primary { margin-top: 5px; }
+.adding-track { margin: 3px 0 10px; overflow-wrap: anywhere; }
+.adding-track strong, .adding-track span { display: block; font-size: 14px; }
+.adding-track span { font-size: 12px; margin-top: 4px; color: var(--muted); }
+.snapshot-notice { margin: 12px 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; border: 1px solid var(--line); padding: 10px; border-radius: 7px; font-size: 13px; }
 .track-table th:nth-child(2) { width: 35%; }
 .track-table th:nth-child(5) { width: 62px; }
 .track-table td { height: 48px; border-top: 1px solid var(--line); }

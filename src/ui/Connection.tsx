@@ -1,12 +1,16 @@
-import { useState, type FormEvent } from "react";
+import { createContext, useContext, useState, type FormEvent } from "react";
 import { desktop, type Session } from "../bridge";
 import { Brand, Icon } from "./Icons";
 import { readPreference, savePreference } from "./preferences";
 
 export function message(reason: unknown) { return reason instanceof Error ? reason.message : String(reason); }
+export const Reconnect = createContext<(() => void) | null>(null);
 
 export function Notice({ error, retry }: { error: string; retry?: () => void }) {
-  return <div className="notice" role="alert"><span>{error}</span>{retry && <button onClick={retry}>重试</button>}</div>;
+  const reconnect = useContext(Reconnect);
+  const expired = error.includes("HTTP 401");
+  return <div className="notice" role="alert"><span>{expired ? "登录已过期，请重新连接音乐库。" : error}</span>
+    {expired && reconnect ? <button onClick={reconnect}>重新登录</button> : retry && <button onClick={retry}>重试</button>}</div>;
 }
 
 export function Connection({ onConnect, initialError }: { onConnect: (session: Session) => void; initialError: string }) {

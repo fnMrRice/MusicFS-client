@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { desktop, type Playlist, type Session } from "../bridge";
 import { Brand, Icon, IconButton, type IconName } from "./Icons";
-import { message, Notice } from "./Connection";
+import { message, Notice, Reconnect } from "./Connection";
 import { playlistPath, useRoute, type Section } from "./navigation";
 import { PlayerBar } from "./Player";
 import { readPreference, savePreference, themeNames, type Theme } from "./preferences";
 import { TrackPage } from "./TrackPage";
 import { usePlayer } from "./usePlayer";
+import { CategoryBrowser } from "./CategoryBrowser";
 
 const sections: Record<Section, { name: string; icon: IconName }> = {
   search: { name: "搜索", icon: "search" },
@@ -25,7 +26,11 @@ function Settings({ session, theme, setTheme, onDisconnect }: SettingsProps) {
     setBusy(true);
     setError("");
     try { await desktop.disconnect(); onDisconnect(); }
-    catch (reason) { setError(message(reason)); setBusy(false); }
+    catch (reason) {
+      const stillConnected = await desktop.session().catch(() => session);
+      if (!stillConnected) { onDisconnect(); return; }
+      setError(message(reason)); setBusy(false);
+    }
   }
   return <div className="settings">
     <section><h2>连接与账号</h2><dl>
@@ -69,6 +74,7 @@ export function Shell(props: SettingsProps) {
   const [playlistError, setPlaylistError] = useState("");
   const [playlistBusy, setPlaylistBusy] = useState(true);
   const [themeOpen, setThemeOpen] = useState(false);
+  const [reconnectError, setReconnectError] = useState("");
   const themeMenu = useRef<HTMLDivElement>(null);
   const themeButton = useRef<HTMLButtonElement>(null);
   const generation = useRef(0);
@@ -99,7 +105,14 @@ export function Shell(props: SettingsProps) {
   const selected = playlists.find(item => item.id === route.playlistId);
   const title = route.playlistId ? selected?.name || "歌单详情" : sections[route.section].name;
   const listRoot = route.section === "playlists" && !route.playlistId;
-  return <div className="shell">
+  async function reconnect() {
+    try { await desktop.disconnect(); }
+    catch (reason) {
+      if (await desktop.session().catch(() => session)) { setReconnectError(message(reason)); return; }
+    }
+    props.onDisconnect();
+  }
+  return <Reconnect.Provider value={() => void reconnect()}><div className="shell">
     <aside className="sidebar"><a className="brand-link" href="#/library" aria-label="MusicFS 曲目列表"><Brand /></a>
       <nav className="navigation" aria-label="主导航">
         {nav("search")}{nav("library")}{nav("playlists")}
@@ -129,13 +142,16 @@ export function Shell(props: SettingsProps) {
       </div>
     </header>
       <div className="content" key={[route.section, route.playlistId, route.query].join("/")}>
+        {reconnectError && <Notice error={reconnectError} retry={() => void reconnect()} />}
         {route.section === "settings" ? <Settings {...props} /> : listRoot ?
           <PlaylistList playlists={playlists} error={playlistError} loading={playlistBusy} reload={() => void loadPlaylists()} /> :
           route.playlistId && !selected ? (playlistBusy ? <p className="loading">正在读取歌单…</p> :
             <Notice error={playlistError || "未找到此歌单。"} retry={() => void loadPlaylists()} />) :
-            <TrackPage player={player} route={route} revision={selected?.snapshotRevision} />}
+            route.section === "library" ? <CategoryBrowser>{filter =>
+              <TrackPage key={filter?.kind + "/" + filter?.id} player={player} route={route} categoryFilter={filter} playlists={playlists} reloadPlaylists={loadPlaylists} />}
+            </CategoryBrowser> : <TrackPage key={selected?.snapshotRevision} player={player} route={route} playlist={selected} playlists={playlists} reloadPlaylists={loadPlaylists} />}
       </div>
     </main>
     <PlayerBar player={player} />
-  </div>;
+  </div></Reconnect.Provider>;
 }

@@ -59,7 +59,9 @@ export function PlayerBar({ player }: { player: Player }) {
     void run(() => desktop.volume(value)).finally(() => setVolumeDraft(null));
   };
   const commitSeek = (value: number) => {
-    if (snapshot?.seekable) void run(() => desktop.seek(value)).finally(() => setSeek(null));
+    if (!snapshot?.seekable) return;
+    const range = snapshot.seekRangeMs ?? [0, duration || value];
+    void run(() => desktop.seek(Math.max(range[0], Math.min(range[1], value)))).finally(() => setSeek(null));
   };
   const rangeKeys = ["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "PageUp", "PageDown", "Home", "End"];
   const error = player.error || snapshot?.error;
@@ -84,6 +86,8 @@ export function PlayerBar({ player }: { player: Player }) {
       <span className="time">{time(position)} <span>/ {time(duration)}</span></span>
     </div>
     <div className="player-tools">
+      <IconButton icon="lyrics" label="桌面歌词" onClick={() => void run(() => desktop.openWindow("lyrics"))} />
+      <IconButton icon="mini" label="迷你播放器" onClick={() => void run(() => desktop.openWindow("mini"))} />
       <IconButton icon={volume === 0 ? "mute" : "volume"} label={volume === 0 ? "取消静音" : "静音"} disabled={!snapshot}
         onClick={() => setVolume(volume > 0 ? 0 : lastLoud.current)} />
       <input className="volume" type="range" aria-label="音量" aria-valuetext={Math.round(volume * 100) + "%"} disabled={!snapshot}

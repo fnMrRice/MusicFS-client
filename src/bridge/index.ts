@@ -21,7 +21,13 @@ export interface Playlist {
   id: string;
   name: string;
   snapshotRevision: number;
+  ruleRevision: number;
+  stale: boolean;
 }
+
+export type CategoryKind = "artist" | "album" | "genre";
+export interface CategoryFilter { kind: CategoryKind; id: string }
+export interface Category { id: string; name: string; trackCount: number }
 
 export interface Page<T> {
   items: T[];
@@ -36,6 +42,8 @@ export interface PlayerSnapshot {
   durationMs: number | null;
   volume: number;
   seekable: boolean;
+  seekRangeMs: [number, number] | null;
+  activeSourceTrackId: string | null;
   error: string | null;
 }
 
@@ -54,6 +62,17 @@ export const desktop = {
   favorites: (cursor: string | null = null) => tracks("favorites", "", cursor),
   history: (cursor: string | null = null) => tracks("history", "", cursor),
   favorite: (track: Track, enabled: boolean) => invoke<void>("set_favorite", { id: track.id, enabled }),
+  categories: (kind: CategoryKind, cursor: string | null = null) =>
+    invoke<Page<Category>>("categories", { kind, cursor }),
+  categoryTracks: (filter: CategoryFilter, cursor: string | null = null) =>
+    invoke<Page<Track>>("category_tracks", { ...filter, cursor }),
+  addToPlaylist: (track: Track, target: { id: string; ruleRevision: number } | { name: string }, key: string) =>
+    invoke<void>("add_to_playlist", { sourceId: track.sourceTrackId, target, key }),
+  rebuildPlaylist: (playlist: Playlist, key: string) =>
+    invoke<number>("rebuild_playlist", { id: playlist.id, revision: playlist.ruleRevision, key }),
+  openWindow: (kind: "mini" | "lyrics") => invoke<void>("open_compact", { kind }),
+  restoreMain: () => invoke<void>("restore_main"),
+  lyrics: () => invoke<string | null>("current_lyrics"),
   playlists: async () => {
     const items: Playlist[] = [];
     let cursor: string | null = null;

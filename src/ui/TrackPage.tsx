@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { desktop, type Track } from "../bridge";
+import { desktop, type CategoryFilter, type Playlist, type Track } from "../bridge";
 import { Icon, IconButton } from "./Icons";
 import { message, Notice } from "./Connection";
 import { searchPath, type Route } from "./navigation";
 import { time } from "./Player";
 import type { Player } from "./usePlayer";
+import { PlaylistEditor } from "./PlaylistEditor";
 
-function readPage(route: Route, cursor: string | null, revision?: number) {
+function readPage(route: Route, cursor: string | null, revision?: number, category?: CategoryFilter) {
+  if (category) return desktop.categoryTracks(category, cursor);
   switch (route.section) {
     case "favorites": return desktop.favorites(cursor);
     case "history": return desktop.history(cursor);
@@ -22,12 +24,19 @@ const emptyHints = {
   history: "播放音乐后，在这里找到最近听过的曲目。", playlists: "", search: "试试其他歌名、歌手或专辑。", settings: "",
 };
 
-export function TrackPage({ route, player, revision }: { route: Route; player: Player; revision?: number }) {
+export function TrackPage({ route, player, playlist, playlists, reloadPlaylists, categoryFilter }: {
+  route: Route; player: Player; playlist?: Playlist; playlists: Playlist[]; reloadPlaylists: () => Promise<void>; categoryFilter?: CategoryFilter;
+}) {
+  const revision = playlist?.snapshotRevision;
+  const [adding, setAdding] = useState<Track | null>(null);
+  const [rebuilding, setRebuilding] = useState(false);
+  const rebuildKey = useRef<{ rev: number; key: string } | null>(null);
   const [items, setItems] = useState<Track[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [loadingAll, setLoadingAll] = useState(false);
+  const retryCursor = useRef<string | null>(null);
   const [query, setQuery] = useState(route.query);
   const [saving, setSaving] = useState<string | null>(null);
   const [feedback, setFeedback] = useState("");
@@ -38,9 +47,13 @@ export function TrackPage({ route, player, revision }: { route: Route; player: P
   const waiting = search && !route.query;
   const favorites = route.section === "favorites";
   const { section, playlistId, query: searchTerm } = route;
-  const fetchPage = useCallback((after: string | null) => readPage({ section, playlistId, query: searchTerm }, after, revision), [section, playlistId, searchTerm, revision]);
+  const kind = categoryFilter?.kind;
+  const categoryId = categoryFilter?.id;
+  const fetchPage = useCallback((after: string | null) => readPage({ section, playlistId, query: searchTerm }, after, revision,
+    kind && categoryId !== undefined ? { kind, id: categoryId } : undefined), [section, playlistId, searchTerm, revision, kind, categoryId]);
   const load = useCallback(async (after: string | null) => {
     const request = ++generation.current;
+    retryCursor.current = after;
     setError("");
     setLoading(true);
     setLoadingAll(false);
@@ -70,6 +83,7 @@ export function TrackPage({ route, player, revision }: { route: Route; player: P
       while (next) {
         if (visited.has(next)) throw new Error("服务器返回了重复的分页位置，请刷新列表。");
         visited.add(next);
+        retryCursor.current = next;
         const page = await fetchPage(next);
         if (request !== generation.current) return;
         all.push(...page.items);
@@ -96,10 +110,22 @@ export function TrackPage({ route, player, revision }: { route: Route; player: P
         if (enable) next.add(track.id); else next.delete(track.id);
         return next;
       });
-      if (favorites) setItems(previous => previous.filter(item => item.id !== track.id));
+      if (favorites) {
+        setItems(previous => previous.filter(item => item.id !== track.id));
+        void load(null);
+      }
       setFeedback(enable ? "已加入收藏" : "已取消收藏");
     } catch (reason) { if (active.current) setError(message(reason)); }
     finally { if (active.current) setSaving(null); }
+  }
+  async function rebuild() {
+    if (!playlist || rebuilding) return;
+    if (rebuildKey.current?.rev !== playlist.ruleRevision) rebuildKey.current = { rev: playlist.ruleRevision, key: crypto.randomUUID() };
+    setRebuilding(true);
+    setError("");
+    try { await desktop.rebuildPlaylist(playlist, rebuildKey.current.key); await reloadPlaylists(); }
+    catch (reason) { if (active.current) setError(message(reason)); }
+    finally { if (active.current) setRebuilding(false); }
   }
 
   const snapshot = player.snapshot;
@@ -110,16 +136,18 @@ export function TrackPage({ route, player, revision }: { route: Route; player: P
         value={query} onChange={e => setQuery(e.target.value)} /><button className="primary" disabled={!query.trim()}>搜索</button>
     </form>}
     {waiting ? <div className="empty"><Icon name="search" size={38} /><h3>搜索你的音乐库</h3><p>输入关键词并按回车。</p></div> : <>
-      <div className="section-title"><span>{search ? "搜索结果" : "全部曲目"}</span></div>
+      {section !== "library" && <div className="section-title"><span>{search ? "搜索结果" : "全部曲目"}</span></div>}
+      {playlist?.stale && <div className="snapshot-notice"><span>歌单有未应用的更改。</span>
+        <button disabled={rebuilding} onClick={() => void rebuild()}>{rebuilding ? "正在更新…" : "更新歌单内容"}</button></div>}
       <div className="list-toolbar"><button className="primary" disabled={loading || loadingAll || (!cursor && !items.some(t => t.sourceTrackId))}
         onClick={() => void playAll()}><Icon name="play" size={14} />{loadingAll ? "正在读取曲目…" : "播放全部"}</button>
         {items.length > 0 && <span className="list-count">{cursor ? "已显示 " : "共 "}{items.length} 首</span>}
         <span className="feedback" role="status">{feedback}</span>
         <IconButton icon="refresh" label="刷新曲目" disabled={loading} onClick={() => void load(null)} /></div>
-      {error && <Notice error={error} retry={() => void load(cursor)} />}
+      {error && <Notice error={error} retry={() => void load(retryCursor.current)} />}
       {items.length > 0 && <div className="track-table-wrap"><table className="track-table">
         <thead><tr><th aria-label="序号">#</th><th scope="col">曲名</th><th scope="col">歌手</th><th scope="col">专辑</th>
-          <th scope="col">时长</th><th aria-label="收藏" /></tr></thead>
+          <th scope="col">时长</th><th aria-label="曲目操作" /></tr></thead>
         <tbody>{items.map((track, i) => {
           const isCurrent = !!track.sourceTrackId && current?.sourceTrackId === track.sourceTrackId;
           const isFavorite = favorites || saved.has(track.id);
@@ -132,8 +160,9 @@ export function TrackPage({ route, player, revision }: { route: Route; player: P
             <td title={track.title}><span>{track.title}</span>{!track.sourceTrackId && <small className="unavailable">无音源</small>}</td>
             <td title={track.artists.join(" / ")}>{track.artists.join(" / ") || "—"}</td>
             <td title={track.album ?? undefined}>{track.album || "—"}</td><td className="cell-time">{time(track.durationMs)}</td>
-            <td><IconButton icon="heart" label={(isFavorite ? "取消收藏 " : "加入收藏 ") + track.title} className={isFavorite ? "favorited" : ""}
-              disabled={saving !== null} onClick={() => void toggleFavorite(track)} /></td>
+            <td><span className="track-actions"><IconButton icon="heart" label={(isFavorite ? "取消收藏 " : "加入收藏 ") + track.title} className={isFavorite ? "favorited" : ""}
+              disabled={saving !== null} onClick={() => void toggleFavorite(track)} /><IconButton icon="add" label={"将 " + track.title + " 加入歌单"}
+              disabled={!track.sourceTrackId} onClick={() => setAdding(track)} /></span></td>
           </tr>;
         })}</tbody></table></div>}
       {loading && <div className="loading" role="status">正在加载曲目…</div>}
@@ -141,5 +170,8 @@ export function TrackPage({ route, player, revision }: { route: Route; player: P
         <h3>{emptyTitles[route.section]}</h3>{emptyHints[route.section] && <p>{emptyHints[route.section]}</p>}</div>}
       {cursor && !loading && !loadingAll && !error && <button className="more" onClick={() => void load(cursor)}>加载更多曲目</button>}
     </>}
+    {adding && <PlaylistEditor track={adding} playlists={playlists} close={() => setAdding(null)} saved={() => {
+      setAdding(null); setFeedback("已加入歌单"); void reloadPlaylists();
+    }} />}
   </section>;
 }

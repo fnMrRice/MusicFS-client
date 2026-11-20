@@ -28,6 +28,9 @@ const symbols = {
   check: "m4 12 5 5L20 6",
   clear: "M3 6h18m-15 0 1 15h10l1-15M9 6V3h6v3",
   exit: "M10 3H4v18h6m-1-9h12m-5-5 5 5-5 5",
+  mini: "M3 4h18v16H3zM12 12h7v6h-7z",
+  lyrics: "M4 5h16M4 10h10M4 15h16M4 20h10",
+  add: "M3 5h13M3 11h10M3 17h7m7-5v9m-4.5-4.5h9",
 } as const;
 
 export type IconName = keyof typeof symbols;

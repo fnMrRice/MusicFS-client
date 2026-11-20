@@ -1,0 +1,16 @@
+[package]
+name = "musicfs-desktop"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-only"
+default-run = "musicfs-desktop"
+
+[[bin]]
+name = "musicfs-desktop"
+path = "main.rs"
+
+[build-dependencies]
+tauri-build = "2"
+
+[dependencies]
+tauri = "2"

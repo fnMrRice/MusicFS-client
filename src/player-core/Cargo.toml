@@ -1,0 +1,12 @@
+[package]
+name = "musicfs-player-core"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-only"
+
+[lib]
+path = "lib.rs"
+
+[dependencies]
+rodio = { version = "=0.21.1", default-features = false, features = ["playback", "mp3", "flac", "wav"] }
+serde = { version = "1", features = ["derive"] }

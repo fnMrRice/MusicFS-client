@@ -11,7 +11,7 @@ pub struct Login {
 impl Login {
     pub fn show(&mut self, ctx: &egui::Context, state: &mut DesktopState) {
         egui::CentralPanel::default()
-            .frame(egui::Frame::NONE)
+            .frame(egui::Frame::NONE.fill(style::background(ctx.style().visuals.dark_mode)))
             .show(ctx, |ui| {
                 let r = ui.max_rect();
                 let artwork = if r.width() >= 680.0 {
@@ -43,22 +43,25 @@ impl Login {
                             ui.heading("连接音乐库");
                             ui.weak("使用服务器地址和管理员提供的令牌登录 MusicFS。");
                             ui.add_space(16.0);
-                            ui.label("服务器地址");
+                            let endpoint_label = ui.label("服务器地址");
                             ui.add_enabled(
                                 !state.busy,
                                 egui::TextEdit::singleline(&mut self.endpoint)
                                     .hint_text("http://127.0.0.1:8080")
                                     .desired_width(f32::INFINITY),
-                            );
+                            )
+                            .labelled_by(endpoint_label.id);
                             ui.add_space(8.0);
-                            ui.label("管理员登录令牌");
-                            let password = ui.add_enabled(
-                                !state.busy,
-                                egui::TextEdit::singleline(&mut self.token)
-                                    .password(true)
-                                    .hint_text("输入登录令牌")
-                                    .desired_width(f32::INFINITY),
-                            );
+                            let token_label = ui.label("管理员登录令牌");
+                            let password = ui
+                                .add_enabled(
+                                    !state.busy,
+                                    egui::TextEdit::singleline(&mut self.token)
+                                        .password(true)
+                                        .hint_text("输入登录令牌")
+                                        .desired_width(f32::INFINITY),
+                                )
+                                .labelled_by(token_label.id);
                             if let Some(error) = &state.error {
                                 ui.colored_label(ui.visuals().error_fg_color, error);
                             }

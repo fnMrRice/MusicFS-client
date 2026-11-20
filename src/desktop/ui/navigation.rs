@@ -1,5 +1,5 @@
 use super::{data::Services, style, SignedUi};
-use eframe::egui::{self, Align, Color32, RichText, Vec2};
+use eframe::egui::{self, Color32, RichText, Vec2};
 
 #[derive(Clone, Default, PartialEq, Eq)]
 pub enum Screen {
@@ -31,27 +31,57 @@ impl Screen {
 }
 
 fn entry(ui: &mut egui::Ui, title: &str, symbol: &str, active: bool, nested: bool) -> bool {
-    let text = RichText::new(format!("{symbol}    {title}")).size(if nested { 14.0 } else { 15.0 });
-    let button = egui::Button::new(if active {
-        text.color(Color32::WHITE)
+    let (rect, response) = ui.allocate_exact_size(
+        Vec2::new(ui.available_width(), if nested { 34. } else { 40. }),
+        egui::Sense::click(),
+    );
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, title));
+    let color = if active {
+        Color32::WHITE
     } else {
-        text
-    })
-    .corner_radius(7)
-    .stroke(egui::Stroke::NONE)
-    .fill(if active {
-        style::ACCENT
-    } else {
-        Color32::TRANSPARENT
-    })
-    .min_size(Vec2::new(0.0, if nested { 34.0 } else { 40.0 }))
-    .truncate();
-    ui.add_sized(
-        [ui.available_width(), if nested { 34.0 } else { 40.0 }],
-        button,
-    )
-    .on_hover_text(title)
-    .clicked()
+        ui.visuals().text_color()
+    };
+    let p = ui.painter_at(rect);
+    if active || response.hovered() || response.has_focus() {
+        p.rect_filled(
+            rect,
+            7.,
+            if active {
+                style::ACCENT
+            } else {
+                ui.visuals().widgets.hovered.weak_bg_fill
+            },
+        );
+    }
+    let center = egui::pos2(rect.left() + 18., rect.center().y);
+    super::nav_icons::draw(&p, center, symbol, color);
+    let parent = matches!(symbol, "▸" | "▾");
+    let text_clip = egui::Rect::from_min_max(
+        rect.min,
+        egui::pos2(rect.right() - if parent { 26. } else { 7. }, rect.bottom()),
+    );
+    p.with_clip_rect(text_clip.intersect(ui.clip_rect())).text(
+        center + egui::vec2(18., 0.),
+        egui::Align2::LEFT_CENTER,
+        title,
+        egui::FontId::proportional(if nested { 14. } else { 15. }),
+        color,
+    );
+    if parent {
+        let end = egui::pos2(rect.right() - 15., rect.center().y);
+        let vs = if symbol == "▾" {
+            [(-3.5, -1.5), (0., 2.), (3.5, -1.5)]
+        } else {
+            [(-1.5, -3.5), (2., 0.), (-1.5, 3.5)]
+        };
+        p.add(egui::Shape::line(
+            vs.into_iter()
+                .map(|(x, y)| end + egui::vec2(x, y))
+                .collect(),
+            egui::Stroke::new(1.2_f32, color),
+        ));
+    }
+    response.on_hover_text(title).clicked()
 }
 
 impl SignedUi {
@@ -103,7 +133,7 @@ impl SignedUi {
                                 for kind in self.browse.types() {
                                     let selected =
                                         matches!(&self.screen,Screen::Works(id) if *id == kind.id);
-                                    if entry(ui, &kind.name, "◉", selected, true) {
+                                    if entry(ui, &kind.name, &kind.icon, selected, true) {
                                         go = Some(Screen::Works(kind.id.clone()));
                                     }
                                 }
@@ -133,7 +163,7 @@ impl SignedUi {
                                     egui::Button::new(
                                         RichText::new(format!(
                                             "{}  {label}",
-                                            if *collapsed { "▸" } else { "▾" }
+                                            if *collapsed { "+" } else { "−" }
                                         ))
                                         .color(style::muted(dark)),
                                     )
@@ -178,7 +208,6 @@ impl SignedUi {
                                 }
                             }
                         }
-                        ui.with_layout(egui::Layout::top_down(Align::Min), |_ui| {});
                     });
                 if let Some(screen) = go {
                     self.navigate(screen);

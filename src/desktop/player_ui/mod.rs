@@ -217,11 +217,17 @@ impl PlayerUi {
                     1.35,
                 );
             }
-            let track_width = (width * 0.34 - art.width() - 24.).clamp(76., 370.);
+            let track_width = if narrow {
+                width * 0.34
+            } else {
+                width * 0.5 - 72.
+            };
+            let track_width = (track_width - art.width()).max(76.);
             ui.allocate_ui_with_layout(
                 egui::vec2(track_width, art.height()),
                 egui::Layout::top_down(egui::Align::Min),
                 |ui| {
+                    ui.set_width(track_width);
                     if let Some(track) = self.current_track() {
                         heading(ui, &track.title, &track.artists);
                     } else {
@@ -288,8 +294,12 @@ impl PlayerUi {
                 let mut volume = self.snapshot.volume;
                 if !narrow {
                     ui.spacing_mut().slider_width = 66.;
+                    ui.spacing_mut().interact_size.y = 16.;
                     if ui
-                        .add(egui::Slider::new(&mut volume, 0.0..=1.0).show_value(false))
+                        .add_sized(
+                            [66., 16.],
+                            egui::Slider::new(&mut volume, 0.0..=1.0).show_value(false),
+                        )
                         .on_hover_text("音量")
                         .changed()
                     {

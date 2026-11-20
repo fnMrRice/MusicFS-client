@@ -22,7 +22,7 @@ fn text_cell(ui: &mut egui::Ui, width: f32, text: &str, color: Color32) {
         Vec2::new(width, 28.0),
         Layout::left_to_right(Align::Center),
         |ui| {
-            ui.set_max_width(width);
+            ui.set_width(width);
             ui.add(egui::Label::new(RichText::new(text).color(color)).truncate())
                 .on_hover_text(text);
         },
@@ -102,6 +102,7 @@ pub fn tracks(
         .corner_radius(6)
         .inner_margin(egui::Margin::symmetric(7, 2))
         .show(ui, |ui| {
+            ui.set_min_width(width);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
                 for (w, t) in [(34.0, "#"), (title_w, "曲名"), (artist_w, "歌手")] {

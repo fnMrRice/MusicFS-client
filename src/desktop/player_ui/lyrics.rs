@@ -1,3 +1,4 @@
+use std::sync::Arc;
 use std::time::Duration;
 
 pub enum Lyrics {
@@ -8,7 +9,7 @@ pub enum Lyrics {
 
 pub struct Line {
     pub time_ms: u64,
-    pub text: String,
+    pub parts: Vec<Arc<str>>,
 }
 
 fn timestamp(tag: &str) -> Option<u64> {
@@ -60,29 +61,28 @@ impl Lyrics {
                 times.push(ms.saturating_add_signed(offset.saturating_neg()));
                 text = rest;
             }
-            values.extend(times.into_iter().map(|time_ms| Line {
-                time_ms,
-                text: text.trim().to_owned(),
-            }));
+            if !times.is_empty() {
+                // 多时间戳共享同一段文字；同一行重复标记不应成倍扩大歌词内存。
+                times.sort_unstable();
+                times.dedup();
+                let text: Arc<str> = text.trim().into();
+                values.extend(times.into_iter().map(|time_ms| (time_ms, text.clone())));
+            }
         }
         if values.is_empty() {
             return Self::Plain(raw);
         }
-        values.sort_by_key(|line| line.time_ms);
+        values.sort_by_key(|(time_ms, _)| *time_ms);
         let mut lines: Vec<Line> = Vec::new();
-        for value in values {
-            if let Some(previous) = lines
-                .last_mut()
-                .filter(|line| line.time_ms == value.time_ms)
-            {
-                if !value.text.is_empty() {
-                    if !previous.text.is_empty() {
-                        previous.text.push('\n');
-                    }
-                    previous.text.push_str(&value.text);
-                }
-            } else {
-                lines.push(value);
+        for (time_ms, text) in values {
+            if lines.last().is_none_or(|line| line.time_ms != time_ms) {
+                lines.push(Line {
+                    time_ms,
+                    parts: Vec::new(),
+                });
+            }
+            if !text.is_empty() {
+                lines.last_mut().unwrap().parts.push(text);
             }
         }
         Self::Timed(lines)
@@ -107,8 +107,16 @@ mod tests {
             lines.iter().map(|l| l.time_ms).collect::<Vec<_>>(),
             [1250, 2950, 4800]
         );
-        assert_eq!(lines[0].text, "First\nTranslation");
-        assert_eq!(lines[1].text, "");
+        assert_eq!(
+            lines[0]
+                .parts
+                .iter()
+                .map(AsRef::as_ref)
+                .collect::<Vec<&str>>(),
+            ["First", "Translation"]
+        );
+        assert!(lines[1].parts.is_empty());
+        assert!(Arc::ptr_eq(&lines[0].parts[0], &lines[2].parts[0]));
         assert_eq!(lines.partition_point(|l| l.time_ms <= 1250), 1);
     }
     #[test]

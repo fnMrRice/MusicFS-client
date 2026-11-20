@@ -108,6 +108,7 @@ fn compact_header(ui: &mut egui::Ui, now: &Presentation, visible: &AtomicBool) {
             egui::vec2(width, 43.),
             egui::Layout::top_down(egui::Align::Min),
             |ui| {
+                ui.set_width(width);
                 heading(ui, now.title.as_deref().unwrap_or("尚未播放"), &now.artists);
             },
         );
@@ -218,24 +219,29 @@ impl LyricsState {
         match self.result.as_ref() {
             Some(Ok(Lyrics::Timed(lines))) => {
                 let next = lines.partition_point(|l| l.time_ms <= now.position_ms);
-                let current = next
-                    .checked_sub(1)
-                    .map(|i| lines[i].text.as_str())
-                    .unwrap_or("前奏");
+                let current = next.checked_sub(1).map(|i| &lines[i]);
                 egui::ScrollArea::vertical().show(ui, |ui| {
                     ui.vertical_centered(|ui| {
-                        ui.label(
-                            RichText::new(if current.is_empty() {
-                                "间奏"
-                            } else {
-                                current
-                            })
-                            .size(27.)
-                            .strong(),
-                        );
+                        if let Some(line) = current.filter(|line| !line.parts.is_empty()) {
+                            for text in &line.parts {
+                                ui.label(RichText::new(text.as_ref()).size(27.).strong());
+                            }
+                        } else {
+                            ui.label(
+                                RichText::new(if current.is_some() {
+                                    "间奏"
+                                } else {
+                                    "前奏"
+                                })
+                                .size(27.)
+                                .strong(),
+                            );
+                        }
                         if let Some(line) = lines.get(next) {
                             ui.add_space(7.);
-                            ui.weak(&line.text);
+                            for text in &line.parts {
+                                ui.weak(text.as_ref());
+                            }
                         }
                     })
                 });

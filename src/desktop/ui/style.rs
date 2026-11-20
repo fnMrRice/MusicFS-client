@@ -55,6 +55,16 @@ pub fn apply(ctx: &egui::Context, value: &str) {
                 .insert(egui::TextStyle::Heading, FontId::proportional(24.0));
             s.visuals.panel_fill = background(dark);
             s.visuals.window_fill = surface(dark);
+            s.visuals.extreme_bg_color = if dark {
+                Color32::from_rgb(28, 35, 43)
+            } else {
+                Color32::WHITE
+            };
+            s.visuals.widgets.noninteractive.fg_stroke.color = if dark {
+                Color32::from_rgb(235, 239, 244)
+            } else {
+                Color32::from_rgb(39, 51, 65)
+            };
             s.visuals.widgets.noninteractive.bg_stroke.color = if dark {
                 Color32::from_rgb(39, 46, 53)
             } else {
@@ -97,7 +107,7 @@ pub fn note(ui: &mut egui::Ui) {
         let (r, _) = ui.allocate_exact_size(Vec2::splat(29.0), Sense::hover());
         let p = ui.painter();
         let pt = |x: f32, y: f32| Pos2::new(r.left() + x, r.top() + y);
-        let stroke = Stroke::new(2.6, ACCENT);
+        let stroke = Stroke::new(2.6_f32, ACCENT);
         p.line_segment([pt(9.0, 22.0), pt(9.0, 6.0)], stroke);
         p.line_segment([pt(9.0, 6.0), pt(25.0, 3.0)], stroke);
         p.line_segment([pt(9.0, 10.0), pt(25.0, 7.0)], stroke);
@@ -144,7 +154,7 @@ pub fn vinyl(ui: &mut egui::Ui, r: Rect) {
         p.circle_stroke(
             center,
             radius - ring as f32 * 3.0,
-            Stroke::new(0.8, Color32::from_rgb(56, 51, 61)),
+            Stroke::new(0.8_f32, Color32::from_rgb(56, 51, 61)),
         );
     }
     p.circle_filled(center, radius * 0.31, Color32::from_rgb(198, 91, 112));

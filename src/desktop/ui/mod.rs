@@ -3,6 +3,7 @@ mod catalog;
 mod data;
 mod favorites;
 mod login;
+mod nav_icons;
 mod navigation;
 mod style;
 mod table;

@@ -1,6 +1,7 @@
 mod actions;
 mod catalog;
 mod data;
+mod favorites;
 mod login;
 mod navigation;
 mod style;
@@ -130,6 +131,7 @@ impl SignedUi {
     ) -> Option<HostAction> {
         self.browse.poll_types(ctx, svc.runtime, svc.server);
         let updated = self.actions.poll();
+        self.actions.favorites.sync(ctx, svc.runtime, svc.server);
         if updated.playlists {
             self.lists = Pages::default();
         }

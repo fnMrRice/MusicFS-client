@@ -46,6 +46,7 @@ pub fn tracks(
         }
         if ui.button("刷新").clicked() {
             data.reset_tracks();
+            actions.favorites.refresh();
         }
         ui.weak(format!(
             "{}{} 首",
@@ -59,6 +60,7 @@ pub fn tracks(
         if data.tracks.busy() {
             ui.spinner();
         }
+        actions.favorites.status(ui);
     });
     if let Some(error) = data.tracks.error.as_ref() {
         ui.colored_label(ui.visuals().error_fg_color, error);
@@ -177,18 +179,31 @@ pub fn tracks(
                                 text_cell(ui, album_w, t.album.as_deref().unwrap_or("—"), muted);
                             }
                             text_cell(ui, 51.0, &time(t.duration_ms), muted);
-                            let on = favorites || actions.favorites.contains(&t.id);
+                            let favorite = actions.favorites.contains(&t.id, favorites);
+                            let on = favorite == Some(true);
                             if ui
                                 .add_enabled(
-                                    !actions.busy(),
+                                    favorite.is_some() && !actions.busy(),
                                     egui::Button::new(
-                                        RichText::new(if on { "♥" } else { "♡" })
-                                            .size(17.0)
-                                            .color(if on { style::ACCENT } else { muted }),
+                                        RichText::new(match favorite {
+                                            Some(true) => "♥",
+                                            Some(false) => "♡",
+                                            None => "…",
+                                        })
+                                        .size(17.0)
+                                        .color(if on {
+                                            style::ACCENT
+                                        } else {
+                                            muted
+                                        }),
                                     )
                                     .frame(false),
                                 )
-                                .on_hover_text(if on { "取消收藏" } else { "加入收藏" })
+                                .on_hover_text(match favorite {
+                                    Some(true) => "取消收藏",
+                                    Some(false) => "加入收藏",
+                                    None => "尚未读取收藏状态",
+                                })
                                 .clicked()
                             {
                                 actions.toggle(ui, svc, t, !on);

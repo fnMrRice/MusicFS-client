@@ -1,9 +1,9 @@
 use super::data::Services;
+use super::favorites::Favorites;
 use super::style;
 use crate::task::Task;
 use eframe::egui;
 use musicfs_server_adapter::{Playlist, Track};
-use std::collections::HashSet;
 use uuid::Uuid;
 
 #[derive(Clone, PartialEq)]
@@ -28,7 +28,7 @@ pub struct Actions {
     pending: Option<Task<Change>>,
     editor: Option<Editor>,
     rebuild_key: Option<(String, u64, String)>,
-    pub favorites: HashSet<String>,
+    pub favorites: Favorites,
     pub notice: Option<(String, bool)>,
 }
 
@@ -90,11 +90,7 @@ impl Actions {
             self.pending = None;
             match result {
                 Ok(Change::Favorite(id, enabled)) => {
-                    if enabled {
-                        self.favorites.insert(id);
-                    } else {
-                        self.favorites.remove(&id);
-                    }
+                    self.favorites.record(id, enabled);
                     self.notice = Some((
                         (if enabled {
                             "已加入收藏"

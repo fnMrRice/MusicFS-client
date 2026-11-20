@@ -7,6 +7,7 @@ export interface Session {
 }
 
 export interface Track {
+  sourceOnly?: boolean;
   id: string;
   title: string;
   artists: string[];

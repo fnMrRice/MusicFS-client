@@ -30,7 +30,9 @@ pub fn run(receiver: Receiver<Request>, decoder: Worker) {
                 let result = player.apply(op).map(|_| player.state.clone());
                 let _ = reply.send(result);
             }
-            Ok(Request::Presentation(reply)) => { let _ = reply.send(player.presentation()); }
+            Ok(Request::Presentation(reply)) => {
+                let _ = reply.send(player.presentation());
+            }
             Err(RecvTimeoutError::Timeout) => (),
             Err(RecvTimeoutError::Disconnected) => break,
         }
@@ -58,13 +60,17 @@ impl Actor {
         let track = self.state.index.and_then(|i| self.state.queue.get(i));
         Presentation {
             instance: self.instance,
+            generation: self.generation,
             title: track.map(|t| t.title.clone()),
             artists: track.map(|t| t.artists.clone()).unwrap_or_default(),
             source_id: self.state.active_source_track_id.clone(),
             status: self.state.status,
             position_ms: self.state.position_ms,
             duration_ms: self.state.duration_ms,
-            has_next: self.state.index.is_some_and(|i| i + 1 < self.state.queue.len()),
+            has_next: self
+                .state
+                .index
+                .is_some_and(|i| i + 1 < self.state.queue.len()),
             error: self.state.error.clone(),
         }
     }
@@ -72,9 +78,15 @@ impl Actor {
         match op {
             Operation::Snapshot => Ok(()),
             Operation::Queue(tracks, start) => {
-                if tracks.is_empty() { return self.command(PlayerCommand::Clear); }
-                if start >= tracks.len() { return Err("Queue index is out of range.".into()); }
-                if tracks.iter().any(|t| t.id.is_empty()) { return Err("Missing track identifier.".into()); }
+                if tracks.is_empty() {
+                    return self.command(PlayerCommand::Clear);
+                }
+                if start >= tracks.len() {
+                    return Err("Queue index is out of range.".into());
+                }
+                if tracks.iter().any(|t| t.id.is_empty()) {
+                    return Err("Missing track identifier.".into());
+                }
                 self.state.queue = tracks;
                 self.select(start)
             }
@@ -86,7 +98,10 @@ impl Actor {
         match command {
             PlayerCommand::Select { index } => self.select(index),
             PlayerCommand::Play => self.play(),
-            PlayerCommand::Pause => { self.pause(); Ok(()) }
+            PlayerCommand::Pause => {
+                self.pause();
+                Ok(())
+            }
             PlayerCommand::Toggle => {
                 if matches!(self.state.status, Status::Playing | Status::Loading) && !self.paused {
                     self.pause();
@@ -95,7 +110,7 @@ impl Actor {
                     self.play()
                 }
             }
-            PlayerCommand::Next => self.advance(),
+            PlayerCommand::Next => self.advance(false),
             PlayerCommand::Previous => {
                 let index = self.state.index.ok_or("Queue is empty.")?;
                 self.select(index.saturating_sub(1))
@@ -117,7 +132,9 @@ impl Actor {
                     return Err("Volume must be between 0 and 1.".into());
                 }
                 self.state.volume = volume;
-                if let Some(sink) = &self.sink { sink.set_volume(volume); }
+                if let Some(sink) = &self.sink {
+                    sink.set_volume(volume);
+                }
                 Ok(())
             }
             PlayerCommand::Seek { position_ms } => self.seek(position_ms),
@@ -125,16 +142,24 @@ impl Actor {
     }
 
     fn detach_sink(&mut self) {
-        if let Some(sink) = self.sink.take() { sink.stop(); }
+        if let Some(sink) = self.sink.take() {
+            sink.stop();
+        }
         self.clock = None;
     }
 
     fn stop_output(&mut self) {
+        self.reset_media(false);
+    }
+
+    fn reset_media(&mut self, drain_tail: bool) {
         self.generation = self.decoder.cancel();
         self.seeks = None;
         self.detach_sink();
-        self.output = None;
-        self.device_lost = Arc::new(AtomicBool::new(false));
+        if !drain_tail {
+            self.output = None;
+            self.device_lost = Arc::new(AtomicBool::new(false));
+        }
         self.lifecycle = None;
         self.state.seekable = false;
         self.state.seek_range_ms = None;
@@ -143,8 +168,17 @@ impl Actor {
     }
 
     fn select(&mut self, index: usize) -> Result<(), String> {
-        let track: Track = self.state.queue.get(index).ok_or("Queue index is out of range.")?.clone();
-        self.stop_output();
+        self.start(index, false)
+    }
+
+    fn start(&mut self, index: usize, drain_tail: bool) -> Result<(), String> {
+        let track: Track = self
+            .state
+            .queue
+            .get(index)
+            .ok_or("Queue index is out of range.")?
+            .clone();
+        self.reset_media(drain_tail);
         self.revision = 0;
         self.state.index = Some(index);
         self.state.position_ms = 0;
@@ -152,14 +186,22 @@ impl Actor {
         self.state.status = Status::Loading;
         self.state.error = None;
         match self.decoder.load(self.generation, track) {
-            Ok(seeks) => { self.seeks = Some(seeks); Ok(()) }
-            Err(error) => { self.fail(error.clone()); Err(error) }
+            Ok(seeks) => {
+                self.seeks = Some(seeks);
+                Ok(())
+            }
+            Err(error) => {
+                self.fail(error.clone());
+                Err(error)
+            }
         }
     }
 
     fn play(&mut self) -> Result<(), String> {
         let index = self.state.index.ok_or("Queue is empty.")?;
-        if self.seeks.is_none() { return self.select(index); }
+        if self.seeks.is_none() {
+            return self.select(index);
+        }
         self.paused = false;
         if let Some(sink) = &self.sink {
             sink.play();
@@ -171,32 +213,50 @@ impl Actor {
     }
 
     fn pause(&mut self) {
-        if self.seeks.is_none() { return; }
+        if self.seeks.is_none() {
+            return;
+        }
         self.paused = true;
-        if let Some(sink) = &self.sink { sink.pause(); }
+        if let Some(sink) = &self.sink {
+            sink.pause();
+        }
         self.state.status = Status::Paused;
     }
 
-    fn advance(&mut self) -> Result<(), String> {
+    fn advance(&mut self, drain_tail: bool) -> Result<(), String> {
         let index = self.state.index.ok_or("Queue is empty.")?;
-        if index + 1 < self.state.queue.len() { return self.select(index + 1); }
-        self.stop_output();
+        if index + 1 < self.state.queue.len() {
+            return self.start(index + 1, drain_tail);
+        }
+        // 曲终时保留输出设备，让系统缓冲区内的末尾样本实际播完。
+        self.reset_media(drain_tail);
         self.state.status = Status::Ended;
         Ok(())
     }
 
     fn seek(&mut self, position_ms: u64) -> Result<(), String> {
-        if !self.state.seekable { return Err("This stream does not support seeking.".into()); }
+        if !self.state.seekable {
+            return Err("This stream does not support seeking.".into());
+        }
         let (start, end) = self.state.seek_range_ms.ok_or("No seekable range.")?;
-        if !(start..=end).contains(&position_ms) { return Err("Position is outside the seekable range.".into()); }
+        if !(start..=end).contains(&position_ms) {
+            return Err("Position is outside the seekable range.".into());
+        }
         let target = position_ms;
         let revision = self.revision + 1;
-        self.seeks.as_ref().ok_or("No active playback.")?
-            .send((revision, target)).map_err(|_| "Decoder is unavailable.")?;
+        self.seeks
+            .as_ref()
+            .ok_or("No active playback.")?
+            .send((revision, target))
+            .map_err(|_| "Decoder is unavailable.")?;
         self.revision = revision;
         self.detach_sink();
         self.state.position_ms = target;
-        self.state.status = if self.paused { Status::Paused } else { Status::Loading };
+        self.state.status = if self.paused {
+            Status::Paused
+        } else {
+            Status::Loading
+        };
         Ok(())
     }
 
@@ -209,7 +269,9 @@ impl Actor {
     fn poll(&mut self) {
         while let Ok((generation, event)) = self.decoder.events.try_recv() {
             if generation == self.generation {
-                if let Err(error) = self.handle(event) { self.fail(error); }
+                if let Err(error) = self.handle(event) {
+                    self.fail(error);
+                }
             }
         }
         if self.device_lost.swap(false, Ordering::AcqRel) {
@@ -219,11 +281,15 @@ impl Actor {
         if let Some(clock) = &self.clock {
             self.state.position_ms = clock.position_ms();
             if clock.started() {
-                if let Some(started) = self.lifecycle.as_mut().and_then(|l| l.started.take()) { started(); }
+                if let Some(started) = self.lifecycle.as_mut().and_then(|l| l.started.take()) {
+                    started();
+                }
             }
         }
         if self.sink.as_ref().is_some_and(Sink::empty) {
-            if let Err(error) = self.advance() { self.fail(error); }
+            if let Err(error) = self.advance(true) {
+                self.fail(error);
+            }
         }
     }
 
@@ -235,29 +301,48 @@ impl Actor {
                 self.lifecycle = Some(lifecycle);
                 Ok(())
             }
-            Event::Ready { revision, source, clock, duration_ms, seekable } => {
-                if revision != self.revision { return Ok(()); }
+            Event::Ready {
+                revision,
+                source,
+                clock,
+                duration_ms,
+                seekable,
+            } => {
+                if revision != self.revision {
+                    return Ok(());
+                }
                 if self.output.is_none() {
                     self.device_lost = Arc::new(AtomicBool::new(false));
                     let lost = self.device_lost.clone();
                     let builder = OutputStreamBuilder::from_default_device()
                         .map_err(|e| format!("Audio output device is unavailable: {e}"))?;
-                    let mut output = builder.with_error_callback(move |_| lost.store(true, Ordering::Release))
-                        .open_stream_or_fallback().map_err(|e| format!("Audio output failed: {e}"))?;
+                    let mut output = builder
+                        .with_error_callback(move |_| lost.store(true, Ordering::Release))
+                        .open_stream_or_fallback()
+                        .map_err(|e| format!("Audio output failed: {e}"))?;
                     output.log_on_drop(false);
                     self.output = Some(output);
                 }
                 let sink = Sink::connect_new(self.output.as_ref().unwrap().mixer());
                 sink.set_volume(self.state.volume);
-                if self.paused { sink.pause(); }
+                if self.paused {
+                    sink.pause();
+                }
                 sink.append(*source);
                 self.clock = Some(clock);
                 self.sink = Some(sink);
-                self.state.seek_range_ms = self.lifecycle.as_ref().and_then(|l| l.seek_range_ms)
+                self.state.seek_range_ms = self
+                    .lifecycle
+                    .as_ref()
+                    .and_then(|l| l.seek_range_ms)
                     .filter(|(start, end)| seekable && start < end);
                 self.state.seekable = self.state.seek_range_ms.is_some();
                 self.state.duration_ms = duration_ms.or(self.state.duration_ms);
-                self.state.status = if self.paused { Status::Paused } else { Status::Playing };
+                self.state.status = if self.paused {
+                    Status::Paused
+                } else {
+                    Status::Playing
+                };
                 Ok(())
             }
         }

@@ -1,0 +1,23 @@
+.works-page { display: grid; gap: 18px; align-content: start; margin-top: 12px; }
+.work-search, .work-copy, .work-directory header, .work-directory li, .work-return { display: flex; align-items: center; gap: 10px; }
+.work-search input { flex: 1; max-width: 450px; }
+.work-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr)); gap: 10px; }
+.work-cards a { display: flex; gap: 13px; align-items: center; min-width: 0; border: 1px solid var(--line); border-radius: 11px; background: var(--panel); padding: 14px; }
+.work-cards a:hover { background: var(--hover); }
+.work-cards a > span:not(.work-mark), .work-directory li > div { flex: 1; min-width: 0; }
+.work-cards strong, .work-cards small, .work-directory strong, .work-directory small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.work-mark { display: grid; place-items: center; flex: none; width: 44px; height: 44px; background: var(--accent-soft); color: var(--accent); border-radius: 10px; }
+.work-cards small, .work-title p, .work-title small, .work-directory small, .work-directory li > span, .work-return { color: var(--muted); }
+.work-cards strong, .work-directory strong { font-size: 14px; }
+.work-cards small, .work-directory small { font-size: 12px; margin-top: 4px; }
+.work-title h2 { font-size: 26px; }
+.work-title p, .work-title small { display: block; margin-top: 6px; }
+.work-description { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.65; }
+.work-return, .work-copy { font-size: 13px; width: fit-content; }
+.work-directory { border: 1px solid var(--line); overflow: hidden; border-radius: 10px; }
+.work-directory header { padding: 9px 14px; background: var(--panel); }
+.work-directory h3 { font-size: 14px; flex: 1; overflow-wrap: anywhere; }
+.work-directory header button { padding: 5px 8px; font-size: 12px; }
+.work-directory ol { margin: 0; padding: 0; }
+.work-directory li { padding: 7px 14px; border-top: 1px solid var(--line); }
+.work-directory li > span { font-size: 12px; font-variant-numeric: tabular-nums; }

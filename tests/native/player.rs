@@ -8,6 +8,7 @@ use std::time::Duration;
 fn track(id: &str) -> Track {
     Track {
         id: id.into(),
+        source_only: false,
         title: id.into(),
         artists: vec![],
         album: None,
@@ -34,7 +35,9 @@ fn test_audio(on_close: impl FnOnce() + Send + 'static) -> Media {
     wav.extend_from_slice(&16u16.to_le_bytes());
     wav.extend_from_slice(b"data");
     wav.extend_from_slice(&(samples * 2).to_le_bytes());
-    for _ in 0..samples { wav.extend_from_slice(&4096i16.to_le_bytes()); }
+    for _ in 0..samples {
+        wav.extend_from_slice(&4096i16.to_le_bytes());
+    }
     Media {
         source_track_id: "test".into(),
         seek_range_ms: Some((0, 100)),
@@ -52,20 +55,49 @@ fn decodes_and_seeks_wav_without_a_device() {
     let observed = closed.clone();
     let worker = Worker::new(move |_| {
         let observed = observed.clone();
-        Ok(test_audio(move || { observed.fetch_add(1, Ordering::SeqCst); }))
-    }).unwrap();
+        Ok(test_audio(move || {
+            observed.fetch_add(1, Ordering::SeqCst);
+        }))
+    })
+    .unwrap();
     let generation = worker.cancel();
     let seek = worker.load(generation, track("a")).unwrap();
-    let receive = || worker.events.recv_timeout(Duration::from_secs(3)).unwrap().1;
-    let Event::Opened(lease) = receive() else { panic!("Missing lease") };
-    let Event::Ready { mut source, clock, seekable, .. } = receive() else { panic!("Missing PCM") };
+    let receive = || {
+        worker
+            .events
+            .recv_timeout(Duration::from_secs(3))
+            .unwrap()
+            .1
+    };
+    let Event::Opened(lease) = receive() else {
+        panic!("Missing lease")
+    };
+    let Event::Ready {
+        mut source,
+        clock,
+        seekable,
+        ..
+    } = receive()
+    else {
+        panic!("Missing PCM")
+    };
     assert!(seekable);
     assert_eq!(clock.position_ms(), 0);
-    for _ in 0..400 { assert!(source.next().unwrap() > 0.0); }
+    for _ in 0..400 {
+        assert!(source.next().unwrap() > 0.0);
+    }
     assert_eq!(clock.position_ms(), 50);
     drop(source);
     seek.send((1, 70)).unwrap();
-    let Event::Ready { revision, mut source, clock, .. } = receive() else { panic!("Seek failed") };
+    let Event::Ready {
+        revision,
+        mut source,
+        clock,
+        ..
+    } = receive()
+    else {
+        panic!("Seek failed")
+    };
     assert_eq!(revision, 1);
     assert_eq!(clock.position_ms(), 70);
     assert!(source.next().unwrap() > 0.0);
@@ -83,16 +115,26 @@ fn clear_invalidates_a_blocked_load_and_closes_its_late_lease() {
     let player = Player::new(move |_| {
         entered.send(()).unwrap();
         let (lock, changed) = &*wait_gate;
-        let _opened = changed.wait_while(lock.lock().unwrap(), |open| !*open).unwrap();
+        let _opened = changed
+            .wait_while(lock.lock().unwrap(), |open| !*open)
+            .unwrap();
         let closed = closed.clone();
-        Ok(test_audio(move || { let _ = closed.send(()); }))
-    }).unwrap();
+        Ok(test_audio(move || {
+            let _ = closed.send(());
+        }))
+    })
+    .unwrap();
     let snapshot = player.set_queue(vec![track("a")], 0).unwrap();
     assert_eq!(snapshot.status, Status::Loading);
     loading.recv_timeout(Duration::from_secs(3)).unwrap();
     assert!(player.command(PlayerCommand::Select { index: 1 }).is_err());
-    assert!(player.command(PlayerCommand::Volume { volume: 2.0 }).is_err());
-    assert_eq!(player.command(PlayerCommand::Pause).unwrap().status, Status::Paused);
+    assert!(player
+        .command(PlayerCommand::Volume { volume: 2.0 })
+        .is_err());
+    assert_eq!(
+        player.command(PlayerCommand::Pause).unwrap().status,
+        Status::Paused
+    );
     let snapshot = player.command(PlayerCommand::Clear).unwrap();
     assert!(snapshot.queue.is_empty());
     assert_eq!(snapshot.index, None);

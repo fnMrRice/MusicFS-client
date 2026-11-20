@@ -30,6 +30,8 @@ pub struct Media {
 #[serde(rename_all = "camelCase")]
 pub struct Track {
     pub id: String,
+    #[serde(default)]
+    pub source_only: bool,
     pub title: String,
     pub artists: Vec<String>,
     pub album: Option<String>,
@@ -42,7 +44,12 @@ pub struct Track {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Status {
-    Idle, Loading, Playing, Paused, Error, Ended,
+    Idle,
+    Loading,
+    Playing,
+    Paused,
+    Error,
+    Ended,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -63,17 +70,34 @@ pub struct PlayerSnapshot {
 impl Default for PlayerSnapshot {
     fn default() -> Self {
         Self {
-            queue: Vec::new(), index: None, status: Status::Idle,
-            position_ms: 0, duration_ms: None, volume: 1.0, seekable: false,
-            seek_range_ms: None, active_source_track_id: None, error: None,
+            queue: Vec::new(),
+            index: None,
+            status: Status::Idle,
+            position_ms: 0,
+            duration_ms: None,
+            volume: 1.0,
+            seekable: false,
+            seek_range_ms: None,
+            active_source_track_id: None,
+            error: None,
         }
     }
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum PlayerCommand {
-    Play, Pause, Toggle, Next, Previous, Stop, Clear,
+    Play,
+    Pause,
+    Toggle,
+    Next,
+    Previous,
+    Stop,
+    Clear,
     Seek { position_ms: u64 },
     Volume { volume: f32 },
     Select { index: usize },
@@ -95,6 +119,7 @@ enum Request {
 #[serde(rename_all = "camelCase")]
 pub struct Presentation {
     pub instance: u64,
+    pub generation: u64,
     pub title: Option<String>,
     pub artists: Vec<String>,
     pub source_id: Option<String>,
@@ -116,22 +141,30 @@ impl Player {
     ) -> Result<Self, String> {
         let (requests, receiver) = channel();
         let decoder = decode::Worker::new(loader)?;
-        thread::Builder::new().name("player-control".into())
-            .spawn(move || actor::run(receiver, decoder)).map_err(|e| e.to_string())?;
+        thread::Builder::new()
+            .name("player-control".into())
+            .spawn(move || actor::run(receiver, decoder))
+            .map_err(|e| e.to_string())?;
         Ok(Self { requests })
     }
 
     fn request(&self, operation: Operation) -> Reply {
         let (reply, response) = channel();
-        self.requests.send(Request::Full(operation, reply)).map_err(|_| "Player is unavailable.")?;
+        self.requests
+            .send(Request::Full(operation, reply))
+            .map_err(|_| "Player is unavailable.")?;
         response.recv().map_err(|_| "Player is unavailable.")?
     }
 
-    pub fn snapshot(&self) -> Reply { self.request(Operation::Snapshot) }
+    pub fn snapshot(&self) -> Reply {
+        self.request(Operation::Snapshot)
+    }
 
     pub fn presentation(&self) -> Result<Presentation, String> {
         let (reply, response) = channel();
-        self.requests.send(Request::Presentation(reply)).map_err(|_| "Player is unavailable.")?;
+        self.requests
+            .send(Request::Presentation(reply))
+            .map_err(|_| "Player is unavailable.")?;
         response.recv().map_err(|_| "Player is unavailable.".into())
     }
 

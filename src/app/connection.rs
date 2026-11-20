@@ -18,13 +18,20 @@ pub struct Desktop {
 
 impl Desktop {
     pub fn connection(&self) -> Result<Connection, String> {
-        self.connection.read().map_err(|_| "Connection unavailable.")?
-            .clone().ok_or_else(|| "Sign in to MusicFS first.".into())
+        self.connection
+            .read()
+            .map_err(|_| "Connection unavailable.")?
+            .clone()
+            .ok_or_else(|| "Sign in to MusicFS first.".into())
     }
 
     pub async fn close(&self) -> Result<(), String> {
         let _guard = self.transition.lock().await;
-        let previous = self.connection.write().map_err(|_| "Connection unavailable.")?.take();
+        let previous = self
+            .connection
+            .write()
+            .map_err(|_| "Connection unavailable.")?
+            .take();
         if let Some(previous) = previous {
             let stopped = previous.player.command(PlayerCommand::Clear);
             previous.server.logout().await?;
@@ -35,9 +42,15 @@ impl Desktop {
 }
 
 fn load(server: &ServerSession, track: &Track) -> Result<Media, String> {
-    let source = track.source_track_id.as_deref().ok_or("This track has no available source.")?;
+    let source = track
+        .source_track_id
+        .as_deref()
+        .ok_or("This track has no available source.")?;
     let lease = tauri::async_runtime::block_on(server.create_playback(
-        &track.id, source, track.forced_source_track_id.as_deref(), SUPPORTED_MIMES,
+        if track.source_only { "" } else { &track.id },
+        source,
+        track.forced_source_track_id.as_deref(),
+        SUPPORTED_MIMES,
     ))?;
     let reader = match server.open_audio_reader(&lease) {
         Ok(reader) => reader,
@@ -70,14 +83,26 @@ fn load(server: &ServerSession, track: &Track) -> Result<Media, String> {
 
 #[tauri::command]
 pub fn current_session(state: State<'_, Desktop>) -> Result<Option<SessionInfo>, String> {
-    let guard = state.connection.read().map_err(|_| "Connection unavailable.")?;
+    let guard = state
+        .connection
+        .read()
+        .map_err(|_| "Connection unavailable.")?;
     Ok(guard.as_ref().map(|c| c.server.info.clone()))
 }
 
 #[tauri::command]
-pub async fn connect(state: State<'_, Desktop>, endpoint: String, token: String) -> Result<SessionInfo, String> {
+pub async fn connect(
+    state: State<'_, Desktop>,
+    endpoint: String,
+    token: String,
+) -> Result<SessionInfo, String> {
     let _guard = state.transition.lock().await;
-    if state.connection.read().map_err(|_| "Connection unavailable.")?.is_some() {
+    if state
+        .connection
+        .read()
+        .map_err(|_| "Connection unavailable.")?
+        .is_some()
+    {
         return Err("Disconnect before changing servers.".into());
     }
     let server = ServerSession::login(&endpoint, &token).await?;
@@ -90,7 +115,10 @@ pub async fn connect(state: State<'_, Desktop>, endpoint: String, token: String)
         }
     };
     let info = server.info.clone();
-    *state.connection.write().map_err(|_| "Connection unavailable.")? = Some(Connection { server, player });
+    *state
+        .connection
+        .write()
+        .map_err(|_| "Connection unavailable.")? = Some(Connection { server, player });
     Ok(info)
 }
 

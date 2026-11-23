@@ -3,6 +3,9 @@ use reqwest::Method;
 use serde_json::Value;
 use url::Url;
 
+#[path = "platform_avatar.rs"]
+mod platform_avatar;
+
 // 设置页面只访问当前会话的 API，查询参数由各功能按自身协议编码。
 fn api_url(origin: &Url, path: &str) -> Result<Url> {
     if !path.starts_with('/') || path.starts_with("//") || path.contains(['#', '\\']) {

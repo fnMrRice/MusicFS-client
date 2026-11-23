@@ -239,11 +239,8 @@ impl Player {
     }
 
     pub fn play_next_many(&self, tracks: Vec<Track>) -> Result<(), String> {
-        self.request(Operation::Enqueue {
-            tracks,
-            next: true,
-        })
-        .map(|_| ())
+        self.request(Operation::Enqueue { tracks, next: true })
+            .map(|_| ())
     }
 
     pub fn command(&self, command: PlayerCommand) -> Reply {

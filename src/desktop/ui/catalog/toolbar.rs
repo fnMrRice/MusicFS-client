@@ -3,6 +3,15 @@ use super::*;
 use crate::icons;
 use musicfs_server_adapter::Playlist;
 
+// 上一排的最小宽度可能大于视口，靠右的控件必须使用当前可见范围。
+fn available_width(ui: &egui::Ui) -> f32 {
+    ui.available_rect_before_wrap()
+        .intersect(ui.clip_rect())
+        .intersect(ui.ctx().screen_rect())
+        .width()
+        .max(0.)
+}
+
 impl Catalog {
     pub(super) fn category_tabs(&mut self, ui: &mut egui::Ui) {
         let span = ui.max_rect().intersect(ui.clip_rect());
@@ -87,10 +96,7 @@ impl Catalog {
             0.
         };
         let field = ui.add_sized(
-            [
-                (ui.available_rect_before_wrap().width() - after).clamp(100., 190.),
-                36.,
-            ],
+            [(available_width(ui) - after).clamp(100., 190.), 36.],
             egui::TextEdit::singleline(&mut self.list_draft)
                 .hint_text(tr("搜索当前列表"))
                 .margin(egui::Margin::symmetric(12, 4))
@@ -181,14 +187,13 @@ impl Catalog {
         actions: &mut Actions,
     ) -> bool {
         let mut changed = false;
-        let wide = ui.available_width() >= 1200.0;
+        let wide = available_width(ui) >= 1200.0;
         ui.horizontal_wrapped(|ui| {
             ui.spacing_mut().item_spacing.x = 12.;
             ui.spacing_mut().interact_size.y = 39.;
             changed |= self.filters(ui);
             if wide {
-                let space =
-                    (ui.available_rect_before_wrap().width() - self.actions_width(ui)).max(0.);
+                let space = (available_width(ui) - self.actions_width(ui)).max(0.);
                 ui.add_space(space);
                 changed |= self.list_controls(ui, svc, actions);
             }
@@ -196,8 +201,7 @@ impl Catalog {
         if !wide {
             ui.horizontal_wrapped(|ui| {
                 ui.spacing_mut().interact_size.y = 39.;
-                let space =
-                    (ui.available_rect_before_wrap().width() - self.actions_width(ui)).max(0.);
+                let space = (available_width(ui) - self.actions_width(ui)).max(0.);
                 if space > 0. {
                     ui.add_space(space);
                 }
@@ -339,7 +343,7 @@ impl Catalog {
             if self.tracks.busy() || self.complete.is_some() {
                 ui.spinner();
             }
-            let remain = ui.available_rect_before_wrap().width();
+            let remain = available_width(ui);
             if width >= 520. && remain > 116. {
                 ui.add_space(remain - 116.);
             }

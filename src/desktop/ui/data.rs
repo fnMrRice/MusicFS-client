@@ -136,31 +136,31 @@ impl TrackQuery {
 }
 
 pub fn queue_track(track: &Track) -> Option<QueueTrack> {
-    track.source_track_id.as_ref()?;
+    track.playable_source_id()?;
     Some(QueueTrack {
         id: track.id.clone(),
         source_only: false,
         title: track.title.clone(),
         artists: track.artists.clone(),
         album: track.album.clone(),
-        source_track_id: track.source_track_id.clone(),
+        source_track_id: track.playable_source_id().map(str::to_owned),
         forced_source_track_id: track.forced_source_track_id.clone(),
-        duration_ms: track.duration_ms,
-        cover_object_id: track.cover_object_id.clone(),
+        duration_ms: track.source().and_then(|s| s.duration_ms),
+        cover_object_id: track.cover().map(str::to_owned),
     })
 }
 
 pub fn play_row(player: &Player, rows: &[Track], index: usize) -> Result<(), String> {
     if rows
         .get(index)
-        .and_then(|t| t.source_track_id.as_ref())
+        .and_then(|t| t.playable_source_id())
         .is_none()
     {
         return Err("此曲目暂无可用音源。".into());
     }
     let start = rows[..index]
         .iter()
-        .filter(|t| t.source_track_id.is_some())
+        .filter(|t| t.playable_source_id().is_some())
         .count();
     player
         .set_queue(rows.iter().filter_map(queue_track).collect(), start)

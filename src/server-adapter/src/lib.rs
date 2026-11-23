@@ -5,6 +5,8 @@ mod playlist_edit;
 mod reader;
 mod recommendations;
 mod settings;
+mod track;
+pub use track::{SourceGroup, SourceVersion};
 mod works;
 
 use std::sync::{

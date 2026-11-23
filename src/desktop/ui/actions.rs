@@ -43,9 +43,9 @@ impl Actions {
         self.pending.is_some()
     }
     pub fn open(&mut self, track: &Track, lists: &[Playlist]) {
-        if let Some(source) = &track.source_track_id {
+        if let Some(source) = track.playable_source_id() {
             self.editor = Some(Editor {
-                source: source.clone(),
+                source: source.to_owned(),
                 title: track.title.clone(),
                 target_id: lists.first().map(|p| p.id.clone()),
                 name: String::new(),

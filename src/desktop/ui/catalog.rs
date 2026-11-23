@@ -197,7 +197,7 @@ impl Catalog {
                     .tracks
                     .items
                     .iter()
-                    .any(|t| t.source_track_id.is_some()));
+                    .any(|t| t.playable_source_id().is_some()));
         if style::primary(
             ui,
             if self.complete.is_some() {

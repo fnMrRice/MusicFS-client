@@ -10,9 +10,10 @@ fn page(ids: &[&str], next: Option<&str>) -> Page<Track> {
                 title: String::new(),
                 artists: vec![],
                 album: None,
-                source_track_id: None,
+
                 forced_source_track_id: None,
-                duration_ms: None,
+                sources: None,
+                unresolved: false,
                 cover_object_id: None,
             })
             .collect(),

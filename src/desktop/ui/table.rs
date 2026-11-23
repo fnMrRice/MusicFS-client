@@ -130,8 +130,7 @@ pub fn tracks(
                     continue;
                 }
                 let t = &data.tracks.items[i];
-                let selected =
-                    active_source.is_some() && t.source_track_id.as_deref() == active_source;
+                let selected = active_source.is_some() && t.playable_source_id() == active_source;
                 let text = if selected {
                     style::ACCENT
                 } else {
@@ -142,7 +141,7 @@ pub fn tracks(
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 4.0;
                             ui.add_space(3.0);
-                            let playable = t.source_track_id.is_some();
+                            let playable = t.playable_source_id().is_some();
                             let index = if selected {
                                 "▶".into()
                             } else {
@@ -179,7 +178,12 @@ pub fn tracks(
                             if show_album {
                                 text_cell(ui, album_w, t.album.as_deref().unwrap_or("—"), muted);
                             }
-                            text_cell(ui, 51.0, &time(t.duration_ms), muted);
+                            text_cell(
+                                ui,
+                                51.0,
+                                &time(t.source().and_then(|s| s.duration_ms)),
+                                muted,
+                            );
                             let favorite = actions.favorites.contains(&t.id, favorites);
                             let on = favorite == Some(true);
                             if ui
@@ -227,7 +231,7 @@ pub fn tracks(
                         i.pointer
                             .button_double_clicked(egui::PointerButton::Primary)
                     })
-                    && t.source_track_id.is_some()
+                    && t.playable_source_id().is_some()
                 {
                     play = Some(i);
                 }

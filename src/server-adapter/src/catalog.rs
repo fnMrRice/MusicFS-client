@@ -9,18 +9,8 @@ use super::{check_id, decode, Result, ServerSession};
 mod categories;
 pub use categories::{Category, CategoryKind};
 
-#[derive(Clone, Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Track {
-    pub id: String,
-    pub title: String,
-    pub artists: Vec<String>,
-    pub album: Option<String>,
-    pub source_track_id: Option<String>,
-    pub forced_source_track_id: Option<String>,
-    pub duration_ms: Option<u64>,
-    pub cover_object_id: Option<String>,
-}
+use super::track::MusicTrack;
+pub use super::track::Track;
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -46,30 +36,6 @@ struct WirePage<T> {
     items: Vec<T>,
     #[serde(alias = "nextAfter")]
     next_cursor: Option<String>,
-}
-#[derive(Deserialize)]
-struct Name {
-    name: String,
-}
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Source {
-    source_track_id: String,
-    availability: String,
-    duration_ms: Option<u64>,
-    cover_object_id: Option<String>,
-    #[serde(default)]
-    versions: Vec<Source>,
-}
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct MusicTrack {
-    track_id: String,
-    title: String,
-    artists: Vec<Name>,
-    albums: Vec<Name>,
-    cover_path: Option<String>,
-    selected_source: Option<Source>,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -100,45 +66,6 @@ struct Snapshot {
     playlist_id: String,
 }
 
-impl MusicTrack {
-    fn into_track(self, forced: Option<String>) -> Track {
-        let source = self
-            .selected_source
-            .as_ref()
-            .and_then(|group| match forced.as_deref() {
-                Some(id) if group.source_track_id != id => {
-                    group.versions.iter().find(|s| s.source_track_id == id)
-                }
-                _ => Some(group),
-            });
-        let albums = self
-            .albums
-            .into_iter()
-            .map(|v| v.name)
-            .collect::<Vec<_>>()
-            .join(" / ");
-        let cover_object_id = self
-            .cover_path
-            .as_deref()
-            .and_then(|p| p.strip_prefix("/api/v1/media/"))
-            .and_then(|id| check_id(id).ok())
-            .map(str::to_owned)
-            .or_else(|| source.and_then(|s| s.cover_object_id.clone()));
-        Track {
-            id: self.track_id,
-            title: self.title,
-            artists: self.artists.into_iter().map(|v| v.name).collect(),
-            album: (!albums.is_empty()).then_some(albums),
-            forced_source_track_id: forced,
-            source_track_id: source
-                .filter(|s| s.availability == "available")
-                .map(|s| s.source_track_id.clone()),
-            duration_ms: source.and_then(|s| s.duration_ms),
-            cover_object_id,
-        }
-    }
-}
-
 impl ServerSession {
     pub(crate) async fn playback_source(
         &self,
@@ -153,7 +80,8 @@ impl ServerSession {
         }
         track
             .into_track(forced.map(str::to_owned))
-            .source_track_id
+            .playable_source_id()
+            .map(str::to_owned)
             .ok_or_else(|| "No playable source for this track.".into())
     }
 
@@ -261,12 +189,9 @@ impl ServerSession {
         Ok(Track {
             title: id.clone(),
             id,
-            artists: Vec::new(),
-            album: None,
-            source_track_id: None,
             forced_source_track_id: forced,
-            duration_ms: None,
-            cover_object_id: None,
+            unresolved: true,
+            ..Track::default()
         })
     }
 

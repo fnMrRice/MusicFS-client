@@ -61,9 +61,9 @@ fn opens_playlist_from_second_page_after_refreshing_the_directory() {
             .unwrap()
             .items
             .into_iter()
-            .find(|t| t.source_track_id.is_some())
+            .find(|t| t.playable_source_id().is_some())
             .unwrap();
-        let source = [track.source_track_id.clone().unwrap()];
+        let source = [track.playable_source_id().map(str::to_owned).unwrap()];
         for i in 0..51 {
             server
                 .create_playlist(

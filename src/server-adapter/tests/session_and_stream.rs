@@ -28,7 +28,7 @@ async fn isolated_server_round_trip() {
     let track = tracks
         .items
         .iter()
-        .find(|t| t.source_track_id.is_some())
+        .find(|t| t.playable_source_id().is_some())
         .expect("Missing playable test track");
     assert!(session
         .tracks(&track.title, None)
@@ -46,7 +46,7 @@ async fn isolated_server_round_trip() {
         .iter()
         .any(|t| t.id == track.id));
     session.set_favorite(&track.id, false).await.unwrap();
-    let source_ids = vec![track.source_track_id.clone().unwrap()];
+    let source_ids = vec![track.playable_source_id().map(str::to_owned).unwrap()];
     let operation = uuid::Uuid::new_v4().to_string();
     let created = session
         .create_playlist("Desktop integration", &source_ids, &operation)
@@ -91,13 +91,13 @@ async fn isolated_server_round_trip() {
     assert!(entries
         .items
         .iter()
-        .any(|t| t.source_track_id == track.source_track_id));
+        .any(|t| t.playable_source_id() == track.playable_source_id()));
     session.lyrics(&source_ids[0]).await.unwrap();
 
     let lease = session
         .create_playback(
             &track.id,
-            track.source_track_id.as_deref().unwrap(),
+            track.playable_source_id().unwrap(),
             None,
             &["audio/wav", "audio/mpeg", "audio/flac"],
             false,

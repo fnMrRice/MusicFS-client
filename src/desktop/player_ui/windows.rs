@@ -1,5 +1,6 @@
 use super::controls::{heading, icon_button, Glyph, ACCENT};
 use super::lyrics::{time, Lyrics};
+use crate::i18n::tr;
 use crate::task::Task;
 use eframe::egui::{self, Context, RichText, ViewportBuilder, ViewportCommand, ViewportId};
 use musicfs_player_core::{Player, PlayerCommand, Presentation, Status};
@@ -30,7 +31,7 @@ impl Windows {
             let player = player.clone();
             ctx.show_viewport_deferred(
                 ViewportId::from_hash_of("musicfs-mini"),
-                viewport("MusicFS · 迷你播放器", [410., 146.], [325., 140.]),
+                viewport(tr("MusicFS · 迷你播放器"), [410., 146.], [325., 140.]),
                 move |ctx, _| {
                     if !active(ctx, &visible) {
                         return;
@@ -53,7 +54,7 @@ impl Windows {
             let runtime = runtime.clone();
             ctx.show_viewport_deferred(
                 ViewportId::from_hash_of("musicfs-lyrics"),
-                viewport("MusicFS · 桌面歌词", [640., 232.], [350., 170.]),
+                viewport(tr("MusicFS · 桌面歌词"), [640., 232.], [350., 170.]),
                 move |ctx, _| {
                     if !active(ctx, &visible) {
                         return;
@@ -109,10 +110,18 @@ fn compact_header(ui: &mut egui::Ui, now: &Presentation, visible: &AtomicBool) {
             egui::Layout::top_down(egui::Align::Min),
             |ui| {
                 ui.set_width(width);
-                heading(ui, now.title.as_deref().unwrap_or("尚未播放"), &now.artists);
+                heading(
+                    ui,
+                    now.title.as_deref().unwrap_or(tr("尚未播放")),
+                    &now.artists,
+                );
             },
         );
-        if ui.button("主窗口").on_hover_text("返回主窗口").clicked() {
+        if ui
+            .button(tr("主窗口"))
+            .on_hover_text(tr("返回主窗口"))
+            .clicked()
+        {
             ui.ctx()
                 .send_viewport_cmd_to(ViewportId::ROOT, ViewportCommand::Minimized(false));
             ui.ctx()
@@ -135,13 +144,13 @@ fn mini(ui: &mut egui::Ui, player: &Player, now: &Presentation, visible: &Atomic
     let error_key = egui::Id::new("mini-playback-error");
     ui.horizontal(|ui| {
         let mut action = None;
-        if icon_button(ui, Glyph::Previous, "上一首", enabled, false).clicked() {
+        if icon_button(ui, Glyph::Previous, tr("上一首"), enabled, false).clicked() {
             action = Some(PlayerCommand::Previous);
         }
         if icon_button(
             ui,
             if playing { Glyph::Pause } else { Glyph::Play },
-            if playing { "暂停" } else { "播放" },
+            if playing { tr("暂停") } else { tr("播放") },
             enabled,
             true,
         )
@@ -149,7 +158,7 @@ fn mini(ui: &mut egui::Ui, player: &Player, now: &Presentation, visible: &Atomic
         {
             action = Some(PlayerCommand::Toggle);
         }
-        if icon_button(ui, Glyph::Next, "下一首", now.has_next, false).clicked() {
+        if icon_button(ui, Glyph::Next, tr("下一首"), now.has_next, false).clicked() {
             action = Some(PlayerCommand::Next);
         }
         if let Some(command) = action {
@@ -233,9 +242,9 @@ impl LyricsState {
                         } else {
                             ui.label(
                                 RichText::new(if current.is_some() {
-                                    "间奏"
+                                    tr("间奏")
                                 } else {
-                                    "前奏"
+                                    tr("前奏")
                                 })
                                 .size(27.)
                                 .strong(),
@@ -256,20 +265,20 @@ impl LyricsState {
                 });
             }
             Some(Ok(Lyrics::Empty)) => {
-                ui.vertical_centered(|ui| ui.weak("当前曲目暂无歌词"));
+                ui.vertical_centered(|ui| ui.weak(tr("当前曲目暂无歌词")));
             }
             Some(Err(error)) => {
                 ui.colored_label(ui.visuals().error_fg_color, error);
-                if ui.button("重试读取歌词").clicked() {
+                if ui.button(tr("重试读取歌词")).clicked() {
                     self.key = None;
                 }
             }
             None => {
                 ui.vertical_centered(|ui| {
                     ui.weak(if now.source_id.is_some() {
-                        "正在读取歌词…"
+                        tr("正在读取歌词…")
                     } else {
-                        "等待播放"
+                        tr("等待播放")
                     })
                 });
             }

@@ -25,7 +25,9 @@ pub struct SourceFailure {
 pub struct Source {
     pub instance_id: String,
     #[serde(rename(deserialize = "name"))]
-    pub display_name: Option<String>,
+    display_name: Option<String>,
+    #[serde(skip)]
+    plugin: Option<Plugin>,
     #[serde(skip_serializing)]
     account_id: Option<String>,
     pub items: Vec<Recommendation>,
@@ -57,6 +59,32 @@ struct Plugin {
     name: String,
     #[serde(default)]
     localized_names: HashMap<String, String>,
+}
+
+impl Source {
+    pub fn label(&self, languages: &[&str]) -> Option<String> {
+        let Some(plugin) = &self.plugin else {
+            return self.display_name.clone();
+        };
+        let localized = languages
+            .iter()
+            .find_map(|tag| plugin.localized_names.get(*tag))
+            .unwrap_or(&plugin.name);
+        let account = self.display_name.as_deref().filter(|name| {
+            self.account_id.as_deref().is_some_and(|id| !id.is_empty())
+                && !name.is_empty()
+                && *name != self.instance_id
+                && *name != plugin.name
+                && !plugin
+                    .localized_names
+                    .values()
+                    .any(|translation| translation == name)
+        });
+        Some(match account {
+            Some(name) => format!("{localized} · {name}"),
+            None => localized.clone(),
+        })
+    }
 }
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -132,32 +160,13 @@ impl ServerSession {
             let Some(instances) = instances else {
                 return Ok(feed);
             };
+            let mut identities: HashMap<_, _> = instances
+                .items
+                .into_iter()
+                .filter_map(|i| Some((i.instance_id, i.plugin?)))
+                .collect();
             for source in &mut feed.sources {
-                if let Some(plugin) = instances
-                    .items
-                    .iter()
-                    .find(|i| i.instance_id == source.instance_id)
-                    .and_then(|i| i.plugin.as_ref())
-                {
-                    let localized = ["zh-CN", "zh-Hans", "zh"]
-                        .iter()
-                        .find_map(|tag| plugin.localized_names.get(*tag))
-                        .unwrap_or(&plugin.name);
-                    let account_name = source.display_name.as_deref().filter(|name| {
-                        source
-                            .account_id
-                            .as_deref()
-                            .is_some_and(|account| !account.is_empty())
-                            && !name.is_empty()
-                            && *name != source.instance_id
-                            && *name != plugin.name
-                            && *name != localized
-                    });
-                    source.display_name = Some(match account_name {
-                        Some(name) => format!("{localized} · {name}"),
-                        None => localized.clone(),
-                    });
-                }
+                source.plugin = identities.remove(&source.instance_id);
             }
         }
         Ok(feed)

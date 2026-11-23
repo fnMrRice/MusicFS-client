@@ -1,6 +1,6 @@
 use super::Services;
 use crate::{
-    i18n::{locale, tr},
+    i18n::{language_tags, tr},
     task::Task,
 };
 use eframe::egui;
@@ -24,19 +24,10 @@ impl Provider {
         let Some(plugin) = &self.plugin else {
             return &self.name;
         };
-        let tag = locale();
-        [
-            tag,
-            match tag {
-                "zh-CN" => "zh-Hans",
-                "zh-TW" => "zh-Hant",
-                t => t,
-            },
-            tag.split('-').next().unwrap_or(tag),
-        ]
-        .iter()
-        .find_map(|&key| plugin.names.get(key).map(String::as_str))
-        .unwrap_or(&plugin.name)
+        language_tags()
+            .iter()
+            .find_map(|&key| plugin.names.get(key).map(String::as_str))
+            .unwrap_or(&plugin.name)
     }
 }
 #[derive(Default)]

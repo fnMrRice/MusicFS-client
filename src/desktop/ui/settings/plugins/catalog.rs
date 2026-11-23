@@ -4,13 +4,7 @@ use std::collections::{BTreeMap, BTreeSet};
 pub(super) type Translations = BTreeMap<String, String>;
 
 pub(super) fn localized<'a>(fallback: &'a str, values: &'a Translations) -> &'a str {
-    let choices: &[&str] = match crate::i18n::locale() {
-        "zh-TW" => &["zh-TW", "zh-Hant", "zh", "zh-HK", "zh-MO"],
-        "en" => &["en", "en-US", "en-GB"],
-        "ja" => &["ja", "ja-JP"],
-        _ => &["zh-CN", "zh-Hans", "zh", "zh-SG"],
-    };
-    choices
+    crate::i18n::language_tags()
         .iter()
         .find_map(|tag| {
             values.iter().find(|(k, v)| {

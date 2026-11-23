@@ -1,3 +1,4 @@
+use crate::i18n::tr;
 use crate::task::Task;
 use eframe::egui;
 use musicfs_server_adapter::{Page, ServerSession, Track};
@@ -83,13 +84,13 @@ impl Favorites {
         if let Some(error) = &self.error {
             ui.colored_label(
                 ui.visuals().error_fg_color,
-                format!("收藏状态加载失败 · {error}"),
+                tr("收藏状态加载失败 · {0}").replace("{0}", error),
             );
-            if ui.button("重试加载收藏状态").clicked() {
+            if ui.button(tr("重试加载收藏状态")).clicked() {
                 self.error = None;
             }
         } else if self.pending.is_some() {
-            ui.weak("正在读取收藏状态…");
+            ui.weak(tr("正在读取收藏状态…"));
         }
     }
 }
@@ -109,7 +110,7 @@ where
             return Ok(ids);
         };
         if next.is_empty() || !seen.insert(next.clone()) {
-            return Err("服务器收藏分页未向前推进。".into());
+            return Err(tr("服务器收藏分页未向前推进。").into());
         }
         cursor = Some(next);
     }

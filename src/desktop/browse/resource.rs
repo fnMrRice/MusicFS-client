@@ -1,3 +1,4 @@
+use crate::i18n::tr;
 use crate::task::Task;
 use eframe::egui;
 use musicfs_server_adapter::Page;
@@ -65,7 +66,7 @@ impl<T: Send + 'static> Resource<T> {
         self.error.as_ref().is_some_and(|error| {
             ui.horizontal_wrapped(|ui| {
                 ui.colored_label(ui.visuals().error_fg_color, error);
-                ui.button("重试").clicked()
+                ui.button(tr("重试")).clicked()
             })
             .inner
         })
@@ -100,7 +101,7 @@ impl<T: Send + 'static> Pages<T> {
         };
         if let Some(next) = &page.next_cursor {
             if next.is_empty() || !self.seen.insert(next.clone()) {
-                self.request.error = Some("列表已发生变化，请刷新后重试。".into());
+                self.request.error = Some(tr("列表已发生变化，请刷新后重试。").into());
                 return;
             }
         }

@@ -1,4 +1,5 @@
 use super::{data::Services, style, SignedUi};
+use crate::i18n::tr;
 use eframe::egui::{self, Color32, RichText, Vec2};
 
 #[derive(Clone, Default, PartialEq, Eq)]
@@ -17,15 +18,15 @@ pub enum Screen {
 impl Screen {
     pub fn label(&self) -> &'static str {
         match self {
-            Self::Library => "曲目列表",
-            Self::Search => "搜索",
-            Self::Recommendations => "推荐",
-            Self::Playlists => "我的歌单",
-            Self::Playlist(_) => "歌单详情",
-            Self::Favorites => "我的收藏",
-            Self::History => "最近播放",
-            Self::Works(_) => "作品库",
-            Self::Settings => "设置",
+            Self::Library => tr("曲目列表"),
+            Self::Search => tr("搜索"),
+            Self::Recommendations => tr("推荐"),
+            Self::Playlists => tr("我的歌单"),
+            Self::Playlist(_) => tr("歌单详情"),
+            Self::Favorites => tr("我的收藏"),
+            Self::History => tr("最近播放"),
+            Self::Works(_) => tr("作品库"),
+            Self::Settings => tr("设置"),
         }
     }
 }
@@ -116,7 +117,7 @@ impl SignedUi {
                         }
                         if entry(
                             ui,
-                            "作品库",
+                            tr("作品库"),
                             if self.works_open { "▾" } else { "▸" },
                             !self.works_open
                                 && matches!(self.screen, Screen::Library | Screen::Works(_)),
@@ -126,27 +127,37 @@ impl SignedUi {
                         }
                         if self.works_open {
                             ui.indent("work-entries", |ui| {
-                                if entry(ui, "曲目列表", "♫", self.screen == Screen::Library, true)
-                                {
+                                if entry(
+                                    ui,
+                                    tr("曲目列表"),
+                                    "♫",
+                                    self.screen == Screen::Library,
+                                    true,
+                                ) {
                                     go = Some(Screen::Library);
                                 }
                                 for kind in self.browse.types() {
                                     let selected =
                                         matches!(&self.screen,Screen::Works(id) if *id == kind.id);
-                                    if entry(ui, &kind.name, &kind.icon, selected, true) {
+                                    if entry(ui, tr(&kind.name), &kind.icon, selected, true) {
                                         go = Some(Screen::Works(kind.id.clone()));
                                     }
                                 }
                                 if let Some(error) = self.browse.types_error() {
-                                    if ui.button("重试读取类型").on_hover_text(error).clicked()
+                                    if ui.button(tr("重试读取类型")).on_hover_text(error).clicked()
                                     {
                                         self.browse.retry_types();
                                     }
                                 }
                             });
                         }
-                        if entry(ui, "我的歌单", "▤", self.screen == Screen::Playlists, false)
-                        {
+                        if entry(
+                            ui,
+                            tr("我的歌单"),
+                            "▤",
+                            self.screen == Screen::Playlists,
+                            false,
+                        ) {
                             go = Some(Screen::Playlists);
                         }
                         for mine in [true, false] {
@@ -157,7 +168,7 @@ impl SignedUi {
                             } else {
                                 &mut self.lists_closed
                             };
-                            let label = if mine { "我的" } else { "歌单" };
+                            let label = if mine { tr("我的") } else { tr("歌单") };
                             if ui
                                 .add(
                                     egui::Button::new(
@@ -196,13 +207,13 @@ impl SignedUi {
                                     && !self.lists.busy()
                                     && self.lists.error.is_none()
                                 {
-                                    ui.weak("歌单列表为空");
+                                    ui.weak(tr("歌单列表为空"));
                                 }
                                 if self.lists.error.is_some() || self.lists.next.is_some() {
                                     more = ui
                                         .add_enabled(
                                             !self.lists.busy(),
-                                            egui::Button::new("继续读取歌单"),
+                                            egui::Button::new(tr("继续读取歌单")),
                                         )
                                         .clicked();
                                 }

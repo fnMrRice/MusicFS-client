@@ -1,4 +1,5 @@
 use super::{resource::Resource, QueueSelection};
+use crate::i18n::tr;
 use eframe::egui;
 use musicfs_player_core::Track;
 use musicfs_server_adapter::{AudioNode, PackageAudio, ServerSession, WorkDetail};
@@ -28,7 +29,7 @@ impl Detail {
         type_id: &str,
     ) -> Option<QueueSelection> {
         self.data.poll();
-        if !self.data.started || self.data.status(ui, "正在读取作品…") {
+        if !self.data.started || self.data.status(ui, tr("正在读取作品…")) {
             let server = session.clone();
             let id = self.id.clone();
             self.data
@@ -37,7 +38,7 @@ impl Detail {
         let data = self.data.value.as_ref()?;
         let work = &data.work;
         if work.content_type != type_id {
-            ui.label("此作品未收录在当前作品库中。");
+            ui.label(tr("此作品未收录在当前作品库中。"));
             return None;
         }
         ui.heading(&work.title);
@@ -59,13 +60,13 @@ impl Detail {
         }
         if data.packages.is_empty() {
             ui.add_space(12.0);
-            ui.weak("此作品尚未关联本地副本。");
+            ui.weak(tr("此作品尚未关联本地副本。"));
             return None;
         }
         ui.add_space(12.0);
         self.copy = self.copy.min(data.packages.len() - 1);
         ui.horizontal(|ui| {
-            ui.label("本地副本");
+            ui.label(tr("本地副本"));
             egui::ComboBox::from_id_salt(("work-copy", &self.id))
                 .selected_text(&data.packages[self.copy].name)
                 .show_ui(ui, |ui| {
@@ -115,7 +116,7 @@ fn group_queue(nodes: &[&AudioNode], selected: Option<&str>) -> Option<QueueSele
 
 fn show_audio(ui: &mut egui::Ui, pack: &PackageAudio) -> Option<QueueSelection> {
     if pack.audio.is_empty() {
-        ui.weak("此副本暂无音轨。");
+        ui.weak(tr("此副本暂无音轨。"));
         return None;
     }
     // 保持目录在清单中的顺序，目录内部按服务端音轨顺序排列。
@@ -142,7 +143,7 @@ fn show_audio(ui: &mut egui::Ui, pack: &PackageAudio) -> Option<QueueSelection> 
                 if ui
                     .add_enabled(
                         nodes.iter().any(|n| n.source_track_id.is_some()),
-                        egui::Button::new("播放此目录"),
+                        egui::Button::new(tr("播放此目录")),
                     )
                     .clicked()
                 {
@@ -156,7 +157,7 @@ fn show_audio(ui: &mut egui::Ui, pack: &PackageAudio) -> Option<QueueSelection> 
                         let title = egui::Button::new(&node.title).frame(false);
                         if ui
                             .add_enabled(node.source_track_id.is_some(), title)
-                            .on_hover_text("从此曲目播放")
+                            .on_hover_text(tr("从此曲目播放"))
                             .clicked()
                         {
                             choice = group_queue(nodes, Some(&node.id));
@@ -168,7 +169,7 @@ fn show_audio(ui: &mut egui::Ui, pack: &PackageAudio) -> Option<QueueSelection> 
                             ui.weak(if node.source_track_id.is_some() {
                                 duration(node.duration_ms)
                             } else {
-                                "不可播放".into()
+                                tr("不可播放").into()
                             });
                         });
                     });

@@ -1,4 +1,5 @@
 use super::resource::Resource;
+use crate::i18n::tr;
 use eframe::egui;
 use musicfs_server_adapter::{RecommendationFeed, RecommendedPlaylistDetail, ServerSession};
 use std::collections::HashSet;
@@ -15,7 +16,7 @@ pub(super) struct Recommendations {
 impl Recommendations {
     pub fn show(&mut self, ui: &mut egui::Ui, rt: &Handle, session: &ServerSession) {
         if let Some(selected) = &mut self.selected {
-            if ui.button("‹  返回推荐").clicked() {
+            if ui.button(tr("‹  返回推荐")).clicked() {
                 self.selected = None;
             } else {
                 ui.add_space(12.0);
@@ -30,9 +31,13 @@ impl Recommendations {
         let depth = self.feed.value.as_ref().map_or(0, |f| f.history_depth);
         ui.horizontal_wrapped(|ui| {
             if self.offset > 0 {
-                ui.weak(format!("历史推荐  {} / {depth}", self.offset));
+                ui.weak(
+                    tr("历史推荐 {0} / {1}")
+                        .replace("{0}", &self.offset.to_string())
+                        .replace("{1}", &depth.to_string()),
+                );
                 if ui
-                    .add_enabled(!self.feed.busy(), egui::Button::new("返回最新推荐"))
+                    .add_enabled(!self.feed.busy(), egui::Button::new(tr("返回最新推荐")))
                     .clicked()
                 {
                     request = Some((0, false));
@@ -42,20 +47,20 @@ impl Recommendations {
                 && ui
                     .add_enabled(
                         !self.feed.busy() && self.offset < depth,
-                        egui::Button::new("上一期"),
+                        egui::Button::new(tr("上一期")),
                     )
                     .clicked()
             {
                 request = Some((self.offset + 1, false));
             }
             if ui
-                .add_enabled(!self.feed.busy(), egui::Button::new("刷新推荐"))
+                .add_enabled(!self.feed.busy(), egui::Button::new(tr("刷新推荐")))
                 .clicked()
             {
                 request = Some((0, true));
             }
         });
-        let retry = self.feed.status(ui, "正在读取推荐…");
+        let retry = self.feed.status(ui, tr("正在读取推荐…"));
         if !self.feed.started || retry {
             request = Some(self.requested);
         }
@@ -71,29 +76,34 @@ impl Recommendations {
         };
         ui.add_space(12.0);
         if feed.sources.is_empty() {
-            ui.heading("暂无推荐来源");
-            ui.weak("连接的音乐库尚未提供推荐歌单。");
+            ui.heading(tr("暂无推荐来源"));
+            ui.weak(tr("连接的音乐库尚未提供推荐歌单。"));
         }
         for source in &feed.sources {
             ui.push_id(&source.instance_id, |ui| {
-                ui.heading(source.display_name.as_deref().unwrap_or("未知来源"));
+                ui.heading(
+                    source
+                        .label(crate::i18n::language_tags())
+                        .as_deref()
+                        .unwrap_or(tr("未知来源")),
+                );
                 if source.stale {
                     let date = source
                         .last_success_at
                         .as_deref()
                         .and_then(|s| s.get(..10))
                         .unwrap_or("");
-                    ui.weak(format!("显示上次成功获取的推荐  {date}"));
+                    ui.weak(tr("显示上次成功获取的推荐 {0}").replace("{0}", date));
                 }
                 if let Some(error) = &source.error {
                     let message = if error.code == "PLATFORM_AUTH_REQUIRED" {
-                        "此来源需要登录平台账号。".to_owned()
+                        tr("此来源需要登录平台账号。").to_owned()
                     } else {
-                        format!("此来源暂时不可用（{}）。", error.code)
+                        tr("此来源暂时不可用（{0}）。").replace("{0}", &error.code)
                     };
                     ui.colored_label(ui.visuals().warn_fg_color, message);
                 } else if source.items.is_empty() {
-                    ui.weak("此来源暂无推荐歌单。");
+                    ui.weak(tr("此来源暂无推荐歌单。"));
                 }
                 let columns = (ui.available_width() / 200.0).floor().clamp(1.0, 4.0) as usize;
                 for row in source.items.chunks(columns) {
@@ -115,7 +125,7 @@ impl Recommendations {
                                     ui.label(creator);
                                 }
                                 if let Some(count) = playlist.track_count {
-                                    ui.weak(format!("{count} 首"));
+                                    ui.weak(tr("{0} 首").replace("{0}", &count.to_string()));
                                 }
                                 if !item.reason.is_empty() {
                                     ui.small(&item.reason);
@@ -174,7 +184,7 @@ impl PlaylistView {
                     .as_ref()
                     .is_some_and(|cursor| !self.seen.insert(cursor.clone()))
                 {
-                    self.request.error = Some("歌单分页已发生变化，请返回后重新打开。".into());
+                    self.request.error = Some(tr("歌单分页已发生变化，请返回后重新打开。").into());
                 } else {
                     if let Some(old) = &mut self.details {
                         old.entries.append(&mut page.entries);
@@ -185,7 +195,7 @@ impl PlaylistView {
                 }
             }
         }
-        let retry = self.request.status(ui, "正在读取在线歌单…");
+        let retry = self.request.status(ui, tr("正在读取在线歌单…"));
         if !self.request.started || retry {
             self.load(ui.ctx(), rt, session);
         }
@@ -198,18 +208,18 @@ impl PlaylistView {
                 ui.label(creator);
             }
             ui.weak(detail.playlist.track_count.map_or_else(
-                || format!("已读取 {} 首", detail.entries.len()),
-                |n| format!("{n} 首"),
+                || tr("已读取 {0} 首").replace("{0}", &detail.entries.len().to_string()),
+                |n| tr("{0} 首").replace("{0}", &n.to_string()),
             ));
             ui.weak(detail.observed_at.get(..10).unwrap_or(&detail.observed_at));
         });
         if !detail.complete {
-            ui.weak("来源只返回了部分曲目。");
+            ui.weak(tr("来源只返回了部分曲目。"));
         }
         ui.add_space(10.0);
         ui.separator();
         if detail.entries.is_empty() {
-            ui.weak("此歌单暂无可见曲目。");
+            ui.weak(tr("此歌单暂无可见曲目。"));
         }
         for entry in detail.entries.iter().take(self.visible) {
             ui.horizontal_wrapped(|ui| {
@@ -223,7 +233,7 @@ impl PlaylistView {
                         ui.small(format!("{}:{:02}", ms / 60_000, ms / 1000 % 60));
                     }
                 } else if entry.unavailable {
-                    ui.weak("曲目已失效");
+                    ui.weak(tr("曲目已失效"));
                 } else {
                     ui.label(&entry.external_track_id);
                 }
@@ -231,13 +241,13 @@ impl PlaylistView {
             ui.separator();
         }
         if detail.entries.len() > self.visible {
-            if ui.button("显示更多曲目").clicked() {
+            if ui.button(tr("显示更多曲目")).clicked() {
                 self.visible = self.visible.saturating_add(50);
             }
         } else if detail.next_cursor.is_some()
             && !self.request.busy()
             && self.request.error.is_none()
-            && ui.button("加载更多曲目").clicked()
+            && ui.button(tr("加载更多曲目")).clicked()
         {
             self.load(ui.ctx(), rt, session);
         }

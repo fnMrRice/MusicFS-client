@@ -153,4 +153,22 @@ fn enqueue_preserves_idle_or_active_selection() {
     assert_eq!(second.index, first.index);
     assert_eq!(second.queue.len(), 2);
     assert_eq!(first.queue.len(), 1);
+    player.play_next(track("next")).unwrap();
+    player
+        .enqueue_many(vec![track("third"), track("fourth")])
+        .unwrap();
+    assert!(player
+        .enqueue_many(vec![track("discard"), track("")])
+        .is_err());
+    let snapshot = player.snapshot().unwrap();
+    assert_eq!(snapshot.index, first.index);
+    assert_eq!(snapshot.status, first.status);
+    assert_eq!(
+        snapshot
+            .queue
+            .iter()
+            .map(|t| t.id.as_str())
+            .collect::<Vec<_>>(),
+        ["first", "next", "second", "third", "fourth"]
+    );
 }

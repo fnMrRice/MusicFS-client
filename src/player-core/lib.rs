@@ -156,7 +156,7 @@ pub enum PlayerCommand {
 
 enum Operation {
     Snapshot,
-    Enqueue(Track),
+    Enqueue { tracks: Vec<Track>, next: bool },
     Queue(Vec<Track>, usize),
     Command(PlayerCommand),
 }
@@ -224,7 +224,22 @@ impl Player {
         self.request(Operation::Queue(tracks, start_index))
     }
     pub fn enqueue(&self, track: Track) -> Reply {
-        self.request(Operation::Enqueue(track))
+        self.enqueue_many(vec![track])
+    }
+
+    pub fn enqueue_many(&self, tracks: Vec<Track>) -> Reply {
+        self.request(Operation::Enqueue {
+            tracks,
+            next: false,
+        })
+    }
+
+    pub fn play_next(&self, track: Track) -> Result<(), String> {
+        self.request(Operation::Enqueue {
+            tracks: vec![track],
+            next: true,
+        })
+        .map(|_| ())
     }
 
     pub fn command(&self, command: PlayerCommand) -> Reply {

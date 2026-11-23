@@ -94,15 +94,22 @@ impl Actor {
     fn apply(&mut self, op: Operation) -> Result<(), String> {
         match op {
             Operation::Snapshot => Ok(()),
-            Operation::Enqueue(track) => {
-                if track.id.is_empty() {
+            Operation::Enqueue { tracks, next } => {
+                if tracks.iter().any(|track| track.id.is_empty()) {
                     return Err("Missing track identifier.".into());
                 }
-                if self.state.index.is_none() {
+                let Some(first) = tracks.first() else {
+                    return Ok(());
+                };
+                let queue = Arc::make_mut(&mut self.state.queue);
+                if let Some(index) = self.state.index {
+                    let at = if next { index + 1 } else { queue.len() };
+                    queue.splice(at..at, tracks);
+                } else {
                     self.state.index = Some(0);
-                    self.state.duration_ms = track.duration_ms;
+                    self.state.duration_ms = first.duration_ms;
+                    queue.extend(tracks);
                 }
-                Arc::make_mut(&mut self.state.queue).push(track);
                 if let Some(clock) = &self.output.clock {
                     clock
                         .fades

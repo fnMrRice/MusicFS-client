@@ -81,7 +81,7 @@ Client 内部 PlayerCore 快照/事件是另一套版本化协议；Server 能�
 
 协议字段由 Server 契约定义。桌面适配器把经验证的 HTTP 与 WS 响应转换为 Rust 数据类型。
 
-托管 Server、用户安装插件、设备选择和平台账号管理属于后续目标。桌面从 Server 读取来源的名称和译名，按账号上下文展示。
+「设置 → 音乐源」按 Server 返回的能力、名称和译名展示来源，可管理本地目录及当前用户的平台授权。第三方真实账号的验收进度见[桌面验证记录](../validation/desktop.md)。托管 Server、自行安装桌面插件与指定物理输出设备仍属规划。
 
 桌面作品库从 Server 读取内容类型声明，将提供 `library` 的类型按 `library.order` 放在“曲目列表”后，使用声明的名称和图标。打开入口时以对应 `contentType` 查询作品，例如 CD 专辑使用 `cd_album`，ASMR 使用 `asmr`，电台使用 `radio`。曲目列表、分类数量与播放全部均直接消费 Server 的普通曲目查询结果。
 

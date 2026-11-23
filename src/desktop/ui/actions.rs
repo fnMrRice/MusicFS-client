@@ -1,7 +1,7 @@
-use crate::i18n::tr;
 use super::data::{Pages, Services};
 use super::favorites::Favorites;
 use super::style;
+use crate::i18n::tr;
 use crate::task::Task;
 use eframe::egui;
 use musicfs_server_adapter::{Playlist, Track};
@@ -165,11 +165,7 @@ impl Actions {
                                 .unwrap_or(tr("跟随曲目默认来源")),
                         )
                         .show_ui(ui, |ui| {
-                            ui.selectable_value(
-                                &mut ed.pin,
-                                None,
-                                tr("跟随曲目默认来源"),
-                            );
+                            ui.selectable_value(&mut ed.pin, None, tr("跟随曲目默认来源"));
                             if let Some(group) = &ed.track.sources {
                                 for v in group.choices() {
                                     ui.selectable_value(
@@ -224,7 +220,11 @@ impl Actions {
                     let name = ed.name.trim();
                     if style::primary(
                         ui,
-                        if busy { tr("正在保存…") } else { tr("保存") },
+                        if busy {
+                            tr("正在保存…")
+                        } else {
+                            tr("保存")
+                        },
                         !busy
                             && (existing.is_some() || (ed.target_id.is_none() && !name.is_empty())),
                     )
@@ -242,7 +242,9 @@ impl Actions {
                         ed.retry = Some((target.clone(), ed.pin.clone(), key.clone()));
                         apply = Some((target, key, ed.track.id.clone(), ed.pin.clone()));
                     }
-                    close = ui.add_enabled(!busy, egui::Button::new(tr("取消"))).clicked();
+                    close = ui
+                        .add_enabled(!busy, egui::Button::new(tr("取消")))
+                        .clicked();
                 });
             });
         if close {

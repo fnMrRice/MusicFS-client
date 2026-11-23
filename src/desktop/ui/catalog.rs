@@ -13,6 +13,10 @@ use musicfs_player_core::Track as QueueTrack;
 use musicfs_server_adapter::{Category, Track};
 use std::collections::HashSet;
 
+#[cfg(test)]
+#[path = "../../../tests/native/catalog_search.rs"]
+mod search_tests;
+
 #[derive(Default)]
 pub struct Catalog {
     pub matching: super::matching::Matching,

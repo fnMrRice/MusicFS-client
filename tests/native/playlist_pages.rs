@@ -94,7 +94,9 @@ fn opens_playlist_from_second_page_after_refreshing_the_directory() {
         (server, track, target)
     });
     let player = Player::new(|_| Err("No playback requested".into())).unwrap();
+    let activity = server.listen_activity(|| {});
     let svc = Services {
+        activity: &activity,
         server: &server,
         runtime: rt.handle(),
         player: &player,

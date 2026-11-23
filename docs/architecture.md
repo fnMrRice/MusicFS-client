@@ -45,7 +45,7 @@ UI、快捷键和 `control.api` 将操作提交到 PlayerCore；PlayerCore 完�
 
 协议 SDK 按发布版本关联，网络断开后重新读取权威快照并恢复订阅。账号访问凭据、Client 对 Server 的会话和外部控制 token 分开存储与撤销；日志不记录 token、敏感请求头或私有来源地址。
 
-Rust 适配器持有私有 Cookie 和 CSRF。当前播放控制通过短时 WebSocket 连接完成，子协议为 `musicfs.control.v1`。播放器使用 `nativeHttp` 协商并读取授权的 HTTP 音频流。托管模式租约、长期事件订阅及重连恢复属于后续阶段；协议中的 WS ping 与租约续期独立。见[Server 接入](implementation/server-integration.md)。
+Rust 适配器持有私有 Cookie 和 CSRF，使用 `musicfs.control.v1` 子协议。播放命令通过短时 WebSocket 连接发送，已登录界面共享一条长连接跟踪扫描、插件任务和配置操作。重连就绪后重新读取正在跟踪的状态。播放器使用 `nativeHttp` 协商并读取授权的 HTTP 音频流。托管模式租约仍待接入。见[Server 接入](implementation/server-integration.md)。
 
 ## 5. 主题、歌词与平台适配
 

@@ -8,7 +8,6 @@ use crate::{i18n::tr, task::Task};
 use eframe::egui;
 use musicfs_server_adapter::ServerSession;
 use serde_json::{json, Value};
-use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 #[derive(Clone)]
@@ -31,12 +30,12 @@ pub(super) struct Editor {
     job: Option<Job>,
     loading: Option<Task<Settings>>,
     posting: Option<Task<Reply>>,
-    polling: Option<Task<Settings>>,
-    next_poll: Instant,
+    job_read: Option<Task<Settings>>,
+    job_revision: Option<u64>,
     pending: Option<(Submission, String)>,
     conflict: bool,
     error: Option<String>,
-    poll_error: Option<String>,
+    job_error: Option<String>,
     message: Option<&'static str>,
 }
 
@@ -51,12 +50,12 @@ impl Editor {
             job: None,
             loading: None,
             posting: None,
-            polling: None,
-            next_poll: Instant::now(),
+            job_read: None,
+            job_revision: None,
             pending: None,
             conflict: false,
             error: None,
-            poll_error: None,
+            job_error: None,
             message: None,
         }
     }
@@ -73,8 +72,9 @@ impl Editor {
     fn reload(&mut self, ctx: &egui::Context, svc: Services<'_>) {
         self.error = None;
         self.message = None;
-        self.poll_error = None;
-        self.polling = None;
+        self.job_error = None;
+        self.job_read = None;
+        self.job_revision = Some(svc.activity.revisions().plugin_jobs);
         self.loading = Some(self.read(ctx, svc));
     }
 
@@ -94,8 +94,9 @@ impl Editor {
         };
         let server = svc.server.clone();
         let plugin_id = self.plugin_id.clone();
-        self.polling = None;
-        self.poll_error = None;
+        self.job_read = None;
+        self.job_revision = None;
+        self.job_error = None;
         self.error = None;
         self.message = None;
         self.posting = Some(Task::spawn(svc.runtime, ctx, async move {
@@ -122,25 +123,15 @@ impl Editor {
         }));
     }
 
-    fn interval(&self) -> Duration {
-        if self.job.as_ref().is_some_and(Job::active) {
-            Duration::from_millis(1500)
-        } else {
-            Duration::from_secs(8)
-        }
-    }
-
     fn update(&mut self, ctx: &egui::Context, svc: Services<'_>) {
-        if self.data.is_none() && self.loading.is_none() && self.error.is_none() {
+        let revision = svc.activity.revisions().plugin_jobs;
+        if self.data.is_none() && self.loading.is_none() && self.job_revision != Some(revision) {
             self.reload(ctx, svc);
         }
         if let Some(result) = self.loading.as_mut().and_then(Task::poll) {
             self.loading = None;
             match result {
-                Ok(data) => {
-                    self.apply(data);
-                    self.next_poll = Instant::now() + self.interval();
-                }
+                Ok(data) => self.apply(data),
                 Err(e) => self.error = Some(e),
             }
         }
@@ -172,30 +163,25 @@ impl Editor {
                     });
                 }
             }
-            self.next_poll = Instant::now() + self.interval();
         }
-        if let Some(result) = self.polling.as_mut().and_then(Task::poll) {
-            self.polling = None;
+        if let Some(result) = self.job_read.as_mut().and_then(Task::poll) {
+            self.job_read = None;
             match result {
                 Ok(data) => {
                     self.job = data.job;
-                    self.poll_error = None;
+                    self.job_error = None;
                 }
-                Err(e) => self.poll_error = Some(e),
+                Err(e) => self.job_error = Some(e),
             }
-            self.next_poll = Instant::now() + self.interval();
         }
         if self.data.is_some()
             && self.loading.is_none()
             && self.posting.is_none()
-            && self.polling.is_none()
+            && self.job_read.is_none()
+            && self.job_revision != Some(revision)
         {
-            let delay = self.next_poll.saturating_duration_since(Instant::now());
-            if delay.is_zero() {
-                self.polling = Some(self.read(ctx, svc));
-            } else {
-                ctx.request_repaint_after(delay);
-            }
+            self.job_revision = Some(revision);
+            self.job_read = Some(self.read(ctx, svc));
         }
     }
 
@@ -249,10 +235,10 @@ impl Editor {
                 }
                 if let Some(message) = self.message { ui.label(tr(message)); }
                 if let Some(job) = &self.job { job.show(ui); }
-                if let Some(e) = &self.poll_error {
+                if let Some(e) = &self.job_error {
                     ui.colored_label(ui.visuals().error_fg_color, e);
-                    if ui.add_enabled(self.polling.is_none(), egui::Button::new(tr("重试"))).clicked() {
-                        self.next_poll = Instant::now(); ctx.request_repaint();
+                    if ui.add_enabled(self.job_read.is_none(), egui::Button::new(tr("重试"))).clicked() {
+                        self.job_revision = None; ctx.request_repaint();
                     }
                 }
             });

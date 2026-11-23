@@ -8,7 +8,7 @@ use super::{
 };
 use crate::i18n::tr;
 use eframe::egui;
-use musicfs_server_adapter::ServerSession;
+use musicfs_server_adapter::{activity::ActivityRevisions, ServerSession};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use uuid::Uuid;
@@ -213,8 +213,9 @@ impl Editor {
             self.config.revision.clone(),
             !matches!(self.action, Action::Remove(_)),
         );
+        let activity = svc.activity.subscribe();
         self.save.start(ui, svc, async move {
-            let op = apply(&s, &id, &rev, &key, body).await?;
+            let op = apply(&s, activity, &id, &rev, &key, body).await?;
             Ok(Outcome {
                 scan: if scan {
                     Some(scans::auto_scan(&s, &id, &op).await)
@@ -227,6 +228,7 @@ impl Editor {
 }
 pub(super) async fn apply(
     s: &ServerSession,
+    mut activity: tokio::sync::watch::Receiver<ActivityRevisions>,
     id: &str,
     revision: &str,
     key: &str,
@@ -246,6 +248,7 @@ pub(super) async fn apply(
         .filter(|s| !s.is_empty())
         .ok_or("Missing configuration operation.")?
         .to_owned();
+    let mut read_revision = None;
     loop {
         if text(&op, "operationId") != op_id {
             return Err("Unexpected directory operation.".into());
@@ -262,7 +265,13 @@ pub(super) async fn apply(
             }
             _ => return Err("Invalid directory operation status.".into()),
         }
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        if let Some(previous) = read_revision {
+            activity
+                .wait_for(|r| r.capabilities != previous)
+                .await
+                .map_err(|_| "MusicFS session ended.")?;
+        }
+        read_revision = Some(activity.borrow_and_update().capabilities);
         op = get(s, &format!("/admin/plugin-operations/{}", path_id(&op_id))).await?;
     }
 }

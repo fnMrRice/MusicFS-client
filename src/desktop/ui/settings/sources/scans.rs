@@ -6,10 +6,7 @@ use crate::i18n::tr;
 use eframe::egui;
 use musicfs_server_adapter::ServerSession;
 use serde_json::{json, Value};
-use std::{
-    collections::HashSet,
-    time::{Duration, Instant},
-};
+use std::collections::HashSet;
 use uuid::Uuid;
 
 async fn submit(
@@ -71,7 +68,7 @@ pub(super) async fn auto_scan(
 #[derive(Default)]
 pub(super) struct Scans {
     current: Load<Value>,
-    discovered: bool,
+    status_revision: Option<u64>,
     jobs: Vec<Job>,
 }
 struct Job {
@@ -81,7 +78,7 @@ struct Job {
     receipt: Load<String>,
     id: Option<String>,
     view: Load<(Value, Summary)>,
-    next: Option<Instant>,
+    read_revision: Option<u64>,
     done: bool,
     metadata: bool,
 }
@@ -133,19 +130,22 @@ impl Scans {
         instance: &str,
         refresh: bool,
     ) -> bool {
-        if self.current.poll() {
-            self.discovered = true;
+        self.current.poll();
+        // 提交回执到达后再认领发现的任务，避免与当前窗口刚发起的扫描重复跟踪。
+        if !self.jobs.iter().any(|job| job.receipt.busy()) {
             if let Some(id) = self
                 .current
                 .value
-                .as_ref()
-                .and_then(|v| v.pointer("/job/jobId"))
-                .and_then(Value::as_str)
+                .take()
+                .and_then(|v| v.pointer("/job/jobId")?.as_str().map(str::to_owned))
             {
-                self.monitor(id.to_owned());
+                self.monitor(id);
             }
         }
-        if !self.discovered && self.current.initial() || self.current.status(ui) || refresh {
+        let revision = svc.activity.revisions().scans;
+        let retry = self.current.status(ui);
+        if !self.current.busy() && (self.status_revision != Some(revision) || retry || refresh) {
+            self.status_revision = Some(revision);
             let (s, id) = (svc.server.clone(), path_id(instance));
             self.current.start(ui, svc, async move {
                 get(&s, &format!("/provider-instances/{id}/scan-status")).await
@@ -170,7 +170,7 @@ impl Job {
             receipt: Default::default(),
             id: None,
             view: Default::default(),
-            next: None,
+            read_revision: None,
             done: false,
         }
     }
@@ -201,15 +201,11 @@ impl Job {
             let (v, metadata) = self.view.value.as_ref().unwrap();
             self.done = !matches!(text(v, "status"), "queued" | "retry_wait" | "running")
                 && metadata.completed == metadata.total;
-            self.next = Some(Instant::now() + Duration::from_secs(2));
         }
         let retry = self.view.status(ui);
-        if retry
-            || !self.done
-                && self.view.error.is_none()
-                && !self.view.busy()
-                && self.next.is_none_or(|n| Instant::now() >= n)
-        {
+        let revision = svc.activity.revisions().scans;
+        if !self.view.busy() && !self.done && (retry || self.read_revision != Some(revision)) {
+            self.read_revision = Some(revision);
             let (s, id, instance, metadata) = (
                 svc.server.clone(),
                 self.id.clone().unwrap(),

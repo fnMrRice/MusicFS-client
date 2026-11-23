@@ -38,6 +38,7 @@ fn isolated_sources_directory_scan_and_watch_round_trip() {
         let s = ServerSession::login(&endpoint, &std::env::var("MUSICFS_TEST_TOKEN").unwrap())
             .await
             .unwrap();
+        let activity = s.listen_activity(|| {});
         let providers: Vec<Value> = list(&s, "/provider-instances").await.unwrap();
         let id = text(
             providers
@@ -80,6 +81,7 @@ fn isolated_sources_directory_scan_and_watch_round_trip() {
         ));
         let op = apply(
             &s,
+            activity.subscribe(),
             id,
             &first.revision,
             &Uuid::new_v4().to_string(),
@@ -100,8 +102,10 @@ fn isolated_sources_directory_scan_and_watch_round_trip() {
                 .max_depth,
             2
         );
+        let mut scans = activity.subscribe();
         tokio::time::timeout(Duration::from_secs(30), async {
             loop {
+                let revision = scans.borrow_and_update().scans;
                 let job: Value = get(&s, &format!("/scan-jobs/{}", path_id(&job)))
                     .await
                     .unwrap();
@@ -112,7 +116,7 @@ fn isolated_sources_directory_scan_and_watch_round_trip() {
                     text(&job, "status"),
                     "failed" | "cancelled" | "paused"
                 ));
-                tokio::time::sleep(Duration::from_millis(150)).await;
+                scans.wait_for(|r| r.scans != revision).await.unwrap();
             }
         })
         .await
@@ -133,6 +137,7 @@ fn isolated_sources_directory_scan_and_watch_round_trip() {
         edit.options.import_lyrics = false;
         apply(
             &s,
+            activity.subscribe(),
             id,
             &read.revision,
             &Uuid::new_v4().to_string(),
@@ -148,6 +153,7 @@ fn isolated_sources_directory_scan_and_watch_round_trip() {
         watch["debounceMs"] = json!(1678);
         apply(
             &s,
+            activity.subscribe(),
             id,
             &changed.revision,
             &Uuid::new_v4().to_string(),
@@ -163,6 +169,7 @@ fn isolated_sources_directory_scan_and_watch_round_trip() {
         let remove = Editor::new(after.clone(), Action::Remove(root_id.clone()));
         apply(
             &s,
+            activity.subscribe(),
             id,
             &after.revision,
             &Uuid::new_v4().to_string(),

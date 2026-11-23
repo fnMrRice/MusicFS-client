@@ -3,7 +3,6 @@ use crate::{i18n::tr, task::Task};
 use eframe::egui;
 use serde::Deserialize;
 use serde_json::json;
-use std::time::{Duration, Instant};
 use uuid::Uuid;
 
 #[derive(Deserialize)]
@@ -29,7 +28,7 @@ pub(super) struct Switches {
     pending: Option<Task<Operation>>,
     error: Option<String>,
     notice: Option<&'static str>,
-    next_poll: Option<Instant>,
+    operation_revision: Option<u64>,
 }
 
 impl Switches {
@@ -71,6 +70,7 @@ impl Switches {
         let server = svc.server.clone();
         self.error = None;
         if let Some(op) = &self.operation {
+            self.operation_revision = Some(svc.activity.revisions().capabilities);
             let id = op.operation_id.clone();
             self.pending = Some(Task::spawn(svc.runtime, ctx, async move {
                 request(
@@ -83,6 +83,7 @@ impl Switches {
                 .await
             }));
         } else if let Some(change) = self.change.clone() {
+            self.operation_revision = None;
             self.pending = Some(Task::spawn(svc.runtime, ctx, async move {
                 let headers = [
                     ("If-Match", change.revision.as_str()),
@@ -108,14 +109,12 @@ impl Switches {
                 Ok(op) => {
                     self.change = None;
                     self.operation = None;
-                    self.next_poll = None;
                     match op.status.as_str() {
                         "succeeded" => {
                             self.notice = Some("设置已保存。");
                             refresh = true;
                         }
                         "applying" | "draining" => {
-                            self.next_poll = Some(Instant::now() + Duration::from_secs(1));
                             self.operation = Some(op);
                         }
                         "failed" | "superseded" => {
@@ -168,16 +167,12 @@ impl Switches {
                 ui.spinner();
                 ui.weak(tr("正在应用…"));
             });
-            if self.pending.is_none() {
-                if let Some(time) = self.next_poll {
-                    let delay = time.saturating_duration_since(Instant::now());
-                    if delay.is_zero() {
-                        self.submit(ui.ctx(), svc);
-                    } else {
-                        ui.ctx().request_repaint_after(delay);
-                    }
-                }
-            }
+        }
+        if self.operation.is_some()
+            && self.pending.is_none()
+            && self.operation_revision != Some(svc.activity.revisions().capabilities)
+        {
+            self.submit(ui.ctx(), svc);
         }
         refresh
     }

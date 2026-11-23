@@ -68,7 +68,9 @@ fn browses_plugins_and_changes_an_isolated_instance() {
         ))
         .unwrap();
     let player = Player::new(|_| Err("No playback requested".to_owned())).unwrap();
+    let activity = server.listen_activity(|| {});
     let svc = Services {
+        activity: &activity,
         server: &server,
         runtime: rt.handle(),
         player: &player,

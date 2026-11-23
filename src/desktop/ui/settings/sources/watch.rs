@@ -105,8 +105,9 @@ impl Watch {
                         revision.clone(),
                         json!({"watch":draft}),
                     );
+                    let activity = svc.activity.subscribe();
                     self.save.start(ui, svc, async move {
-                        apply(&s, &instance, &revision, &key, body).await
+                        apply(&s, activity, &instance, &revision, &key, body).await
                     });
                 }
             });

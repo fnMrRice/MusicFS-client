@@ -1,4 +1,6 @@
+pub mod activity;
 mod catalog;
+mod control;
 pub mod folders;
 mod lyrics;
 mod playback;

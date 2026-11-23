@@ -1,14 +1,12 @@
 use futures_util::{SinkExt, StreamExt};
-use reqwest::{cookie::CookieStore, header, Method};
+use reqwest::Method;
 use serde::Deserialize;
 use serde_json::{json, Value};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
-use tokio_tungstenite::tungstenite::{
-    client::IntoClientRequest, protocol::WebSocketConfig, Message,
-};
+use tokio_tungstenite::tungstenite::Message;
 use url::Url;
 use uuid::Uuid;
 
@@ -52,39 +50,8 @@ struct Descriptor {
 }
 
 impl ServerSession {
-    // 每次命令使用独立短连接，仅在收到同一实例的 ready 后发送，不重试结果未知的写操作。
+    // 播放命令只发送一次，断线后不重试结果未知的操作。
     async fn command(&self, method: &str, path: &str, body: Option<Value>) -> Result<Value> {
-        self.ensure_active()?;
-        let url = self.url("control");
-        let cookie = self
-            .cookies
-            .cookies(&url)
-            .ok_or("MusicFS authentication required (HTTP 401).")?;
-        let mut ws_url = url;
-        ws_url
-            .set_scheme(if self.origin.scheme() == "https" {
-                "wss"
-            } else {
-                "ws"
-            })
-            .map_err(|_| "Invalid MusicFS control URL.")?;
-        let mut request = ws_url
-            .as_str()
-            .into_client_request()
-            .map_err(|_| "Invalid MusicFS control request.")?;
-        let headers = request.headers_mut();
-        headers.insert(header::COOKIE, cookie);
-        headers.insert(
-            header::ORIGIN,
-            self.info
-                .endpoint
-                .parse()
-                .map_err(|_| "Invalid MusicFS origin.")?,
-        );
-        headers.insert(
-            header::SEC_WEBSOCKET_PROTOCOL,
-            "musicfs.control.v1".parse().unwrap(),
-        );
         let id = Uuid::new_v4().to_string();
         let mut frame = json!({ "type":"request", "id":id, "method":method, "path":path });
         if let Some(body) = body {
@@ -92,66 +59,36 @@ impl ServerSession {
             frame["idempotencyKey"] = json!(Uuid::new_v4().to_string());
         }
         let run = async {
-            let config = WebSocketConfig::default()
-                .max_message_size(Some(2 * 1024 * 1024))
-                .max_frame_size(Some(2 * 1024 * 1024));
-            let (mut socket, handshake) =
-                tokio_tungstenite::connect_async_with_config(request, Some(config), false)
-                    .await
-                    .map_err(|_| "Unable to establish the MusicFS control channel.")?;
-            if handshake
-                .headers()
-                .get(header::SEC_WEBSOCKET_PROTOCOL)
-                .and_then(|v| v.to_str().ok())
-                != Some("musicfs.control.v1")
-            {
-                return Err("Unexpected MusicFS control protocol.".into());
-            }
+            let (mut socket, _) = self.control_socket().await?;
             socket
-                .send(Message::text(
-                    json!({"type":"auth","csrfToken":self.csrf}).to_string(),
-                ))
+                .send(Message::text(frame.to_string()))
                 .await
-                .map_err(|_| "MusicFS control authentication failed.")?;
-            let mut sent = false;
+                .map_err(|_| "MusicFS control request interrupted.")?;
             while let Some(message) = socket.next().await {
-                let message = message.map_err(|_| "MusicFS control channel interrupted.")?;
-                let Message::Text(text) = message else {
+                let Message::Text(text) =
+                    message.map_err(|_| "MusicFS control channel interrupted.")?
+                else {
                     continue;
                 };
                 let reply: Value = serde_json::from_str(text.as_str())
                     .map_err(|_| "Invalid MusicFS control response.")?;
-                match reply["type"].as_str() {
-                    Some("ready") if !sent => {
-                        if reply["instanceId"].as_str() != Some(self.info.instance_id.as_str()) {
-                            return Err("MusicFS server identity changed.".into());
-                        }
-                        self.ensure_active()?;
-                        socket
-                            .send(Message::text(frame.to_string()))
-                            .await
-                            .map_err(|_| "MusicFS control request interrupted.")?;
-                        sent = true;
+                if reply["type"] == "response" && reply["id"].as_str() == Some(id.as_str()) {
+                    let status = reply["status"]
+                        .as_u64()
+                        .ok_or("Invalid MusicFS control status.")?;
+                    let _ = socket.close(None).await;
+                    if !(200..300).contains(&status) {
+                        let code = reply
+                            .pointer("/body/error/code")
+                            .and_then(Value::as_str)
+                            .filter(|s| {
+                                s.len() < 64
+                                    && s.bytes().all(|c| c.is_ascii_uppercase() || c == b'_')
+                            })
+                            .unwrap_or("CONTROL_ERROR");
+                        return Err(format!("MusicFS returned {code} (HTTP {status})."));
                     }
-                    Some("response") if sent && reply["id"].as_str() == Some(id.as_str()) => {
-                        let status = reply["status"]
-                            .as_u64()
-                            .ok_or("Invalid MusicFS control status.")?;
-                        let _ = socket.close(None).await;
-                        if !(200..300).contains(&status) {
-                            let code = reply
-                                .pointer("/body/error/code")
-                                .and_then(Value::as_str)
-                                .filter(|s| {
-                                    s.len() < 64
-                                        && s.bytes().all(|c| c.is_ascii_uppercase() || c == b'_')
-                                })
-                                .unwrap_or("CONTROL_ERROR");
-                            return Err(format!("MusicFS returned {code} (HTTP {status})."));
-                        }
-                        return Ok(reply["body"].clone());
-                    }
-                    _ => {}
+                    return Ok(reply["body"].clone());
                 }
             }
             Err("MusicFS control connection closed before the operation was confirmed.".into())

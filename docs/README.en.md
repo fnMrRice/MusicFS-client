@@ -4,7 +4,7 @@
 
 MusicFS Desktop connects to a running MusicFS Server. The interface, server connection and audio player are written in Rust. Eframe and egui draw the native windows, with navigation and playback controls based on the Web design.
 
-![Windows desktop library and playback controls](screenshots/windows-track-list.png)
+![Native Windows track list with source versions and playback controls](screenshots/windows-track-catalog.png)
 
 ## Getting started
 

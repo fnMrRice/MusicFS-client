@@ -4,7 +4,7 @@
 
 MusicFS 桌面播放器连接已有的 MusicFS Server。窗口、界面、服务端连接和音频播放均使用 Rust。egui/eframe 绘制原生窗口，界面沿用 Web 的侧栏、曲库和底部播放栏。[查看当前开发版本](VERSION)。
 
-![Windows 桌面端曲目列表、作品库导航和底部播放器](docs/screenshots/windows-track-list.png)
+![Windows 原生曲目列表、来源版本入口和正在播放的曲目](docs/screenshots/windows-track-catalog.png)
 
 ## 使用
 

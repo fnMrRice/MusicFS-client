@@ -12,7 +12,7 @@ MusicFS Desktop connects to a running MusicFS Server. The interface, server conn
 2. If your library is empty, an administrator can open **Settings → Music sources**, add a directory from the server's allowed locations and follow the scan. When connected remotely, the directory picker shows paths on the server.
 3. Open the track list, select a source filter or browse artists, albums, genres and folders. Double-click a track to play. The bottom bar includes the queue, mini player and desktop lyrics. Drag the progress indicator to seek on supported byte-range streams.
 
-On Windows, right-click the MusicFS taskbar button or notification area icon to show the main window, control playback or quit. On macOS, use the menu bar icon. Linux desktops with StatusNotifierItem support show a tray menu. The system media controls display the current track and artwork, and work while the main window is minimized.
+On Windows, hover over MusicFS on the taskbar. Use the buttons below the window preview to go back a track, play or pause, or skip to the next track. Right-click the taskbar button or notification area icon to show the main window, control playback or quit. On macOS, use the menu bar icon. Linux desktops with StatusNotifierItem support show a tray menu. The system media controls display the current track and artwork, and work while the main window is minimized.
 
 ## Library and settings
 

@@ -61,6 +61,12 @@ fn messages() -> &'static Catalog {
         let settings: Catalog = serde_json::from_str(include_str!("settings_translations.json"))
             .expect("Invalid settings language catalog");
         data.extend(settings);
+        let catalog: Catalog = serde_json::from_str(include_str!("catalog_translations.json"))
+            .expect("Invalid catalog language catalog");
+        data.extend(catalog);
+        let shell: Catalog = serde_json::from_str(include_str!("shell_translations.json"))
+            .expect("Invalid shell language catalog");
+        data.extend(shell);
         data
     })
 }

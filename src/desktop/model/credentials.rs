@@ -42,6 +42,40 @@ fn erase_entry(slot: &str, index: usize) -> Result<(), String> {
         Err(_) => Err(UNAVAILABLE.into()),
     }
 }
+
+#[cfg(not(windows))]
+fn write_entry(entry: Entry, secret: &[u8]) -> Result<(), String> {
+    entry.set_secret(secret).map_err(|_| UNAVAILABLE.into())
+}
+
+#[cfg(windows)]
+fn write_entry(entry: Entry, secret: &[u8]) -> Result<(), String> {
+    use windows_sys::Win32::Security::Credentials::{
+        CredWriteW, CREDENTIALW, CRED_PERSIST_LOCAL_MACHINE, CRED_TYPE_GENERIC,
+    };
+    // 通用 keyring 后端使用企业漫游；保持登录只应属于当前系统用户所在的这台设备。
+    let credential = entry
+        .get_credential()
+        .downcast_ref::<keyring::windows::WinCredential>()
+        .ok_or(UNAVAILABLE)?;
+    let mut name: Vec<_> = credential.target_name.encode_utf16().chain([0]).collect();
+    let mut user: Vec<_> = credential.username.encode_utf16().chain([0]).collect();
+    let value = CREDENTIALW {
+        Type: CRED_TYPE_GENERIC,
+        Persist: CRED_PERSIST_LOCAL_MACHINE,
+        TargetName: name.as_mut_ptr(),
+        UserName: user.as_mut_ptr(),
+        CredentialBlob: secret.as_ptr().cast_mut(),
+        CredentialBlobSize: secret.len().try_into().map_err(|_| UNAVAILABLE)?,
+        ..Default::default()
+    };
+    // CredWriteW 在本次调用中读取结构、空结尾字符串和切片，返回后不保留指针。
+    if unsafe { CredWriteW(&value, 0) } == 0 {
+        Err(UNAVAILABLE.into())
+    } else {
+        Ok(())
+    }
+}
 fn delete(slot: &str) -> Result<(), String> {
     // 先移除索引，使退出意图在中断后仍然有效。固定上限也覆盖未完整写入的数据。
     let mut first = None;
@@ -59,14 +93,12 @@ fn save(slot: &str, data: &[u8]) -> Result<(), String> {
     }
     let write = || -> Result<(), String> {
         for (i, chunk) in data.chunks(PART).enumerate().skip(1) {
-            entry(slot, i)?.set_secret(chunk).map_err(|_| UNAVAILABLE)?;
+            write_entry(entry(slot, i)?, chunk)?;
         }
         let mut first = Zeroizing::new(Vec::with_capacity(PART + 1));
         first.push(count as u8);
         first.extend_from_slice(&data[..data.len().min(PART)]);
-        entry(slot, 0)?
-            .set_secret(&first)
-            .map_err(|_| UNAVAILABLE.into())
+        write_entry(entry(slot, 0)?, &first)
     };
     let result = write();
     if result.is_err() {

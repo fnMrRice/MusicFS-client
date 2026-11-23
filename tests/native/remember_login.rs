@@ -48,6 +48,27 @@ fn isolated_remember_current_account_and_forget_on_logout() {
         }
     }
     let _guard = Cleanup(id.clone());
+    #[cfg(windows)]
+    {
+        use windows_sys::Win32::Security::Credentials::{
+            CredFree, CredReadW, CRED_PERSIST_LOCAL_MACHINE, CRED_TYPE_GENERIC,
+        };
+        let item = entry(&id, 0).unwrap();
+        let win = item
+            .get_credential()
+            .downcast_ref::<keyring::windows::WinCredential>()
+            .unwrap();
+        let name: Vec<_> = win.target_name.encode_utf16().chain([0]).collect();
+        let mut data = std::ptr::null_mut();
+        // 读取本测试刚生成的记录并仅检查持久化范围。
+        assert_ne!(
+            unsafe { CredReadW(name.as_ptr(), CRED_TYPE_GENERIC, 0, &mut data) },
+            0
+        );
+        let scope = unsafe { (*data).Persist };
+        unsafe { CredFree(data.cast()) };
+        assert_eq!(scope, CRED_PERSIST_LOCAL_MACHINE);
+    }
     let before = std::fs::read_to_string(&file).unwrap();
     assert!(!before.contains(token.as_str()));
     let session = &state.connection.as_ref().unwrap().server;

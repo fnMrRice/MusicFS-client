@@ -99,6 +99,9 @@ impl Settings {
                                 }
                             }
                         });
+                        if let Some(value) = super::style::accent_choices(ui, &prefs.accent) {
+                            *action = Some(HostAction::Accent(value));
+                        }
                         ui.add_space(10.);
                         if let Some(value) = language_menu(ui, &prefs.language) {
                             *action = Some(HostAction::Language(value));

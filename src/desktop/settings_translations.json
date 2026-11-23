@@ -1,4 +1,8 @@
 {
+  "主题色": ["Accent color","主題色","アクセントカラー"],
+  "默认": ["Default","預設","デフォルト"],
+  "初音绿": ["Miku green","初音綠","ミクグリーン"],
+  "天依蓝": ["Tianyi blue","天依藍","天依ブルー"],
   "0 表示全部递归": ["0 searches all subfolder levels","0 表示全部遞迴","0 はすべての階層を検索"],
   "Q 值": ["Q factor","Q 值","Q 値"],
   "{count} / {max} 个效果": ["{count} / {max} effects","{count} / {max} 個效果","エフェクト {count} / {max}"],

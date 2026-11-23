@@ -19,6 +19,7 @@ use tokio::runtime::Handle;
 pub struct Preferences {
     pub endpoint: String,
     pub theme: String,
+    pub accent: String,
     pub language: String,
     pub fades: FadeSettings,
     pub audio: audio::AudioPreferences,
@@ -33,6 +34,7 @@ impl Default for Preferences {
         Self {
             endpoint: "http://127.0.0.1:8080".into(),
             theme: "dark".into(),
+            accent: "default".into(),
             language: "system".into(),
             fades: FadeSettings::default(),
             audio: Default::default(),

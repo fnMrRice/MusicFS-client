@@ -1,7 +1,7 @@
 use super::style;
 use crate::i18n::tr;
 use crate::model::DesktopState;
-use eframe::egui::{self, Align, Color32, Layout, RichText, Vec2};
+use eframe::egui::{self, Align, Layout, RichText, Vec2};
 
 #[derive(Default)]
 pub struct Login {
@@ -83,9 +83,9 @@ impl Login {
                                     tr("连接并登录")
                                 })
                                 .strong()
-                                .color(Color32::WHITE),
+                                .color(style::on_accent(ui)),
                             )
-                            .fill(style::ACCENT)
+                            .fill(style::accent_fill(ui))
                             .corner_radius(7)
                             .min_size(Vec2::new(ui.available_width(), 40.0));
                             if ui.add_enabled(enabled, button).clicked() || (enabled && enter) {

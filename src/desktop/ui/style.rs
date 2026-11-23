@@ -20,7 +20,7 @@ pub fn sidebar(dark: bool) -> Color32 {
 
 pub fn surface(dark: bool) -> Color32 {
     if dark {
-        Color32::from_rgb(25, 31, 37)
+        Color32::from_rgb(23, 29, 35)
     } else {
         Color32::WHITE
     }
@@ -28,97 +28,225 @@ pub fn surface(dark: bool) -> Color32 {
 
 pub fn muted(dark: bool) -> Color32 {
     if dark {
-        Color32::from_rgb(151, 162, 174)
+        Color32::from_rgb(138, 148, 159)
     } else {
-        Color32::from_rgb(96, 109, 122)
+        Color32::from_rgb(105, 117, 129)
     }
 }
 
-pub fn apply(ctx: &egui::Context, value: &str) {
+pub fn text(dark: bool) -> Color32 {
+    if dark {
+        Color32::from_rgb(237, 240, 242)
+    } else {
+        Color32::from_rgb(38, 49, 61)
+    }
+}
+pub fn input(dark: bool) -> Color32 {
+    if dark {
+        Color32::from_rgb(25, 31, 37)
+    } else {
+        Color32::WHITE
+    }
+}
+pub fn line(dark: bool) -> Color32 {
+    if dark {
+        Color32::from_rgb(30, 35, 40)
+    } else {
+        Color32::from_rgb(228, 231, 234)
+    }
+}
+pub fn hovered(dark: bool) -> Color32 {
+    if dark {
+        Color32::from_rgb(35, 42, 49)
+    } else {
+        Color32::from_rgb(229, 232, 237)
+    }
+}
+
+const MIKU: Color32 = Color32::from_rgb(57, 197, 187);
+const TIANYI: Color32 = Color32::from_rgb(102, 204, 255);
+
+fn fill_for(key: &str) -> Color32 {
+    match key {
+        "miku" => MIKU,
+        "tianyi" => TIANYI,
+        _ => ACCENT,
+    }
+}
+pub fn accent_fill(ui: &egui::Ui) -> Color32 {
+    ui.ctx()
+        .data(|d| d.get_temp(egui::Id::new("musicfs-accent")))
+        .unwrap_or(ACCENT)
+}
+pub fn accent(ui: &egui::Ui) -> Color32 {
+    match (ui.visuals().dark_mode, accent_fill(ui)) {
+        (false, MIKU) => Color32::from_rgb(0, 105, 96),
+        (false, TIANYI) => Color32::from_rgb(7, 94, 138),
+        (_, color) => color,
+    }
+}
+pub fn on_accent(ui: &egui::Ui) -> Color32 {
+    if accent_fill(ui) == ACCENT {
+        Color32::WHITE
+    } else {
+        sidebar(true)
+    }
+}
+pub fn accent_soft(ui: &egui::Ui) -> Color32 {
+    // 按 Web 的 sRGB 色值混合。GPU 透明叠色在线性空间会让整行的底色过亮。
+    blend(background(ui.visuals().dark_mode), accent_fill(ui), 0.09)
+}
+fn blend(base: Color32, over: Color32, opacity: f32) -> Color32 {
+    let mix = |a: u8, b: u8| (f32::from(a) * (1. - opacity) + f32::from(b) * opacity).round() as u8;
+    Color32::from_rgb(
+        mix(base.r(), over.r()),
+        mix(base.g(), over.g()),
+        mix(base.b(), over.b()),
+    )
+}
+
+pub fn checkbox_style(ui: &mut egui::Ui) {
+    let dark = ui.visuals().dark_mode;
+    let accent = accent(ui);
+    let widgets = &mut ui.visuals_mut().widgets;
+    let edge = if dark {
+        Color32::from_rgb(128, 127, 137)
+    } else {
+        Color32::from_rgb(141, 150, 158)
+    };
+    let fill = if dark {
+        Color32::from_rgb(43, 42, 50)
+    } else {
+        Color32::WHITE
+    };
+    for widget in [
+        &mut widgets.inactive,
+        &mut widgets.hovered,
+        &mut widgets.active,
+    ] {
+        widget.corner_radius = 4.into();
+        widget.bg_stroke = Stroke::new(1_f32, edge);
+        widget.bg_fill = fill;
+    }
+    widgets.active.bg_stroke = Stroke::new(1_f32, accent);
+}
+pub fn bold(ui: &egui::Ui, size: f32) -> FontId {
+    crate::fonts::bold(ui.ctx(), size)
+}
+
+pub fn apply(ctx: &egui::Context, value: &str, accent_key: &str) {
     use egui::{Theme, ThemePreference};
+    let fill = fill_for(accent_key);
+    ctx.data_mut(|d| d.insert_temp(egui::Id::new("musicfs-accent"), fill));
     ctx.set_theme(match value {
         "light" => ThemePreference::Light,
         "system" => ThemePreference::System,
         _ => ThemePreference::Dark,
     });
+    let heading = crate::fonts::bold(ctx, 24.);
     for theme in [Theme::Dark, Theme::Light] {
         let dark = theme == Theme::Dark;
         ctx.style_mut_of(theme, |s| {
-            s.spacing.item_spacing = Vec2::new(8.0, 7.0);
-            s.spacing.button_padding = Vec2::new(11.0, 7.0);
-            s.spacing.interact_size.y = 31.0;
+            s.spacing.item_spacing = Vec2::new(8., 7.);
+            s.spacing.button_padding = Vec2::new(14., 8.);
+            s.spacing.interact_size.y = 34.;
+            s.spacing.icon_width = 16.;
+            s.spacing.scroll.bar_width = 6.;
             s.text_styles
-                .insert(egui::TextStyle::Body, FontId::proportional(14.0));
+                .insert(egui::TextStyle::Body, FontId::proportional(14.));
             s.text_styles
-                .insert(egui::TextStyle::Button, FontId::proportional(14.0));
+                .insert(egui::TextStyle::Button, FontId::proportional(13.));
             s.text_styles
-                .insert(egui::TextStyle::Heading, FontId::proportional(24.0));
-            s.visuals.panel_fill = background(dark);
-            s.visuals.window_fill = surface(dark);
-            s.visuals.extreme_bg_color = if dark {
-                Color32::from_rgb(28, 35, 43)
-            } else {
-                Color32::WHITE
-            };
-            s.visuals.widgets.noninteractive.fg_stroke.color = if dark {
-                Color32::from_rgb(235, 239, 244)
-            } else {
-                Color32::from_rgb(39, 51, 65)
-            };
-            s.visuals.widgets.noninteractive.bg_stroke.color = if dark {
-                Color32::from_rgb(39, 46, 53)
-            } else {
-                Color32::from_rgb(215, 221, 227)
-            };
-            s.visuals.widgets.inactive.weak_bg_fill = surface(dark);
-            s.visuals.widgets.hovered.weak_bg_fill = if dark {
-                Color32::from_rgb(48, 55, 62)
-            } else {
-                Color32::from_rgb(219, 225, 232)
-            };
-            s.visuals.selection.bg_fill = if dark {
-                Color32::from_rgb(107, 38, 56)
-            } else {
-                Color32::from_rgb(255, 197, 207)
-            };
-            s.visuals.hyperlink_color = if dark {
-                Color32::from_rgb(255, 131, 151)
-            } else {
-                Color32::from_rgb(175, 25, 57)
-            };
-            s.visuals.striped = true;
+                .insert(egui::TextStyle::Heading, heading.clone());
+            let v = &mut s.visuals;
+            let border = Stroke::new(1_f32, line(dark));
+            v.panel_fill = background(dark);
+            v.window_fill = surface(dark);
+            v.window_stroke = border;
+            v.window_corner_radius = 12.into();
+            v.menu_corner_radius = 9.into();
+            v.extreme_bg_color = input(dark);
+            v.faint_bg_color = surface(dark);
+            v.hyperlink_color = text(dark);
+            v.selection.bg_fill = blend(background(dark), fill, 0.2);
+            v.selection.stroke = Stroke::new(1_f32, text(dark));
+            v.striped = false;
+            let w = &mut v.widgets;
+            for (widget, bg) in [
+                (&mut w.noninteractive, background(dark)),
+                (&mut w.inactive, surface(dark)),
+                (&mut w.hovered, hovered(dark)),
+                (&mut w.active, hovered(dark)),
+                (&mut w.open, hovered(dark)),
+            ] {
+                widget.bg_fill = bg;
+                widget.weak_bg_fill = bg;
+                widget.bg_stroke = Stroke::new(
+                    1_f32,
+                    if dark {
+                        Color32::from_rgb(36, 41, 47)
+                    } else {
+                        line(false)
+                    },
+                );
+                widget.fg_stroke = Stroke::new(1_f32, text(dark));
+                widget.corner_radius = 7.into();
+                widget.expansion = 0.;
+            }
+            w.noninteractive.bg_stroke = border;
+            w.active.bg_stroke = Stroke::new(1_f32, fill);
         });
     }
+}
+
+pub fn accent_choices(ui: &mut egui::Ui, current: &str) -> Option<String> {
+    use crate::i18n::tr;
+    let mut chosen = None;
+    ui.label(
+        RichText::new(tr("主题色"))
+            .size(12.)
+            .color(muted(ui.visuals().dark_mode)),
+    );
+    ui.horizontal_wrapped(|ui| {
+        for (key, label) in [
+            ("default", "默认"),
+            ("miku", "初音绿"),
+            ("tianyi", "天依蓝"),
+        ] {
+            let swatch = fill_for(key);
+            let label = tr(label);
+            let response = ui.selectable_label(current == key, format!("    {label}"));
+            let center = egui::pos2(response.rect.left() + 10., response.rect.center().y);
+            ui.painter().circle_filled(center, 4., swatch);
+            if response.clicked() {
+                chosen = Some(key.into());
+            }
+        }
+    });
+    chosen
 }
 
 pub fn primary(ui: &mut egui::Ui, label: &str, enabled: bool) -> Response {
     ui.add_enabled(
         enabled,
-        egui::Button::new(RichText::new(label).strong().color(Color32::WHITE))
-            .fill(ACCENT)
+        egui::Button::new(RichText::new(label).color(on_accent(ui)))
+            .fill(accent_fill(ui))
+            .stroke(Stroke::NONE)
             .corner_radius(7)
-            .min_size(Vec2::new(86.0, 34.0)),
+            .min_size(Vec2::new(82., 36.)),
     )
 }
 
 pub fn note(ui: &mut egui::Ui) {
-    let dark = ui.visuals().dark_mode;
     ui.horizontal(|ui| {
-        let (r, _) = ui.allocate_exact_size(Vec2::splat(29.0), Sense::hover());
-        let p = ui.painter();
-        let pt = |x: f32, y: f32| Pos2::new(r.left() + x, r.top() + y);
-        let stroke = Stroke::new(2.6_f32, ACCENT);
-        p.line_segment([pt(9.0, 22.0), pt(9.0, 6.0)], stroke);
-        p.line_segment([pt(9.0, 6.0), pt(25.0, 3.0)], stroke);
-        p.line_segment([pt(9.0, 10.0), pt(25.0, 7.0)], stroke);
-        p.line_segment([pt(25.0, 3.0), pt(25.0, 19.0)], stroke);
-        p.circle_stroke(pt(5.5, 23.0), 3.5, stroke);
-        p.circle_stroke(pt(21.5, 20.0), 3.5, stroke);
-        ui.label(RichText::new("MusicFS").size(29.0).strong().color(if dark {
-            Color32::WHITE
-        } else {
-            Color32::from_rgb(36, 46, 59)
-        }));
+        ui.spacing_mut().item_spacing.x = 12.;
+        let (r, _) = ui.allocate_exact_size(Vec2::splat(34.), Sense::hover());
+        crate::icons::paint(ui, "brand", r, accent(ui));
+        ui.label(
+            RichText::new("MusicFS")
+                .font(bold(ui, 26.))
+                .color(text(ui.visuals().dark_mode)),
+        );
     });
 }
 

@@ -1,7 +1,8 @@
-use super::controls::{heading, icon_button, Glyph, ACCENT};
+use super::controls::{heading, play_button};
 use super::lyrics::{time, Lyrics};
 use crate::i18n::tr;
 use crate::task::Task;
+use crate::{icons, ui::style};
 use eframe::egui::{self, Context, RichText, ViewportBuilder, ViewportCommand, ViewportId};
 use musicfs_player_core::{Player, PlayerCommand, Presentation, Status};
 use musicfs_server_adapter::ServerSession;
@@ -144,21 +145,25 @@ fn mini(ui: &mut egui::Ui, player: &Player, now: &Presentation, visible: &Atomic
     let error_key = egui::Id::new("mini-playback-error");
     ui.horizontal(|ui| {
         let mut action = None;
-        if icon_button(ui, Glyph::Previous, tr("上一首"), enabled, false).clicked() {
+        if ui
+            .add_enabled_ui(enabled, |ui| {
+                icons::button(ui, "previous", tr("上一首"), 32., 20.)
+            })
+            .inner
+            .clicked()
+        {
             action = Some(PlayerCommand::Previous);
         }
-        if icon_button(
-            ui,
-            if playing { Glyph::Pause } else { Glyph::Play },
-            if playing { tr("暂停") } else { tr("播放") },
-            enabled,
-            true,
-        )
-        .clicked()
-        {
+        if play_button(ui, playing, enabled, 39.).clicked() {
             action = Some(PlayerCommand::Toggle);
         }
-        if icon_button(ui, Glyph::Next, tr("下一首"), now.has_next, false).clicked() {
+        if ui
+            .add_enabled_ui(now.has_next, |ui| {
+                icons::button(ui, "next", tr("下一首"), 32., 20.)
+            })
+            .inner
+            .clicked()
+        {
             action = Some(PlayerCommand::Next);
         }
         if let Some(command) = action {
@@ -181,7 +186,7 @@ fn mini(ui: &mut egui::Ui, player: &Player, now: &Presentation, visible: &Atomic
         .map_or(0., |ms| now.position_ms as f32 / ms as f32);
     ui.add(
         egui::ProgressBar::new(progress)
-            .fill(ACCENT)
+            .fill(style::accent(ui))
             .desired_height(4.),
     );
     let error = ui.data(|data| data.get_temp::<String>(error_key));

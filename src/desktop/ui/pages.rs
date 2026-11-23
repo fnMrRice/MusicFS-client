@@ -116,6 +116,7 @@ impl SignedUi {
             query,
             &self.lists.items,
             source,
+            self.player.status(),
         );
     }
     fn play_request(

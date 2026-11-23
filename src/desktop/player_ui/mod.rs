@@ -1,13 +1,13 @@
 use crate::i18n::tr;
+mod bar;
 mod controls;
 pub(crate) mod cover;
 mod lyrics;
 mod windows;
 
-use controls::{glyph, heading, icon_button, Glyph, ACCENT};
+use crate::ui::style;
 use cover::Cover;
-use eframe::egui::{self, Color32, Context, RichText, Ui};
-use lyrics::time;
+use eframe::egui::{self, Context};
 use musicfs_player_core::{Player, PlayerCommand, PlayerSnapshot, Status, Track};
 use musicfs_server_adapter::ServerSession;
 use std::time::{Duration, Instant};
@@ -42,6 +42,10 @@ impl PlayerUi {
             &self.snapshot,
             self.cover.png_for(instance, cover),
         )
+    }
+
+    pub fn status(&self) -> Status {
+        self.snapshot.status
     }
 
     pub fn refresh(&mut self) {
@@ -91,15 +95,10 @@ impl PlayerUi {
             .map(str::to_owned);
         egui::TopBottomPanel::bottom("musicfs-player")
             .resizable(false)
-            .frame(
-                egui::Frame::default()
-                    .fill(ctx.style().visuals.panel_fill)
-                    .inner_margin(egui::Margin::symmetric(16, 7)),
-            )
+            .show_separator_line(false)
+            .frame(egui::Frame::new().fill(style::sidebar(ctx.style().visuals.dark_mode)))
             .show(ctx, |ui| {
-                self.timeline(ui, player);
-                ui.add_space(4.);
-                self.toolbar(ui, player, volume, last_volume, &mut volume_change);
+                self.bar(ui, player, volume, last_volume, &mut volume_change);
                 if let Some(error) = error {
                     ui.horizontal(|ui| {
                         ui.colored_label(ui.visuals().error_fg_color, error);
@@ -165,208 +164,6 @@ impl PlayerUi {
             Err(error) => self.error = Some(error),
         }
         self.last_poll = None;
-    }
-
-    fn timeline(&mut self, ui: &mut Ui, player: &Player) {
-        let duration = self.snapshot.duration_ms.unwrap_or(0);
-        if let Some((start, end)) = self
-            .snapshot
-            .seek_range_ms
-            .filter(|_| self.snapshot.seekable)
-        {
-            let mut target = self
-                .seek_draft
-                .unwrap_or(self.snapshot.position_ms)
-                .clamp(start, end);
-            let response = ui
-                .scope(|ui| {
-                    ui.spacing_mut().slider_width = ui.available_width();
-                    ui.add(
-                        egui::Slider::new(&mut target, start..=end)
-                            .show_value(false)
-                            .trailing_fill(true),
-                    )
-                    .on_hover_text(format!(
-                        "{} · {}",
-                        tr("播放进度"),
-                        time(target)
-                    ))
-                })
-                .inner;
-            if response.changed() {
-                self.seek_draft = Some(target);
-            }
-            if (response.drag_stopped() || (response.changed() && !response.dragged()))
-                && self.seek_draft.is_some()
-            {
-                self.seek_draft = None;
-                self.run(
-                    player,
-                    PlayerCommand::Seek {
-                        position_ms: target,
-                    },
-                );
-            }
-        } else {
-            let progress = if duration == 0 {
-                0.
-            } else {
-                self.snapshot.position_ms as f32 / duration as f32
-            };
-            ui.add_space(6.);
-            ui.add(
-                egui::ProgressBar::new(progress)
-                    .fill(ACCENT)
-                    .desired_height(4.),
-            )
-            .on_hover_text(tr("播放进度"));
-            ui.add_space(6.);
-        }
-    }
-
-    fn toolbar(
-        &mut self,
-        ui: &mut Ui,
-        player: &Player,
-        mut volume: f32,
-        last_volume: f32,
-        volume_change: &mut Option<f32>,
-    ) {
-        let width = ui.available_width();
-        let narrow = width < 790.;
-        ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = if narrow { 3. } else { 8. };
-            let (art, _) = ui.allocate_exact_size(
-                egui::Vec2::splat(if narrow { 39. } else { 51. }),
-                egui::Sense::hover(),
-            );
-            if let Some(texture) = &self.cover.texture {
-                ui.painter().image(
-                    texture.id(),
-                    art,
-                    egui::Rect::from_min_max(egui::pos2(0., 0.), egui::pos2(1., 1.)),
-                    Color32::WHITE,
-                );
-            } else {
-                ui.painter()
-                    .rect_filled(art, 8., ui.visuals().widgets.inactive.bg_fill);
-                glyph(
-                    ui,
-                    art.center(),
-                    Glyph::Record,
-                    ui.visuals().weak_text_color(),
-                    1.35,
-                );
-            }
-            let track_width = if narrow {
-                width * 0.34
-            } else {
-                width * 0.5 - 72.
-            };
-            let track_width = (track_width - art.width()).max(76.);
-            ui.allocate_ui_with_layout(
-                egui::vec2(track_width, art.height()),
-                egui::Layout::top_down(egui::Align::Min),
-                |ui| {
-                    ui.set_width(track_width);
-                    if let Some(track) = self.current_track() {
-                        heading(ui, &track.title, &track.artists);
-                    } else {
-                        ui.label(RichText::new(tr("暂无音频")).size(16.).strong());
-                        ui.small(tr("尚未选择曲目"));
-                    }
-                },
-            );
-            let index = self.snapshot.index;
-            let playing = matches!(self.snapshot.status, Status::Playing | Status::Loading);
-            if icon_button(
-                ui,
-                Glyph::Previous,
-                tr("上一首"),
-                index.is_some_and(|i| i > 0),
-                false,
-            )
-            .clicked()
-            {
-                self.run(player, PlayerCommand::Previous);
-            }
-            if icon_button(
-                ui,
-                if playing { Glyph::Pause } else { Glyph::Play },
-                if playing { tr("暂停") } else { tr("播放") },
-                index.is_some(),
-                true,
-            )
-            .clicked()
-            {
-                self.run(player, PlayerCommand::Toggle);
-            }
-            if icon_button(
-                ui,
-                Glyph::Next,
-                tr("下一首"),
-                index.is_some_and(|i| i + 1 < self.snapshot.queue.len()),
-                false,
-            )
-            .clicked()
-            {
-                self.run(player, PlayerCommand::Next);
-            }
-            if !narrow {
-                ui.small(format!(
-                    "{} / {}",
-                    time(self.seek_draft.unwrap_or(self.snapshot.position_ms)),
-                    self.snapshot
-                        .duration_ms
-                        .map(time)
-                        .unwrap_or_else(|| "–:––".into())
-                ));
-            }
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if icon_button(ui, Glyph::Queue, tr("播放队列"), true, false).clicked() {
-                    self.queue_open = !self.queue_open;
-                }
-                if icon_button(ui, Glyph::Lyrics, tr("桌面歌词"), true, false).clicked() {
-                    self.windows.open_lyrics(ui.ctx());
-                }
-                if icon_button(ui, Glyph::Mini, tr("迷你播放器"), true, false).clicked() {
-                    self.windows.open_mini(ui.ctx());
-                }
-                if !narrow {
-                    ui.spacing_mut().slider_width = 66.;
-                    ui.spacing_mut().interact_size.y = 16.;
-                    if ui
-                        .add_sized(
-                            [66., 16.],
-                            egui::Slider::new(&mut volume, 0.0..=1.0).show_value(false),
-                        )
-                        .on_hover_text(tr("音量"))
-                        .changed()
-                    {
-                        *volume_change = Some(volume);
-                    }
-                }
-                if icon_button(
-                    ui,
-                    if volume == 0. {
-                        Glyph::Muted
-                    } else {
-                        Glyph::Volume
-                    },
-                    if volume == 0. {
-                        tr("取消静音")
-                    } else {
-                        tr("静音")
-                    },
-                    true,
-                    false,
-                )
-                .clicked()
-                {
-                    *volume_change = Some(if volume > 0. { 0. } else { last_volume });
-                }
-            });
-        });
     }
 
     fn queue(&mut self, ctx: &Context, player: &Player) {

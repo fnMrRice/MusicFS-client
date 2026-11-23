@@ -154,6 +154,7 @@ fn enqueue_preserves_idle_or_active_selection() {
     assert_eq!(second.queue.len(), 2);
     assert_eq!(first.queue.len(), 1);
     player.play_next(track("next")).unwrap();
+    player.play_next_many(vec![track("x"), track("y")]).unwrap();
     player
         .enqueue_many(vec![track("third"), track("fourth")])
         .unwrap();
@@ -169,6 +170,6 @@ fn enqueue_preserves_idle_or_active_selection() {
             .iter()
             .map(|t| t.id.as_str())
             .collect::<Vec<_>>(),
-        ["first", "next", "second", "third", "fourth"]
+        ["first", "x", "y", "next", "second", "third", "fourth"]
     );
 }

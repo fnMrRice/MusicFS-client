@@ -235,8 +235,12 @@ impl Player {
     }
 
     pub fn play_next(&self, track: Track) -> Result<(), String> {
+        self.play_next_many(vec![track])
+    }
+
+    pub fn play_next_many(&self, tracks: Vec<Track>) -> Result<(), String> {
         self.request(Operation::Enqueue {
-            tracks: vec![track],
+            tracks,
             next: true,
         })
         .map(|_| ())

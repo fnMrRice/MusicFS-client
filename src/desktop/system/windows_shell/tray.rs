@@ -35,7 +35,7 @@ pub(super) unsafe fn register(hwnd: HWND, window: &Window) {
     nid.uCallbackMessage = TRAY_EVENT;
     nid.hIcon = window.icon;
     fill_tip(&mut nid, &window.state.borrow().tip);
-    if Shell_NotifyIconW(NIM_ADD, &nid) != 0 {
+    if Shell_NotifyIconW(NIM_ADD, &nid) != 0 || Shell_NotifyIconW(NIM_MODIFY, &nid) != 0 {
         nid.Anonymous.uVersion = NOTIFYICON_VERSION_4;
         if Shell_NotifyIconW(NIM_SETVERSION, &nid) != 0 {
             window.registered.set(true);

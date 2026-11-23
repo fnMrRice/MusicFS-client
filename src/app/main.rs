@@ -8,6 +8,8 @@ mod connection;
 mod fonts;
 #[path = "../desktop/i18n.rs"]
 mod i18n;
+#[path = "../desktop/icons.rs"]
+mod icons;
 #[path = "../desktop/model.rs"]
 mod model;
 #[path = "../desktop/player_ui/mod.rs"]

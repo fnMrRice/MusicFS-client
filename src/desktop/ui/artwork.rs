@@ -31,8 +31,7 @@ impl Artwork {
             }
         }
     }
-    pub fn show(&mut self, ui: &mut egui::Ui, svc: Services<'_>, id: Option<&str>) {
-        let (rect, _) = ui.allocate_exact_size(egui::vec2(32., 32.), egui::Sense::hover());
+    pub fn paint(&mut self, ui: &egui::Ui, rect: egui::Rect, svc: Services<'_>, id: Option<&str>) {
         if let Some(id) = id {
             self.counter += 1;
             if !self.items.contains_key(id)
@@ -65,20 +64,27 @@ impl Artwork {
             if let Some((stamp, state)) = self.items.get_mut(id) {
                 *stamp = self.counter;
                 if let ImageState::Ready(texture) = state {
+                    let size = texture.size_vec2();
+                    let side = size.x.min(size.y);
+                    let uv = egui::Rect::from_center_size(
+                        egui::pos2(0.5, 0.5),
+                        egui::vec2(side / size.x, side / size.y),
+                    );
                     egui::Image::new(&*texture)
-                        .corner_radius(4)
+                        .uv(uv)
+                        .corner_radius(6)
                         .paint_at(ui, rect);
                     return;
                 }
             }
         }
-        let painter = ui.painter();
-        painter.rect_filled(rect, 4, ui.visuals().widgets.inactive.bg_fill);
-        painter.circle_stroke(
-            rect.center(),
-            10.,
-            egui::Stroke::new(1.5_f32, ui.visuals().weak_text_color()),
+        ui.painter()
+            .rect_filled(rect, 6, egui::Color32::from_rgb(35, 46, 56));
+        crate::icons::paint(
+            ui,
+            "music",
+            egui::Rect::from_center_size(rect.center(), egui::Vec2::splat(22.)),
+            egui::Color32::from_rgb(151, 165, 183),
         );
-        painter.circle_filled(rect.center(), 2.5, ui.visuals().weak_text_color());
     }
 }

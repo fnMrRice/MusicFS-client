@@ -7,14 +7,7 @@ fn page(ids: &[&str], next: Option<&str>) -> Page<Track> {
             .iter()
             .map(|id| Track {
                 id: (*id).into(),
-                title: String::new(),
-                artists: vec![],
-                album: None,
-
-                forced_source_track_id: None,
-                sources: None,
-                unresolved: false,
-                cover_object_id: None,
+                ..Track::default()
             })
             .collect(),
         next_cursor: next.map(str::to_owned),

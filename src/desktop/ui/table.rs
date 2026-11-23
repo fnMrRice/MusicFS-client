@@ -1,33 +1,29 @@
+#[cfg(test)]
+mod interaction_tests;
+mod layout;
+mod row;
+mod widgets;
+
 use super::{
     actions::Actions,
     catalog::Catalog,
-    data::{play_row, Services, TrackQuery},
+    data::{play_row, queue_track, CategoryTab, Services, TrackQuery},
     style,
 };
 use crate::i18n::tr;
-use eframe::egui::{self, Align, Color32, Layout, RichText, Sense, Vec2};
+use eframe::egui;
+use layout::{Columns, Line, Lines, HEADER, HEIGHT};
+use musicfs_player_core::Status;
 use musicfs_server_adapter::Playlist;
+use row::{Action, RowEvent};
 
-fn time(ms: Option<u64>) -> String {
-    match ms {
-        Some(ms) => {
-            let sec = ms / 1000;
-            format!("{}:{:02}", sec / 60, sec % 60)
-        }
-        None => "—".into(),
-    }
+fn key(track: &musicfs_server_adapter::Track) -> (&str, Option<&str>) {
+    (&track.id, track.forced_source_track_id.as_deref())
 }
 
-fn text_cell(ui: &mut egui::Ui, width: f32, text: &str, color: Color32) {
-    ui.allocate_ui_with_layout(
-        Vec2::new(width, 28.0),
-        Layout::left_to_right(Align::Center),
-        |ui| {
-            ui.set_width(width);
-            ui.add(egui::Label::new(RichText::new(text).color(color)).truncate())
-                .on_hover_text(text);
-        },
-    );
+fn time(ms: Option<u64>) -> String {
+    ms.map(|ms| format!("{:02}:{:02}", ms / 60000, ms / 1000 % 60))
+        .unwrap_or_else(|| "—".into())
 }
 
 pub fn tracks(
@@ -38,61 +34,24 @@ pub fn tracks(
     query: TrackQuery,
     lists: &[Playlist],
     active_source: Option<&str>,
+    status: Status,
 ) {
-    let favorites = query == TrackQuery::Favorites;
+    let screen = ui.ctx().screen_rect();
+    let right_margin = if screen.width() <= 850. { 18. } else { 30. };
+    let right = screen.right() - right_margin;
+    let table_width = (right - ui.next_widget_position().x)
+        .min(ui.available_width())
+        .max(0.);
     data.sync(ui, svc, &query);
     data.artwork.poll(ui.ctx());
     data.providers.sync(ui, svc);
-    let can_match = matches!(
-        query,
-        TrackQuery::AvailableSources { .. } | TrackQuery::Category { .. } | TrackQuery::Library(_)
-    );
-    if can_match {
-        let album = matches!(
-            query,
-            TrackQuery::Category {
-                tab: super::data::CategoryTab::Album,
-                ..
-            }
-        );
-        let mut refresh = data
-            .matching
-            .show(ui, svc, !album, &|id| data.providers.label(id).to_owned());
-        if let TrackQuery::Category {
-            tab: super::data::CategoryTab::Album,
-            id,
-            ..
-        } = &query
-        {
-            refresh |= data
-                .album_merge
-                .show(ui, svc, id, data.matching.selected_tracks());
-        }
-        if refresh {
-            data.reset_tracks();
-            return;
-        }
+    if data.table_toolbar(ui, svc, actions, &query, lists) {
+        return;
     }
-    ui.horizontal_wrapped(|ui| {
-        if let Some(error) = data.play_all(ui, svc) {
-            actions.notice = Some((error, true));
-        }
-        if ui.button(tr("刷新")).clicked() {
-            data.reset_tracks();
-            data.artwork = Default::default();
-            actions.favorites.refresh();
-        }
-        let count_label = if data.tracks.next.is_some() {
-            "已显示 {0} 首"
-        } else {
-            "共 {0} 首"
-        };
-        ui.weak(tr(count_label).replace("{0}", &data.tracks.items.len().to_string()));
-        if data.tracks.busy() {
-            ui.spinner();
-        }
-        actions.favorites.status(ui);
-    });
+    if data.versions.poll(ui, svc, actions) {
+        data.reset_tracks();
+        return;
+    }
     if let Some(error) = data.tracks.error.as_ref() {
         ui.colored_label(ui.visuals().error_fg_color, error);
         if ui.button(tr("重试加载曲目")).clicked() {
@@ -101,10 +60,14 @@ pub fn tracks(
     }
     if data.tracks.items.is_empty() {
         if !data.tracks.busy() && data.tracks.error.is_none() {
-            let label = match query {
-                TrackQuery::Library(ref q)
-                | TrackQuery::AvailableSources { query: ref q, .. }
-                | TrackQuery::Category { query: ref q, .. }
+            if data.tracks.next.is_some() {
+                data.more(ui, svc);
+                return;
+            }
+            let label = match &query {
+                TrackQuery::Library(q)
+                | TrackQuery::AvailableSources { query: q, .. }
+                | TrackQuery::Category { query: q, .. }
                     if !q.is_empty() =>
                 {
                     tr("没有找到相关曲目")
@@ -118,210 +81,175 @@ pub fn tracks(
                 TrackQuery::Category { .. } => tr("此分类暂无曲目"),
             };
             ui.vertical_centered(|ui| {
-                ui.add_space(72.0);
+                ui.add_space(70.);
                 ui.weak(label);
             });
         }
         return;
     }
-    ui.add_space(6.0);
-    let dark = ui.visuals().dark_mode;
-    let muted = style::muted(dark);
-    let width = ui.available_width() - 14.0;
-    let show_album = width > 630.0;
-    let artist_w = (width * 0.16).clamp(65.0, 180.0);
-    let album_w = if show_album {
-        (width * 0.16).clamp(70.0, 180.0)
-    } else {
-        0.0
-    };
-    let select_w = if can_match { 24.0 } else { 0.0 };
-    let title_w = (width - artist_w - album_w - 321.0 - select_w).max(55.0);
-    egui::Frame::new()
-        .fill(style::surface(dark))
-        .corner_radius(6)
-        .inner_margin(egui::Margin::symmetric(7, 2))
-        .show(ui, |ui| {
-            ui.set_min_width(width);
-            ui.horizontal(|ui| {
-                ui.spacing_mut().item_spacing.x = 4.0;
-                if can_match {
-                    ui.add_space(select_w);
-                }
-                for (w, t) in [
-                    (34.0, "#"),
-                    (32.0, ""),
-                    (title_w, tr("曲名")),
-                    (artist_w, tr("歌手")),
-                ] {
-                    text_cell(ui, w, t, muted);
-                }
-                if show_album {
-                    text_cell(ui, album_w, tr("专辑"), muted);
-                }
-                text_cell(ui, 51.0, tr("时长"), muted);
-            });
-        });
-    let count = data.tracks.items.len();
-    let mut play = None;
+    let library = matches!(
+        query,
+        TrackQuery::AvailableSources { .. } | TrackQuery::Category { .. }
+    );
+    let can_match = library || matches!(query, TrackQuery::Library(_));
+    let favorites = query == TrackQuery::Favorites;
+    let lines = Lines::new(
+        data.tracks.items.len(),
+        data.versions.expanded(&data.tracks.items),
+        data.tracks.next.is_some(),
+    );
+    let mut event = None;
     let mut more = false;
-    let extra = usize::from(data.tracks.next.is_some());
-    egui::ScrollArea::vertical()
-        .id_salt("track-data")
-        .auto_shrink([false, false])
-        .show_rows(ui, 37.0, count + extra, |ui, range| {
-            for i in range {
-                if i == count {
-                    more = ui
-                        .add_enabled(!data.tracks.busy(), egui::Button::new(tr("加载更多曲目")))
-                        .clicked();
-                    continue;
-                }
-                let t = &data.tracks.items[i];
-                let selected = active_source.is_some()
-                    && (t.playable_source_id() == active_source
-                        || (t.forced_source_track_id.is_none()
-                            && t.sources.as_ref().is_some_and(|g| {
-                                g.choices()
-                                    .any(|s| Some(s.source_track_id.as_str()) == active_source)
-                            })));
-                let text = if selected {
-                    style::ACCENT
-                } else {
-                    ui.visuals().text_color()
-                };
-                let row = ui
-                    .push_id((i, &t.id), |ui| {
-                        ui.horizontal(|ui| {
-                            ui.spacing_mut().item_spacing.x = 4.0;
-                            ui.add_space(3.0);
-                            if can_match {
-                                data.matching.row(ui, t);
+    let dark = ui.visuals().dark_mode;
+    let stroke = egui::Stroke::new(1_f32, style::line(dark));
+    egui::Frame::new()
+        .stroke(stroke)
+        .corner_radius(9)
+        .inner_margin(0)
+        .show(ui, |ui| {
+            ui.spacing_mut().item_spacing.y = 0.;
+            let width = (table_width - 2.).min(ui.available_width()).max(0.);
+            ui.set_width(width);
+            let cols = Columns::new(width, !library);
+            let (hdr, _) = ui.allocate_exact_size(egui::vec2(width, HEADER), egui::Sense::hover());
+            widgets::header(ui, hdr, &cols, data);
+            ui.painter().hline(hdr.x_range(), hdr.bottom(), stroke);
+            egui::ScrollArea::vertical()
+                .id_salt("track-data")
+                .auto_shrink([false, true])
+                .show_rows(ui, HEIGHT, lines.len, |ui, range| {
+                    for line in range {
+                        let (rect, _) = ui.allocate_exact_size(
+                            egui::vec2(width.min(ui.available_width()), HEIGHT),
+                            egui::Sense::hover(),
+                        );
+                        let display = lines.at(line);
+                        let mut cell = ui.new_child(
+                            egui::UiBuilder::new()
+                                .id_salt(("track-slot", line))
+                                .max_rect(rect)
+                                .layout(egui::Layout::left_to_right(egui::Align::Center)),
+                        );
+                        match display {
+                            Line::Track(i) => {
+                                if let Some(result) = row::show(
+                                    &mut cell,
+                                    rect,
+                                    &cols,
+                                    data,
+                                    actions,
+                                    svc,
+                                    i,
+                                    favorites,
+                                    library,
+                                    active_source,
+                                    status,
+                                ) {
+                                    event = Some((i, result));
+                                }
                             }
-                            let playable = t.playable_source_id().is_some();
-                            let index = if selected {
-                                "▶".into()
-                            } else {
-                                format!("{:02}", i + 1)
-                            };
-                            if ui
-                                .add_enabled(
-                                    playable,
-                                    egui::Button::new(RichText::new(index).color(if selected {
-                                        style::ACCENT
-                                    } else {
-                                        muted
-                                    }))
-                                    .frame(false)
-                                    .min_size(Vec2::new(34.0, 30.0)),
-                                )
-                                .on_hover_text(if playable {
-                                    tr("播放曲目")
-                                } else {
-                                    tr("暂无可用音源")
-                                })
-                                .clicked()
-                            {
-                                play = Some(i);
+                            Line::Source(i, n) => {
+                                ui.painter().rect_filled(rect, 0, style::surface(dark));
+                                data.versions.source(
+                                    &mut cell,
+                                    svc,
+                                    &data.tracks.items,
+                                    i,
+                                    n,
+                                    &data.providers,
+                                    can_match.then_some(&mut data.matching),
+                                    actions,
+                                    lists,
+                                );
                             }
-                            data.artwork.show(ui, svc, t.cover());
-                            text_cell(ui, title_w, &t.title, text);
-                            let artist = t.artists.join(" / ");
-                            text_cell(
-                                ui,
-                                artist_w,
-                                if artist.is_empty() { "—" } else { &artist },
-                                muted,
-                            );
-                            if show_album {
-                                text_cell(ui, album_w, t.album.as_deref().unwrap_or("—"), muted);
-                            }
-                            text_cell(
-                                ui,
-                                51.0,
-                                &time(t.source().and_then(|s| s.duration_ms)),
-                                muted,
-                            );
-                            let count = t.sources.as_ref().map_or(0, |g| g.choices().count());
-                            if ui
-                                .add_enabled(
-                                    count > 0,
-                                    egui::Button::new(format!("{} {count}", tr("来源")))
-                                        .frame(false),
-                                )
-                                .clicked()
-                            {
-                                data.versions.open(ui, svc, i, t);
-                            }
-                            let favorite = actions.favorites.contains(&t.id, favorites);
-                            let on = favorite == Some(true);
-                            if ui
-                                .add_enabled(
-                                    favorite.is_some() && !t.unresolved && !actions.busy(),
-                                    egui::Button::new(
-                                        RichText::new(match favorite {
-                                            Some(true) => "♥",
-                                            Some(false) => "♡",
-                                            None => "…",
-                                        })
-                                        .size(17.0)
-                                        .color(if on {
-                                            style::ACCENT
-                                        } else {
-                                            muted
-                                        }),
+                            Line::More => {
+                                cell.add_space(14.);
+                                more = cell
+                                    .add_enabled(
+                                        !data.tracks.busy(),
+                                        egui::Button::new(tr("加载更多曲目")),
                                     )
-                                    .frame(false),
-                                )
-                                .on_hover_text(match favorite {
-                                    Some(true) => tr("取消收藏"),
-                                    Some(false) => tr("加入收藏"),
-                                    None => tr("尚未读取收藏状态"),
-                                })
-                                .clicked()
-                            {
-                                actions.toggle(ui, svc, t, !on);
+                                    .clicked();
                             }
-                            if ui
-                                .add_enabled(!t.unresolved, egui::Button::new("＋").frame(false))
-                                .on_hover_text(tr("加入歌单"))
-                                .clicked()
-                            {
-                                actions.open(t, lists);
-                            }
-                        })
-                    })
-                    .inner
-                    .response;
-                if ui
-                    .interact(row.rect, row.id.with("double"), Sense::hover())
-                    .hovered()
-                    && ui.input(|i| {
-                        i.pointer
-                            .button_double_clicked(egui::PointerButton::Primary)
-                    })
-                    && t.playable_source_id().is_some()
-                {
-                    play = Some(i);
-                }
-            }
+                        }
+                        if line + 1 < lines.len {
+                            ui.painter().hline(rect.x_range(), rect.bottom(), stroke);
+                        }
+                    }
+                });
         });
-    if data.versions.show(
-        ui,
-        svc,
-        &data.tracks.items,
-        &mut actions.favorites,
-        &data.providers,
-        can_match.then_some(&mut data.matching),
-    ) {
-        data.reset_tracks();
+    if let Some((i, event)) = event {
+        apply(ui, svc, data, actions, lists, i, event, favorites);
     }
     if more {
         data.more(ui, svc);
     }
-    if let Some(i) = play {
-        if let Err(e) = play_row(svc.player, &data.tracks.items, i) {
-            actions.notice = Some((e, true));
+}
+
+fn apply(
+    ui: &mut egui::Ui,
+    svc: Services<'_>,
+    data: &mut Catalog,
+    actions: &mut Actions,
+    lists: &[Playlist],
+    i: usize,
+    event: RowEvent,
+    favorites: bool,
+) {
+    let (action, multi) = match event {
+        RowEvent::Credit(tab, id, name) => {
+            data.open_credit(tab, id, name);
+            return;
         }
+        RowEvent::Action(action, multi) => (action, multi),
+    };
+    let track = &data.tracks.items[i];
+    let ordered;
+    let selected = if multi {
+        let mut keys: std::collections::HashSet<_> =
+            data.matching.selected_tracks().iter().map(key).collect();
+        ordered = data
+            .tracks
+            .items
+            .iter()
+            .filter(|t| keys.remove(&key(t)))
+            .cloned()
+            .collect::<Vec<_>>();
+        ordered.as_slice()
+    } else {
+        std::slice::from_ref(track)
+    };
+    let queue = || selected.iter().filter_map(queue_track);
+    let result = match action {
+        Action::Play if multi => svc.player.set_queue(queue().collect(), 0).map(|_| ()),
+        Action::Play => play_row(svc.player, &data.tracks.items, i),
+        Action::Next if multi => svc.player.play_next_many(queue().collect()),
+        Action::Next => queue_track(track).map_or(Ok(()), |t| svc.player.play_next(t)),
+        Action::Queue => svc.player.enqueue_many(queue().collect()).map(|_| ()),
+        Action::Favorite if multi => {
+            actions.favorite_many(ui, svc, selected);
+            Ok(())
+        }
+        Action::Favorite => {
+            if let Some(on) = actions.favorites.contains(&track.id, favorites) {
+                actions.toggle(ui, svc, track, !on);
+            }
+            Ok(())
+        }
+        Action::Add => {
+            if multi {
+                actions.open_many(selected, lists)
+            } else {
+                actions.open(track, lists)
+            };
+            Ok(())
+        }
+        Action::Versions => {
+            data.versions.toggle(ui, svc, i, track);
+            Ok(())
+        }
+    };
+    if let Err(e) = result {
+        actions.notice = Some((e, true));
     }
 }

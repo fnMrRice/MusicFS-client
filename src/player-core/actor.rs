@@ -1,28 +1,19 @@
 use crate::decode::{Event, Lifecycle, Worker};
-use crate::pcm::Clock;
-use crate::{Operation, PlayerCommand, PlayerSnapshot, Presentation, Request, Status, Track};
-use rodio::{OutputStream, OutputStreamBuilder, Sink};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use crate::output::Output;
+use crate::{
+    FadeSettings, Operation, PlayerCommand, PlayerSnapshot, Presentation, Request, Status, Track,
+};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
 use std::sync::Arc;
 use std::time::Duration;
 
+#[cfg(test)]
+#[path = "../../tests/native/fades.rs"]
+mod fade_tests;
+
 pub fn run(receiver: Receiver<Request>, decoder: Worker) {
-    static NEXT_INSTANCE: AtomicU64 = AtomicU64::new(1);
-    let mut player = Actor {
-        instance: NEXT_INSTANCE.fetch_add(1, Ordering::Relaxed),
-        state: PlayerSnapshot::default(),
-        decoder,
-        generation: 0,
-        revision: 0,
-        seeks: None,
-        lifecycle: None,
-        sink: None,
-        output: None,
-        device_lost: Arc::new(AtomicBool::new(false)),
-        clock: None,
-        paused: false,
-    };
+    let mut player = Actor::new(decoder);
     loop {
         player.poll();
         match receiver.recv_timeout(Duration::from_millis(30)) {
@@ -48,14 +39,29 @@ struct Actor {
     revision: u64,
     seeks: Option<Sender<(u64, u64)>>,
     lifecycle: Option<Lifecycle>,
-    sink: Option<Sink>,
-    output: Option<OutputStream>,
-    device_lost: Arc<AtomicBool>,
-    clock: Option<Clock>,
+    output: Output,
+    fades: FadeSettings,
+    fade_in: bool,
     paused: bool,
 }
 
 impl Actor {
+    fn new(decoder: Worker) -> Self {
+        static NEXT_INSTANCE: AtomicU64 = AtomicU64::new(1);
+        Self {
+            instance: NEXT_INSTANCE.fetch_add(1, Ordering::Relaxed),
+            state: PlayerSnapshot::default(),
+            decoder,
+            generation: 0,
+            revision: 0,
+            seeks: None,
+            lifecycle: None,
+            output: Output::default(),
+            fades: FadeSettings::default(),
+            fade_in: false,
+            paused: false,
+        }
+    }
     fn presentation(&self) -> Presentation {
         let track = self.state.index.and_then(|i| self.state.queue.get(i));
         Presentation {
@@ -67,12 +73,14 @@ impl Actor {
             status: self.state.status,
             position_ms: self.state.position_ms,
             duration_ms: self.state.duration_ms,
-            has_next: self
-                .state
-                .index
-                .is_some_and(|i| i + 1 < self.state.queue.len()),
+            has_next: self.has_next(),
             error: self.state.error.clone(),
         }
+    }
+    fn has_next(&self) -> bool {
+        self.state
+            .index
+            .is_some_and(|i| i + 1 < self.state.queue.len())
     }
     fn apply(&mut self, op: Operation) -> Result<(), String> {
         match op {
@@ -132,8 +140,16 @@ impl Actor {
                     return Err("Volume must be between 0 and 1.".into());
                 }
                 self.state.volume = volume;
-                if let Some(sink) = &self.sink {
-                    sink.set_volume(volume);
+                self.output.set_volume(volume);
+                Ok(())
+            }
+            PlayerCommand::SetFades { settings } => {
+                self.fades = settings;
+                if let Some(clock) = &self.output.clock {
+                    clock
+                        .fades
+                        .track_tail
+                        .store(settings.track_change && self.has_next(), Ordering::Release);
                 }
                 Ok(())
             }
@@ -141,25 +157,18 @@ impl Actor {
         }
     }
 
-    fn detach_sink(&mut self) {
-        if let Some(sink) = self.sink.take() {
-            sink.stop();
-        }
-        self.clock = None;
-    }
-
     fn stop_output(&mut self) {
-        self.reset_media(false);
+        self.reset_media(false, false);
     }
 
-    fn reset_media(&mut self, drain_tail: bool) {
+    fn reset_media(&mut self, drain_tail: bool, fade: bool) {
+        self.output.detach(fade);
         self.generation = self.decoder.cancel();
         self.seeks = None;
-        self.detach_sink();
-        if !drain_tail {
-            self.output = None;
-            self.device_lost = Arc::new(AtomicBool::new(false));
+        if !drain_tail && !fade {
+            self.output = Output::default();
         }
+        self.fade_in = fade;
         self.lifecycle = None;
         self.state.seekable = false;
         self.state.seek_range_ms = None;
@@ -178,7 +187,8 @@ impl Actor {
             .get(index)
             .ok_or("Queue index is out of range.")?
             .clone();
-        self.reset_media(drain_tail);
+        let fade = self.fades.track_change && self.seeks.is_some();
+        self.reset_media(drain_tail, fade);
         self.revision = 0;
         self.state.index = Some(index);
         self.state.position_ms = 0;
@@ -203,12 +213,8 @@ impl Actor {
             return self.select(index);
         }
         self.paused = false;
-        if let Some(sink) = &self.sink {
-            sink.play();
-            self.state.status = Status::Playing;
-        } else {
-            self.state.status = Status::Loading;
-        }
+        self.output.play();
+        self.state.status = self.output.status(false);
         Ok(())
     }
 
@@ -217,9 +223,7 @@ impl Actor {
             return;
         }
         self.paused = true;
-        if let Some(sink) = &self.sink {
-            sink.pause();
-        }
+        self.output.pause();
         self.state.status = Status::Paused;
     }
 
@@ -229,7 +233,7 @@ impl Actor {
             return self.start(index + 1, drain_tail);
         }
         // 曲终时保留输出设备，让系统缓冲区内的末尾样本实际播完。
-        self.reset_media(drain_tail);
+        self.reset_media(drain_tail, false);
         self.state.status = Status::Ended;
         Ok(())
     }
@@ -250,7 +254,8 @@ impl Actor {
             .send((revision, target))
             .map_err(|_| "Decoder is unavailable.")?;
         self.revision = revision;
-        self.detach_sink();
+        self.fade_in = self.fades.seek && !self.paused;
+        self.output.detach(self.fade_in);
         self.state.position_ms = target;
         self.state.status = if self.paused {
             Status::Paused
@@ -274,11 +279,12 @@ impl Actor {
                 }
             }
         }
-        if self.device_lost.swap(false, Ordering::AcqRel) {
-            self.fail("Audio output device disconnected.".into());
+        if let Err(error) = self.output.poll(self.paused) {
+            self.fail(error);
             return;
         }
-        if let Some(clock) = &self.clock {
+        if let Some(clock) = &self.output.clock {
+            self.state.status = self.output.status(self.paused);
             self.state.position_ms = clock.position_ms();
             if clock.started() {
                 if let Some(started) = self.lifecycle.as_mut().and_then(|l| l.started.take()) {
@@ -286,7 +292,7 @@ impl Actor {
                 }
             }
         }
-        if self.sink.as_ref().is_some_and(Sink::empty) {
+        if self.output.ended() {
             if let Err(error) = self.advance(true) {
                 self.fail(error);
             }
@@ -303,7 +309,7 @@ impl Actor {
             }
             Event::Ready {
                 revision,
-                source,
+                mut source,
                 clock,
                 duration_ms,
                 seekable,
@@ -311,26 +317,13 @@ impl Actor {
                 if revision != self.revision {
                     return Ok(());
                 }
-                if self.output.is_none() {
-                    self.device_lost = Arc::new(AtomicBool::new(false));
-                    let lost = self.device_lost.clone();
-                    let builder = OutputStreamBuilder::from_default_device()
-                        .map_err(|e| format!("Audio output device is unavailable: {e}"))?;
-                    let mut output = builder
-                        .with_error_callback(move |_| lost.store(true, Ordering::Release))
-                        .open_stream_or_fallback()
-                        .map_err(|e| format!("Audio output failed: {e}"))?;
-                    output.log_on_drop(false);
-                    self.output = Some(output);
-                }
-                let sink = Sink::connect_new(self.output.as_ref().unwrap().mixer());
-                sink.set_volume(self.state.volume);
-                if self.paused {
-                    sink.pause();
-                }
-                sink.append(*source);
-                self.clock = Some(clock);
-                self.sink = Some(sink);
+                source.envelope.fade_in = self.fade_in;
+                clock.fades.track_tail.store(
+                    self.fades.track_change && self.has_next(),
+                    Ordering::Release,
+                );
+                self.output
+                    .attach(*source, clock, self.state.volume, self.paused)?;
                 self.state.seek_range_ms = self
                     .lifecycle
                     .as_ref()
@@ -338,11 +331,7 @@ impl Actor {
                     .filter(|(start, end)| seekable && start < end);
                 self.state.seekable = self.state.seek_range_ms.is_some();
                 self.state.duration_ms = duration_ms.or(self.state.duration_ms);
-                self.state.status = if self.paused {
-                    Status::Paused
-                } else {
-                    Status::Playing
-                };
+                self.state.status = self.output.status(self.paused);
                 Ok(())
             }
         }

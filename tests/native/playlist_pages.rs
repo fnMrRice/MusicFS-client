@@ -22,7 +22,7 @@ fn frame(
             }));
     }
     let output = ctx.run(input, |ctx| {
-        screen.show(ctx, svc, "dark", false, None);
+        screen.show(ctx, svc, &Default::default(), false, None);
     });
     output
         .platform_output

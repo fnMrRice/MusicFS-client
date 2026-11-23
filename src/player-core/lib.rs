@@ -1,5 +1,7 @@
 mod actor;
 mod decode;
+mod fade;
+mod output;
 mod pcm;
 
 #[cfg(test)]
@@ -13,6 +15,22 @@ use std::sync::Arc;
 use std::thread;
 
 pub const SUPPORTED_MIMES: &[&str] = &["audio/mpeg", "audio/flac", "audio/wav", "audio/x-wav"];
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(default)]
+pub struct FadeSettings {
+    pub seek: bool,
+    pub track_change: bool,
+}
+
+impl Default for FadeSettings {
+    fn default() -> Self {
+        Self {
+            seek: true,
+            track_change: true,
+        }
+    }
+}
 
 pub trait AudioReader: Read + Seek + Send + Sync + 'static {}
 impl<T: Read + Seek + Send + Sync + 'static> AudioReader for T {}
@@ -101,6 +119,7 @@ pub enum PlayerCommand {
     Clear,
     Seek { position_ms: u64 },
     Volume { volume: f32 },
+    SetFades { settings: FadeSettings },
     Select { index: usize },
 }
 

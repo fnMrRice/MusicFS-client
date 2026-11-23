@@ -13,11 +13,16 @@ mod table;
 #[path = "../../../tests/native/playlist_pages.rs"]
 mod playlist_pages;
 
-use crate::{browse::BrowseUi, model::DesktopState, player_ui::PlayerUi};
+use crate::{
+    browse::BrowseUi,
+    model::{DesktopState, Preferences},
+    player_ui::PlayerUi,
+};
 use actions::Actions;
 use catalog::Catalog;
 use data::{Pages, Services, TrackQuery};
 use eframe::egui::{self, Align, Layout, RichText};
+use musicfs_player_core::{FadeSettings, PlayerCommand};
 use musicfs_server_adapter::Playlist;
 use navigation::Screen;
 
@@ -46,6 +51,7 @@ struct SignedUi {
 enum HostAction {
     Logout,
     Theme(String),
+    Fades(FadeSettings),
 }
 
 impl DesktopUi {
@@ -73,17 +79,20 @@ impl DesktopUi {
             server: &connection.server,
             player: &connection.player,
         };
-        match ui.show(
-            ctx,
-            svc,
-            &state.prefs.theme,
-            state.busy,
-            state.error.as_deref(),
-        ) {
+        match ui.show(ctx, svc, &state.prefs, state.busy, state.error.as_deref()) {
             Some(HostAction::Logout) => state.disconnect(ctx),
             Some(HostAction::Theme(theme)) => {
                 state.prefs.theme = theme;
                 state.save_preferences();
+            }
+            Some(HostAction::Fades(settings)) => {
+                match svc.player.command(PlayerCommand::SetFades { settings }) {
+                    Ok(_) => {
+                        state.prefs.fades = settings;
+                        state.save_preferences();
+                    }
+                    Err(error) => state.error = Some(error),
+                }
             }
             None => {}
         }
@@ -131,7 +140,7 @@ impl SignedUi {
         &mut self,
         ctx: &egui::Context,
         svc: Services<'_>,
-        theme: &str,
+        prefs: &Preferences,
         busy: bool,
         error: Option<&str>,
     ) -> Option<HostAction> {
@@ -170,7 +179,7 @@ impl SignedUi {
                         }
                         ui.menu_button("换肤", |ui| {
                             for (value, label) in themes() {
-                                if ui.selectable_label(theme == value, label).clicked() {
+                                if ui.selectable_label(prefs.theme == value, label).clicked() {
                                     action = Some(HostAction::Theme(value.into()));
                                     ui.close_menu();
                                 }
@@ -202,7 +211,9 @@ impl SignedUi {
                     ui.colored_label(ui.visuals().error_fg_color, error);
                 }
                 if self.screen == Screen::Settings {
-                    settings::show(ui, &svc.server.info, theme, busy, &mut action);
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        settings::show(ui, &svc.server.info, prefs, busy, &mut action);
+                    });
                 } else {
                     self.page(ui, svc);
                 }

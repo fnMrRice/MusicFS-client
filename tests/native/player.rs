@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::time::Duration;
 
-fn track(id: &str) -> Track {
+pub(crate) fn track(id: &str) -> Track {
     Track {
         id: id.into(),
         source_only: false,

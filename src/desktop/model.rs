@@ -1,6 +1,7 @@
 use crate::{connection::Connection, task::Task};
 use directories::ProjectDirs;
 use eframe::egui::Context;
+use musicfs_player_core::{FadeSettings, PlayerCommand};
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf, time::Duration};
 use tokio::runtime::Handle;
@@ -10,6 +11,7 @@ use tokio::runtime::Handle;
 pub struct Preferences {
     pub endpoint: String,
     pub theme: String,
+    pub fades: FadeSettings,
 }
 
 impl Default for Preferences {
@@ -17,6 +19,33 @@ impl Default for Preferences {
         Self {
             endpoint: "http://127.0.0.1:8080".into(),
             theme: "dark".into(),
+            fades: FadeSettings::default(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fade_preferences_default_on_and_round_trip_independently() {
+        let old: Preferences = serde_json::from_str(r#"{"theme":"light"}"#).unwrap();
+        assert_eq!(old.theme, "light");
+        assert!(old.fades.seek && old.fades.track_change);
+        for seek in [true, false] {
+            for track_change in [true, false] {
+                let fades = FadeSettings { seek, track_change };
+                let prefs = Preferences {
+                    fades,
+                    ..Default::default()
+                };
+                let saved = serde_json::to_vec(&prefs).unwrap();
+                assert_eq!(
+                    serde_json::from_slice::<Preferences>(&saved).unwrap().fades,
+                    fades
+                );
+            }
         }
     }
 }
@@ -103,6 +132,11 @@ impl DesktopState {
             match result {
                 Ok(connection) => {
                     if let Some(active) = &connection {
+                        if let Err(error) = active.player.command(PlayerCommand::SetFades {
+                            settings: self.prefs.fades,
+                        }) {
+                            self.error = Some(error);
+                        }
                         self.prefs.endpoint.clone_from(&active.server.info.endpoint);
                         self.save_preferences();
                     }

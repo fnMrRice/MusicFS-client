@@ -1,6 +1,7 @@
+use crate::fade::{Envelope, FadeControl, FADE_MS};
 use rodio::Source;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TryRecvError};
+use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TryRecvError, TrySendError};
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -25,6 +26,7 @@ pub struct Clock {
     samples: Arc<AtomicU64>,
     samples_per_second: u64,
     origin_ms: u64,
+    pub fades: Arc<FadeControl>,
 }
 
 impl Clock {
@@ -46,15 +48,48 @@ pub struct PcmSource {
     rate: u32,
     clock: Clock,
     played: u64,
+    pub envelope: Envelope,
+    gain: f32,
+}
+
+pub struct Producer {
+    sender: SyncSender<Block>,
+    fades: Arc<FadeControl>,
+    written: u64,
+}
+
+impl Producer {
+    pub fn try_send(&mut self, block: Block) -> Result<(), TrySendError<Block>> {
+        let len = block.len as u64;
+        self.sender.try_send(block)?;
+        self.written += len;
+        self.fades.written.store(self.written, Ordering::Release);
+        Ok(())
+    }
+}
+
+impl Drop for Producer {
+    fn drop(&mut self) {
+        self.fades.finished.store(true, Ordering::Release);
+    }
 }
 
 impl PcmSource {
-    pub fn pipe(channels: u16, rate: u32, origin_ms: u64) -> (SyncSender<Block>, Self, Clock) {
-        let (producer, incoming) = sync_channel(16);
+    pub fn pipe(channels: u16, rate: u32, origin_ms: u64) -> (Producer, Self, Clock) {
+        let samples_per_second = u64::from(channels) * u64::from(rate);
+        let fade_blocks = (samples_per_second * FADE_MS).div_ceil(1000 * BLOCK_SAMPLES as u64);
+        let (sender, incoming) = sync_channel(fade_blocks.clamp(15, 255) as usize + 1);
+        let fades = Arc::new(FadeControl::default());
+        let producer = Producer {
+            sender,
+            fades: fades.clone(),
+            written: 0,
+        };
         let clock = Clock {
             samples: Arc::new(AtomicU64::new(0)),
             origin_ms,
-            samples_per_second: u64::from(channels) * u64::from(rate),
+            samples_per_second,
+            fades: fades.clone(),
         };
         let source = Self {
             incoming,
@@ -65,6 +100,8 @@ impl PcmSource {
             rate,
             clock: clock.clone(),
             played: 0,
+            envelope: Envelope::new(rate, fades),
+            gain: 1.0,
         };
         (producer, source, clock)
     }
@@ -85,13 +122,21 @@ impl Iterator for PcmSource {
                 }
                 Err(TryRecvError::Disconnected) => return None,
                 Err(TryRecvError::Empty) => {
+                    if self.clock.fades.retiring.load(Ordering::Acquire) {
+                        return None;
+                    }
                     // 欠载以整帧静音填充；只用真实媒体样本推进时钟。
                     self.silence = self.channels - 1;
                     return Some(0.0);
                 }
             }
         }
-        let sample = self.current.data[self.cursor];
+        if self.played.is_multiple_of(u64::from(self.channels)) {
+            self.gain = self
+                .envelope
+                .gain(self.played / u64::from(self.channels), self.channels)?;
+        }
+        let sample = self.current.data[self.cursor] * self.gain;
         self.cursor += 1;
         self.played += 1;
         self.clock.samples.store(self.played, Ordering::Relaxed);

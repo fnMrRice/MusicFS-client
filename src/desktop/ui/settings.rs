@@ -1,11 +1,12 @@
 use super::{themes, HostAction};
+use crate::model::Preferences;
 use eframe::egui;
 use musicfs_server_adapter::SessionInfo;
 
 pub(super) fn show(
     ui: &mut egui::Ui,
     info: &SessionInfo,
-    theme: &str,
+    prefs: &Preferences,
     busy: bool,
     action: &mut Option<HostAction>,
 ) {
@@ -37,9 +38,18 @@ pub(super) fn show(
     ui.heading("外观");
     ui.horizontal_wrapped(|ui| {
         for (value, name) in themes() {
-            if ui.selectable_label(theme == value, name).clicked() {
+            if ui.selectable_label(prefs.theme == value, name).clicked() {
                 *action = Some(HostAction::Theme(value.into()));
             }
         }
     });
+    ui.add_space(15.0);
+    ui.separator();
+    ui.heading("播放");
+    let mut fades = prefs.fades;
+    ui.checkbox(&mut fades.seek, "跳转时淡出淡入");
+    ui.checkbox(&mut fades.track_change, "切歌时淡出淡入");
+    if fades != prefs.fades {
+        *action = Some(HostAction::Fades(fades));
+    }
 }

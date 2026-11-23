@@ -193,7 +193,7 @@ fn decode(
                 seek = next;
                 break;
             }
-            let Some(tx) = &producer else {
+            let Some(tx) = &mut producer else {
                 match job.seeks.recv_timeout(Duration::from_millis(50)) {
                     Ok(next) => {
                         seek = job.seeks.try_iter().last().unwrap_or(next);

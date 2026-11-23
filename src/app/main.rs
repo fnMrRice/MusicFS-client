@@ -27,7 +27,7 @@ struct MusicFs {
 
 impl eframe::App for MusicFs {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
-        self.state.update();
+        self.state.update(ctx);
         self.ui.show(ctx, &mut self.state);
     }
 

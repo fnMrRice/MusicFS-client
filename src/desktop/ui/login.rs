@@ -7,6 +7,7 @@ use eframe::egui::{self, Align, Color32, Layout, RichText, Vec2};
 pub struct Login {
     pub endpoint: String,
     token: String,
+    remember: bool,
 }
 
 impl Login {
@@ -66,6 +67,9 @@ impl Login {
                             if let Some(error) = &state.error {
                                 ui.colored_label(ui.visuals().error_fg_color, error);
                             }
+                            ui.add_enabled_ui(!state.busy, |ui| {
+                                ui.checkbox(&mut self.remember, tr("在此设备上保持登录"));
+                            });
                             ui.add_space(12.0);
                             let enabled = !state.busy
                                 && !self.endpoint.trim().is_empty()
@@ -86,7 +90,23 @@ impl Login {
                             .min_size(Vec2::new(ui.available_width(), 40.0));
                             if ui.add_enabled(enabled, button).clicked() || (enabled && enter) {
                                 let token = std::mem::take(&mut self.token);
-                                state.connect(self.endpoint.trim().to_owned(), token, ctx);
+                                state.connect(
+                                    self.endpoint.trim().to_owned(),
+                                    token,
+                                    self.remember,
+                                    ctx,
+                                );
+                                self.remember = false;
+                            }
+                            if !state.busy && state.prefs.saved_login.is_some() {
+                                ui.horizontal_wrapped(|ui| {
+                                    if ui.button(tr("重试已保存的登录")).clicked() {
+                                        state.restore(ctx);
+                                    }
+                                    if ui.button(tr("忘记已保存的登录")).clicked() {
+                                        state.forget();
+                                    }
+                                });
                             }
                             ui.add_space(10.0);
                             if let Some(language) =

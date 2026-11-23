@@ -53,6 +53,7 @@ pub struct ServerSession {
     cookies: Arc<Jar>,
     csrf: String,
     active: Arc<AtomicBool>,
+    expired: Arc<AtomicBool>,
     runtime: tokio::runtime::Handle,
 }
 
@@ -158,6 +159,14 @@ async fn decode<T: DeserializeOwned>(response: Response) -> Result<T> {
 
 impl ServerSession {
     pub async fn login(server_url: &str, token: &str) -> Result<Self> {
+        Self::login_pinned(server_url, token, None).await
+    }
+
+    pub async fn login_pinned(
+        server_url: &str,
+        token: &str,
+        expected_instance: Option<&str>,
+    ) -> Result<Self> {
         let origin = origin(server_url)?;
         if token.is_empty() || token.len() > 4096 || !token.bytes().all(|c| c.is_ascii_graphic()) {
             return Err("Enter a valid MusicFS access token.".into());
@@ -186,6 +195,9 @@ impl ServerSession {
             || ready.instance_id.is_empty()
         {
             return Err("This endpoint is not a ready MusicFS v1 server.".into());
+        }
+        if expected_instance.is_some_and(|expected| expected != ready.instance_id) {
+            return Err("The saved MusicFS server identity has changed. Sign in manually.".into());
         }
         let auth = origin
             .join("api/v1/auth/session")
@@ -227,6 +239,7 @@ impl ServerSession {
             cookies,
             csrf: login.csrf_token,
             active: Arc::new(AtomicBool::new(true)),
+            expired: Arc::default(),
             runtime: tokio::runtime::Handle::current(),
         })
     }
@@ -237,6 +250,11 @@ impl ServerSession {
         } else {
             Err("MusicFS session closed.".into())
         }
+    }
+
+    pub fn expired(&self) -> bool {
+        self.expired.load(Ordering::Acquire)
+            || self.cookies.cookies(&self.url("auth/session")).is_none()
     }
 
     fn url(&self, path: &str) -> Url {
@@ -283,6 +301,9 @@ impl ServerSession {
             .await
             .map_err(|_| "Unable to reach the MusicFS server.")?;
         self.ensure_active()?;
+        if response.status() == StatusCode::UNAUTHORIZED {
+            self.expired.store(true, Ordering::Release);
+        }
         checked(response).await
     }
 

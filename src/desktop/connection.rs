@@ -10,12 +10,13 @@ pub struct Connection {
     pub server: ServerSession,
     pub player: Player,
     pub force_processing: Arc<AtomicBool>,
+    pub saved_login: Option<String>,
+    pub new_login: Option<crate::model::credentials::NewLogin>,
+    pub login_notice: Option<String>,
 }
 
 impl Connection {
-    pub async fn open(endpoint: String, token: String) -> Result<Self, String> {
-        let server = ServerSession::login(&endpoint, &token).await?;
-        drop(token);
+    pub async fn from_session(server: ServerSession) -> Result<Self, String> {
         let playback = server.clone();
         let runtime = Handle::current();
         let force_processing = Arc::new(AtomicBool::new(false));
@@ -32,6 +33,9 @@ impl Connection {
                 server,
                 player,
                 force_processing,
+                saved_login: None,
+                new_login: None,
+                login_notice: None,
             }),
             Err(error) => {
                 let _ = server.logout().await;

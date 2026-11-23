@@ -4,8 +4,14 @@ use eframe::egui::Context;
 use musicfs_player_core::FadeSettings;
 #[path = "model/audio.rs"]
 pub mod audio;
+#[path = "model/credentials.rs"]
+pub(crate) mod credentials;
 use serde::{Deserialize, Serialize};
-use std::{fs, path::PathBuf, time::Duration};
+use std::{
+    fs,
+    path::PathBuf,
+    time::{Duration, Instant},
+};
 use tokio::runtime::Handle;
 
 #[derive(Deserialize, Serialize)]
@@ -16,6 +22,10 @@ pub struct Preferences {
     pub language: String,
     pub fades: FadeSettings,
     pub audio: audio::AudioPreferences,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub saved_login: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    forgotten_logins: Vec<String>,
 }
 
 impl Default for Preferences {
@@ -26,6 +36,8 @@ impl Default for Preferences {
             language: "system".into(),
             fades: FadeSettings::default(),
             audio: Default::default(),
+            saved_login: None,
+            forgotten_logins: vec![],
         }
     }
 }
@@ -64,6 +76,10 @@ pub struct DesktopState {
     pub prefs: Preferences,
     settings_file: Option<PathBuf>,
     transition: Option<Task<Option<Connection>>>,
+    cleanup: Option<Task<Vec<String>>>,
+    initial_restore: bool,
+    cleanup_due: bool,
+    expiry_check: Instant,
 }
 
 impl DesktopState {
@@ -76,6 +92,9 @@ impl DesktopState {
                     .map(|d| d.config_dir().to_owned())
             })
             .map(|dir| dir.join("preferences.json"));
+        Self::at_settings(runtime, settings_file)
+    }
+    fn at_settings(runtime: Handle, settings_file: Option<PathBuf>) -> Self {
         let mut prefs: Preferences = settings_file
             .as_ref()
             .and_then(|file| fs::read(file).ok())
@@ -90,15 +109,26 @@ impl DesktopState {
             prefs,
             settings_file,
             transition: None,
+            cleanup: None,
+            initial_restore: true,
+            cleanup_due: true,
+            expiry_check: Instant::now(),
         }
     }
 
     pub fn save_preferences(&mut self) {
-        let Some(path) = &self.settings_file else {
-            self.error = Some("Desktop preferences storage is unavailable.".into());
-            return;
-        };
-        let Some(dir) = path.parent() else { return };
+        if let Err(error) = self.persist_preferences() {
+            self.error = Some(error);
+        }
+    }
+    fn persist_preferences(&self) -> Result<(), String> {
+        let path = self
+            .settings_file
+            .as_ref()
+            .ok_or("Desktop preferences storage is unavailable.")?;
+        let dir = path
+            .parent()
+            .ok_or("Desktop preferences storage is unavailable.")?;
         let save = || -> std::io::Result<()> {
             fs::create_dir_all(dir)?;
             let mut file = tempfile::NamedTempFile::new_in(dir)?;
@@ -106,20 +136,72 @@ impl DesktopState {
             file.persist(path)?;
             Ok(())
         };
-        if let Err(error) = save() {
-            self.error = Some(format!("Could not save desktop preferences: {error}"));
-        }
+        save().map_err(|error| format!("Could not save desktop preferences: {error}"))
     }
 
-    pub fn connect(&mut self, endpoint: String, token: String, ctx: &Context) {
+    pub fn connect(&mut self, endpoint: String, token: String, remember: bool, ctx: &Context) {
         if self.busy || self.connection.is_some() {
             return;
         }
         self.busy = true;
         self.error = None;
         self.transition = Some(Task::spawn(&self.runtime, ctx, async move {
-            Connection::open(endpoint, token).await.map(Some)
+            credentials::manual(endpoint, zeroize::Zeroizing::new(token), remember)
+                .await
+                .map(Some)
         }));
+    }
+
+    pub fn restore(&mut self, ctx: &Context) {
+        if self.busy || self.connection.is_some() {
+            return;
+        }
+        let Some(slot) = self.prefs.saved_login.clone() else {
+            return;
+        };
+        let endpoint = self.prefs.endpoint.clone();
+        self.busy = true;
+        self.error = None;
+        self.transition = Some(Task::spawn(&self.runtime, ctx, async move {
+            credentials::restore(slot, endpoint).await.map(Some)
+        }));
+    }
+    pub fn forget(&mut self) {
+        if let Some(slot) = self.prefs.saved_login.take() {
+            self.prefs.forgotten_logins.push(slot);
+            self.cleanup_due = true;
+            self.save_preferences();
+        }
+    }
+    fn clean_forgotten(&mut self, ctx: &Context) {
+        if let Some(result) = self.cleanup.as_mut().and_then(Task::poll) {
+            self.cleanup = None;
+            if let Ok(deleted) = result {
+                self.prefs
+                    .forgotten_logins
+                    .retain(|id| !deleted.contains(id));
+                if !self.prefs.forgotten_logins.is_empty() {
+                    self.error=Some("Could not remove a saved login from the system credential store. Cleanup will retry on startup.".into());
+                }
+                self.save_preferences();
+            }
+        }
+        if self.cleanup_due && self.cleanup.is_none() {
+            self.cleanup_due = false;
+            let mut pending = self.prefs.forgotten_logins.clone();
+            pending.retain(|id| self.prefs.saved_login.as_ref() != Some(id));
+            if !pending.is_empty() {
+                self.cleanup = Some(Task::spawn(&self.runtime, ctx, async move {
+                    let mut deleted = vec![];
+                    for id in pending {
+                        if credentials::forget(id.clone()).await.is_ok() {
+                            deleted.push(id);
+                        }
+                    }
+                    Ok(deleted)
+                }));
+            }
+        }
     }
 
     pub fn disconnect(&mut self, ctx: &Context) {
@@ -128,45 +210,102 @@ impl DesktopState {
         };
         self.busy = true;
         self.error = None;
+        self.forget();
+        self.clean_forgotten(ctx);
         self.transition = Some(Task::spawn(&self.runtime, ctx, async move {
             connection.close().await.map(|()| None)
         }));
     }
+    pub fn reauthenticate(&mut self, ctx: &Context) {
+        if self.busy {
+            return;
+        }
+        if let Some(connection) = self.connection.take() {
+            self.runtime.spawn(async move {
+                let _ = connection.close().await;
+            });
+        }
+        self.error = Some("Your MusicFS session expired. Sign in again.".into());
+        self.restore(ctx);
+    }
 
-    pub fn update(&mut self) {
+    pub fn update(&mut self, ctx: &Context) {
+        self.clean_forgotten(ctx);
+        if self.initial_restore {
+            self.initial_restore = false;
+            self.restore(ctx);
+        }
+        if !self.busy && self.expiry_check.elapsed() > Duration::from_secs(1) {
+            self.expiry_check = Instant::now();
+            if self.connection.as_ref().is_some_and(|c| c.server.expired()) {
+                self.reauthenticate(ctx);
+            }
+        }
         if let Some(result) = self.transition.as_mut().and_then(Task::poll) {
             self.transition = None;
             self.busy = false;
             match result {
                 Ok(connection) => {
-                    if let Some(active) = &connection {
-                        if let Err(error) = self.prefs.audio.initialize(active, self.prefs.fades) {
-                            self.error = Some(error);
-                        }
-                        self.prefs.endpoint.clone_from(&active.server.info.endpoint);
-                        self.save_preferences();
+                    if let Some(active) = connection {
+                        self.accept(active);
                     }
-                    self.connection = connection;
                 }
                 Err(error) => self.error = Some(error),
             }
         }
     }
+    fn accept(&mut self, mut active: Connection) {
+        self.error = active.login_notice.take();
+        if let Err(error) = self.prefs.audio.initialize(&active, self.prefs.fades) {
+            self.error = Some(error);
+        }
+        if self.prefs.saved_login != active.saved_login {
+            if let Some(old) = self.prefs.saved_login.take() {
+                self.prefs.forgotten_logins.push(old);
+                self.cleanup_due = true;
+            }
+            self.prefs.saved_login = active.saved_login.clone();
+        }
+        self.prefs.endpoint.clone_from(&active.server.info.endpoint);
+        match self.persist_preferences() {
+            Ok(()) => {
+                if let Some(guard) = active.new_login.take() {
+                    guard.commit();
+                }
+            }
+            Err(error) => {
+                self.error = Some(error);
+                if active.new_login.take().is_some() {
+                    self.prefs.saved_login = None;
+                    active.saved_login = None;
+                }
+            }
+        }
+        self.connection = Some(active);
+    }
 
     pub fn shutdown(&mut self) {
-        let pending = self.transition.take();
-        let connection = self.connection.take();
-        self.runtime.block_on(async {
-            let _ = tokio::time::timeout(Duration::from_secs(4), async {
-                let connection = match pending {
-                    Some(task) => task.finish().await.flatten(),
-                    None => connection,
-                };
-                if let Some(connection) = connection {
-                    let _ = connection.close().await;
-                }
-            })
-            .await;
-        });
+        if let Some(task) = self.transition.take() {
+            if let Ok(Some(Some(connection))) = self.runtime.block_on(async {
+                tokio::time::timeout(Duration::from_secs(4), task.finish()).await
+            }) {
+                self.accept(connection);
+            }
+        }
+        if let Some(cleanup) = self.cleanup.take() {
+            if let Ok(Some(deleted)) = self.runtime.block_on(async {
+                tokio::time::timeout(Duration::from_secs(2), cleanup.finish()).await
+            }) {
+                self.prefs
+                    .forgotten_logins
+                    .retain(|id| !deleted.contains(id));
+                self.save_preferences();
+            }
+        }
+        if let Some(connection) = self.connection.take() {
+            self.runtime.block_on(async {
+                let _ = tokio::time::timeout(Duration::from_secs(4), connection.close()).await;
+            });
+        }
     }
 }

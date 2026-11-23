@@ -53,6 +53,7 @@ struct SignedUi {
 }
 
 enum HostAction {
+    Reauthenticate,
     Audio(crate::model::audio::AudioAction),
     Logout,
     Language(String),
@@ -97,6 +98,7 @@ impl DesktopUi {
                 Err(error) => state.error = Some(error),
             },
             Some(HostAction::Logout) => state.disconnect(ctx),
+            Some(HostAction::Reauthenticate) => state.reauthenticate(ctx),
             Some(HostAction::Language(language)) => {
                 state.prefs.language = language;
                 state.save_preferences();
@@ -235,7 +237,7 @@ impl SignedUi {
                             msg,
                         );
                         if msg.contains("HTTP 401") && ui.button(tr("重新登录")).clicked() {
-                            action = Some(HostAction::Logout);
+                            action = Some(HostAction::Reauthenticate);
                         }
                     });
                 }

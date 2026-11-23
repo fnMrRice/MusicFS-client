@@ -4,6 +4,7 @@ mod playback;
 mod playlist_edit;
 mod reader;
 mod recommendations;
+mod settings;
 mod works;
 
 use std::sync::{
@@ -241,6 +242,16 @@ impl ServerSession {
     }
 
     async fn send(&self, method: Method, url: Url, body: Option<&Value>) -> Result<Response> {
+        self.send_with_headers(method, url, body, &[]).await
+    }
+
+    async fn send_with_headers(
+        &self,
+        method: Method,
+        url: Url,
+        body: Option<&Value>,
+        headers: &[(&str, &str)],
+    ) -> Result<Response> {
         self.ensure_active()?;
         let mut request = self
             .client
@@ -253,6 +264,15 @@ impl ServerSession {
         }
         if let Some(body) = body {
             request = request.json(body);
+        }
+        for &(name, value) in headers {
+            if !["Idempotency-Key", "If-Match", "If-None-Match"]
+                .iter()
+                .any(|allowed| name.eq_ignore_ascii_case(allowed))
+            {
+                return Err("Unsupported MusicFS request header.".into());
+            }
+            request = request.header(name, value);
         }
         let response = request
             .send()

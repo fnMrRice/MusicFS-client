@@ -41,6 +41,8 @@ pub(crate) struct DesktopSystem {
     last: Option<SystemState>,
     last_update: Instant,
     #[cfg(windows)]
+    thumbnail: Option<windows_shell::Thumbnail>,
+    #[cfg(windows)]
     shell: Option<windows_shell::WindowsShell>,
     #[cfg(windows)]
     media: Option<windows_media::WindowsMedia>,
@@ -80,6 +82,9 @@ impl DesktopSystem {
             last: None,
             last_update: Instant::now(),
             #[cfg(windows)]
+            thumbnail: hwnd
+                .and_then(|hwnd| available(windows_shell::Thumbnail::new(hwnd, sender.clone()))),
+            #[cfg(windows)]
             shell: hwnd
                 .and_then(|hwnd| available(windows_shell::WindowsShell::new(hwnd, sender.clone()))),
             #[cfg(windows)]
@@ -104,6 +109,9 @@ impl DesktopSystem {
             }
             #[cfg(windows)]
             {
+                if let Some(thumbnail) = &mut self.thumbnail {
+                    thumbnail.update(&current);
+                }
                 if let Some(shell) = &mut self.shell {
                     shell.update(&current);
                 }
@@ -168,6 +176,7 @@ impl DesktopSystem {
     pub fn shutdown(&mut self) {
         #[cfg(windows)]
         {
+            self.thumbnail.take();
             self.media.take();
             self.shell.take();
         }

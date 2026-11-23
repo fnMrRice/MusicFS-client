@@ -1,6 +1,6 @@
 # MusicFS-client 设计入口
 
-2026-11-20 已交付桌面播放器工程。已运行的功能见[桌面验证记录](validation/desktop.md)，单进程原生插件仍处于设计阶段。
+2026-11-20 首次验收 Windows 桌面播放器。2026-11-23 的版本加入来源版本与匹配、目录和插件管理、保持登录及本机音效。已运行的功能与验证环境见[桌面验证记录](validation/desktop.md)。用户安装的桌面原生插件仍处于设计阶段。
 
 Server 与客户端共同遵守的协议和行为由 [MusicFS](../../docs/architecture.md) 管理，OpenAPI、事件协议与协议 SDK 由 [Server 仓库](../../server/)维护。桌面界面用 egui 与 eframe 编写，参考 Web 的布局、页面和交互。客户端使用独立 Rust 模块连接 Server、播放音频；原生插件宿主和其他平台能力按计划单独验证。
 
@@ -12,7 +12,7 @@ Server 与客户端共同遵守的协议和行为由 [MusicFS](../../docs/archit
 - [桌面组件图](diagrams/desktop-components.puml)：尚未渲染验收的 PlantUML 源码。
 - [Client 架构](architecture.md)：PlayerCore、UI、插件宿主、连接适配、本地启动器和桌面歌词的分层与职责。
 - [音频与插件设计](audio-processing.md)：主题、解复用/解码、DSP、WMF/FFmpeg 候选、可配置淡出淡入及外部控制 API。
-- [歌单与来源选择线框](prototypes/client.salt.puml)。
-- [连接、插件与歌词设置线框](prototypes/settings.salt.puml)。
+- 早期[歌单与来源选择线框](prototypes/client.salt.puml)。
+- 早期[连接、插件与歌词设置线框](prototypes/settings.salt.puml)。
 
 线框使用 PlantUML Salt 描述设计。桌面参考 Web 的交互和视觉规范，在本仓库维护原生控件。跨仓库协议与资源按版本关联。相对路径按 MusicFS 根目录下的 `client`、`server`、`web` 并列检出布局解析。

@@ -1,6 +1,25 @@
 # 桌面播放器验证
 
-2026-11-20 在 Windows x64 上验证，使用 Rust 1.100.0（MSVC）、eframe/egui 0.31.1 和 rodio 0.21.1。仓库内的 Cargo.lock 固定依赖版本。
+## 2026-11-23 曲库、设置与播放
+
+以下结果来自 Windows x64 原生窗口、Rust 测试、系统凭据管理器和独立运行的 MusicFS Server。涉及曲库写入的用例使用临时数据库、专用账号与生成的测试音频。
+
+| 场景 | 验证方式和结果 |
+| --- | --- |
+| Windows 窗口 | 已保存的登录自动恢复后，曲库显示五首曲目、多张不同的封面及无封面占位图。验证勾选及清除曲目、打开重复识别与来源版本窗口，来源版本提供「播放此版本」。[曲目列表截图](../screenshots/windows-track-list.png) |
+| 设置与退出 | 在实际窗口打开七组设置，切换播放配置、本地音效及插件管理。显式退出后返回登录窗口，提供「在此设备上保持登录」。[播放配置截图](../screenshots/windows-playback-settings.png) · [登录截图](../screenshots/windows-remember-login.png) |
+| 系统凭据 | 使用本机凭据管理器验证默认仅本次登录、勾选后重建应用状态自动连接、会话失效后重新登录以及退出时删除凭据。实例或账号改变时恢复被拒绝，普通偏好文件中没有登录令牌。 |
+| 自动与固定的来源版本 | 分别在两个隔离实例中读写收藏和歌单的逻辑曲目引用与固定来源引用。修改录音的默认来源后，自动项跟随新的默认值，固定项仍指向原选版本。 |
+| 本地音乐源 | 在隔离服务端选择允许访问的目录，添加、改名、写入导入深度和歌词选项、跟踪自动扫描至完成、读回统计，保存监听参数并移除目录。 |
+| 文件夹浏览 | 扫描含 104 份 WAV 的子目录，读取 100 条和 4 条两页，校验全部来源 ID 唯一。文件名搜索命中一条，用第二页选中来源创建播放会话，核对返回的来源 ID 并关闭。 |
+| 插件管理 | 在 egui 测试帧加载真实服务端插件和实例，验证必需数据库标记、用途及 ID 筛选、关闭后重新启用本地来源实例。另以单元测试验证声明式配置的必填项、数值范围与步长、文本长度、选项及布尔字段。 |
+| 重复录音 | 两份测试 WAV 触发服务端哈希任务，生成 100 分候选并按分数合并。同一幂等键重试返回原操作 ID；解除关联、排除、撤销排除、手动重新关联和按曲名与作者批量处理均通过。 |
+| 专辑内曲目合并 | 在测试专辑中创建两首曲目，验证过期修订被拒，合并后读回自选标题、别名与两位艺人的署名，同键重试保留原结果。 |
+| 本机音效与输出 | 使用合成 PCM 检查增益、两类均衡、动态压缩、混响、自动音量平衡、低频声道降混、环绕扩展和播放中参数更新；验证双声道上限下的布局降级及 100 毫秒淡变。请求构造测试核对本机 DSP 与强制服务端转码标志。 |
+
+## 2026-11-20 首次 Windows 窗口与安装包验收
+
+Windows x64 使用 Rust 1.100.0（MSVC）、eframe/egui 0.31.1 和 rodio 0.21.1。下列截图记录本次实机窗口。
 
 | 场景 | 验证方式和结果 |
 | --- | --- |
@@ -22,8 +41,17 @@ cargo build --release --locked -p musicfs-desktop
 cargo test --locked --workspace
 ```
 
-服务端往返测试默认跳过。准备含可播放 WAV 的专用测试实例，设置 `MUSICFS_TEST_ENDPOINT` 和 `MUSICFS_TEST_TOKEN`，执行 `cargo test -p musicfs-server-adapter --test session_and_stream isolated_server_round_trip -- --ignored`。测试会在该实例创建歌单并修改测试账号的收藏。多页歌单专项使用回环地址，通过 `cargo test -p musicfs-desktop opens_playlist_from_second_page -- --ignored` 运行，会创建 51 个歌单。需要隔离桌面偏好时，可将 `MUSICFS_DESKTOP_CONFIG_DIR` 指向专用目录。
+服务端专项测试使用独立实例，默认跳过。将 `MUSICFS_TEST_ENDPOINT` 设为该实例的回环地址、`MUSICFS_TEST_TOKEN` 设为测试账号令牌，另以 `MUSICFS_DESKTOP_CONFIG_DIR` 指向临时偏好目录。准备好测试所需的音乐后，可按场景复验。
+
+| 测试 | 准备和命令 |
+| --- | --- |
+| 服务端基本往返 | 扫描可播放的 WAV。运行 `cargo test --locked -p musicfs-server-adapter --test session_and_stream isolated_server_round_trip -- --ignored`，测试将修改收藏并创建歌单。 |
+| 来源版本与曲目引用 | [两项服务端用例](../../src/server-adapter/tests/catalog_references.rs)分别使用两份不同的已扫描音频和一份可播放音频。每次使用全新的隔离实例，执行 `cargo test --locked -p musicfs-server-adapter --test catalog_references <测试名> -- --ignored`。 |
+| 多页歌单 | 运行 `cargo test --locked -p musicfs-desktop opens_playlist_from_second_page -- --ignored`，测试将创建 51 个歌单。 |
+| 保持登录 | 使用测试用系统用户和可用的凭据库，运行 `cargo test --locked -p musicfs-desktop isolated_remember_current_account_and_forget_on_logout -- --ignored`。测试使用独立的凭据命名空间并自行清理。 |
+| 文件夹分页 | 按[夹具约定](../../tests/native/folders.rs)在根 `local` 下扫描 104 份不同的 WAV，并设置 `MUSICFS_TEST_FOLDERS=isolated`。运行 `cargo test --locked -p musicfs-desktop isolated_folder_paging_and_fixed_source_playback -- --ignored`。 |
+| 音乐源与专辑 | 分别准备[本地目录夹具](../../tests/native/settings_sources.rs)或[专辑夹具](../../tests/native/album_merge.rs)，并设置对应的 `MUSICFS_TEST_SOURCES=isolated` 或 `MUSICFS_TEST_ALBUM_MERGE=isolated`。用 `cargo test --locked -p musicfs-desktop <测试名> -- --ignored` 运行 `isolated_sources_directory_scan_and_watch_round_trip` 或 `isolated_album_track_merge_round_trip`。 |
 
 ## 平台范围
 
-Windows x64 完成窗口与设备输出验证。安装包已检查内容，干净系统的安装、卸载仍待验证。推荐页使用隔离实例验证，第三方在线账号的个性化推荐待实测。macOS 和 Linux 使用相同的原生界面和 Rust 核心，仍需对应平台的安装、设备及窗口验收。当前播放器使用系统默认设备，设备独占模式、可安装原生插件、本机 DSP 和托管 Server 启动属于后续阶段。
+Windows x64 已验证原生窗口与默认设备播放。5.1/7.1 实体扬声器听测、启用强制转码后通过真实服务端 FFmpeg 播放、干净 Windows 系统安装与卸载尚待验证。第三方真实账号的扫码、Apple MusicKit 授权和个性化推荐仍需平台账号与授权环境。macOS、Linux 的安装、窗口、设备播放与系统凭据后端仍待各平台实测。设备独占模式、可安装的桌面原生插件和托管 Server 启动属于长期设计。

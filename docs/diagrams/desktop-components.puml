@@ -11,7 +11,9 @@ package "Rust 桌面进程" {
   component "PlayerCore\n队列、播放代次、设备时钟" as Core
   component "Server Adapter\nCookie、CSRF、HTTP、WS" as Adapter
   component "授权流读取 / rodio 解码" as Decode
-  component "原生设备输出" as Output
+  component "本机 PCM 处理\n效果、声道与转场" as DSP
+  component "默认设备输出" as Output
+  component "系统凭据库" as Credentials
   Main --> Model
   Mini --> Model
   Model --> Adapter : 业务查询 / 歌词
@@ -20,7 +22,9 @@ package "Rust 桌面进程" {
   Core --> Adapter : 创建和关闭播放会话
   Core --> Decode : 当前代次
   Adapter --> Decode : 校验后的音频读取器
-  Decode --> Output : PCM
+  Decode --> DSP : PCM
+  DSP --> Output : PCM
+  Model --> Credentials : 可选登录保存 / 恢复 / 清除
   Output --> Core : 播放时钟
 
   package "后续规划" {

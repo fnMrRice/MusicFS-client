@@ -4,7 +4,7 @@
 
 ## 1. 架构判断与执行模型
 
-现有 Rust PlayerCore、Native Audio Engine 和 Client Plugin Host 已分离状态所有权与处理能力，可以继续插件化，无需先推翻桌面技术栈。原方案中的能力注册表可扩展，但新角色必须先定义接口、资源所有权和失败行为，不能只增加 manifest 字符串即宣称支持。
+现有 Rust PlayerCore 持有播放状态，解码、内置 DSP 和输出在本机运行。下文的 Client Plugin Host 是可安装插件的设计，其 SDK 和动态库装载仍待实施。原方案中的能力注册表可扩展，但新角色必须先定义接口、资源所有权和失败行为，不能只增加 manifest 字符串即宣称支持。
 
 规划中的原生插件以动态库在 Rust 宿主同一进程中运行，目标产物包括 Windows DLL、macOS dylib 和 Linux so。未来的 managed-local Server 使用独立进程。
 

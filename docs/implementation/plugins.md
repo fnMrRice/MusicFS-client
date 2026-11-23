@@ -6,7 +6,7 @@
 
 Client 自行实现用户可安装的 MusicFS 插件体系，完整桌面首版覆盖 `theme`、`audio.demux`、`audio.decode`、`audio.dsp`、`audio.output` 与 `control.api`；C3 交付可安装音频插件及外部控制，C4 交付用户主题，并细化 `audio.visualizer` 与 `control.integration` 扩展。安装兼容插件包后，宿主应在下次启动从磁盘发现并装载，不要求重新编译客户端。内置注册表测试不能替代这一验收。本期不提供插件卸载/删除功能；已加载动态库保留至原生宿主进程退出，不主动调用 `FreeLibrary` / `dlclose`。
 
-窗口和快捷键由原生应用接入。规划中的 Client Plugin Host 负责 MusicFS 扩展包的身份、兼容性、安装和重启启停。
+当前「设置 → 插件管理」向 Server 查询已安装的服务端插件、实例和声明式配置，管理员可在服务端启停或调整它们。本文规划的 Client Plugin Host 将在桌面进程中校验、安装和装载客户端扩展包。
 
 | 模块 | 拟承担的实现职责 |
 | --- | --- |

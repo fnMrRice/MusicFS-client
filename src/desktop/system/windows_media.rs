@@ -78,6 +78,7 @@ pub(super) struct WindowsMedia {
     controls: Controls,
     buttons: Option<EventRegistrationToken>,
     seeks: Option<EventRegistrationToken>,
+    sender: SystemSender,
     commands: Arc<Mutex<Option<Commands>>>,
     last: Option<SystemState>,
     retry_after: Option<Instant>,
@@ -98,13 +99,13 @@ impl WindowsMedia {
             controls,
             buttons: None,
             seeks: None,
+            sender: sender.clone(),
             commands: Arc::new(Mutex::new(None)),
             last: None,
             retry_after: None,
             _apartment: apartment,
         };
         let commands = this.commands.clone();
-        let button_sender = sender.clone();
         let button = TypedEventHandler::<
             Controls,
             SystemMediaTransportControlsButtonPressedEventArgs,
@@ -113,13 +114,26 @@ impl WindowsMedia {
                 let value = args.Button()?;
                 let action = commands.lock().unwrap().and_then(|c| c.button(value));
                 if let Some(action) = action {
-                    button_sender.send(action);
+                    sender.send(action);
                 }
             }
             Ok(())
         });
         this.buttons = Some(this.controls.ButtonPressed(&button)?);
-        let commands = this.commands.clone();
+        Ok(this)
+    }
+
+    fn enable_seeking(&mut self, enabled: bool) -> WinResult<()> {
+        if self.seeks.is_some() == enabled {
+            return Ok(());
+        }
+        if let Some(token) = self.seeks {
+            self.controls.RemovePlaybackPositionChangeRequested(token)?;
+            self.seeks = None;
+            return Ok(());
+        }
+        let commands = self.commands.clone();
+        let sender = self.sender.clone();
         let seek = TypedEventHandler::<Controls, PlaybackPositionChangeRequestedEventArgs>::new(
             move |_, args| {
                 if let Some(args) = args {
@@ -132,8 +146,8 @@ impl WindowsMedia {
                 Ok(())
             },
         );
-        this.seeks = Some(this.controls.PlaybackPositionChangeRequested(&seek)?);
-        Ok(this)
+        self.seeks = Some(self.controls.PlaybackPositionChangeRequested(&seek)?);
+        Ok(())
     }
 
     pub(super) fn update(&mut self, state: &SystemState) {
@@ -156,17 +170,19 @@ impl WindowsMedia {
     }
 
     fn publish(&mut self, state: &SystemState) -> WinResult<()> {
-        let previous = self.last.as_ref();
         let Some(track) = state.track.as_ref() else {
-            if previous.is_some() || self.retry_after.is_some() {
+            if self.last.is_some() || self.retry_after.is_some() {
                 self.clear()?;
+                self.enable_seeking(false)?;
                 self.last = None;
             }
             return Ok(());
         };
+        let commands = Commands::from_state(state);
+        self.enable_seeking(commands.seek.is_some())?;
+        let previous = self.last.as_ref();
         let old_track = previous.and_then(|s| s.track.as_ref());
         let metadata_changed = !old_track.is_some_and(|old| same_metadata(old, track));
-        let commands = Commands::from_state(state);
         let commands_changed = previous.is_none_or(|s| Commands::from_state(s) != commands);
         if commands_changed {
             self.controls.SetIsPlayEnabled(commands.play)?;

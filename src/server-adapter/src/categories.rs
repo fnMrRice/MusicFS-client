@@ -26,6 +26,9 @@ struct Entry {
     album_id: Option<String>,
     name: String,
     track_count: u64,
+    cover_path: Option<String>,
+    publisher: Option<String>,
+    release_date: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -34,6 +37,9 @@ pub struct Category {
     pub id: String,
     pub name: String,
     pub track_count: u64,
+    pub cover_object_id: Option<String>,
+    pub publisher: Option<String>,
+    pub release_date: Option<String>,
 }
 
 impl ServerSession {
@@ -44,7 +50,22 @@ impl ServerSession {
         query: &str,
         cursor: Option<&str>,
     ) -> Result<Page<Category>> {
+        self.filtered_categories(kind, provider, query, cursor, false)
+            .await
+    }
+
+    pub async fn filtered_categories(
+        &self,
+        kind: CategoryKind,
+        provider: Option<&str>,
+        query: &str,
+        cursor: Option<&str>,
+        unscraped_only: bool,
+    ) -> Result<Page<Category>> {
         let mut url = self.page_url(&format!("library/{}s", kind.key()), "after", cursor);
+        if matches!(kind, CategoryKind::Album) && unscraped_only {
+            url.query_pairs_mut().append_pair("unscrapedOnly", "true");
+        }
         if !query.trim().is_empty() {
             url.query_pairs_mut().append_pair("q", query.trim());
         }
@@ -66,6 +87,14 @@ impl ServerSession {
                     id,
                     name: item.name,
                     track_count: item.track_count,
+                    cover_object_id: item
+                        .cover_path
+                        .as_deref()
+                        .and_then(|p| p.strip_prefix("/api/v1/media/"))
+                        .and_then(|id| super::check_id(id).ok())
+                        .map(str::to_owned),
+                    publisher: item.publisher,
+                    release_date: item.release_date,
                 })
             })
             .collect::<Result<Vec<_>>>()?;

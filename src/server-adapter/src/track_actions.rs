@@ -1,13 +1,13 @@
 use super::{check_id, Result, ServerSession};
 use serde_json::{json, Value};
 
-fn binding(track_id: &str, pin: Option<&str>) -> Result<Value> {
+fn reference(track_id: &str, pin: Option<&str>) -> Result<Value> {
     check_id(track_id)?;
     if let Some(id) = pin {
         check_id(id)?;
     }
     Ok(
-        json!({"kind":"local","entries":[{"source":{"trackId":track_id,"forcedSourceTrackId":pin,"sourceTrackId":null,"remoteSourceId":null}}]}),
+        json!({"source":{"trackId":track_id,"forcedSourceTrackId":pin,"sourceTrackId":null,"remoteSourceId":null}}),
     )
 }
 impl ServerSession {
@@ -19,32 +19,61 @@ impl ServerSession {
         pin: Option<&str>,
         key: &str,
     ) -> Result<()> {
-        let entry = binding(track_id, pin)?;
-        let (method, path, body) = match target {
-            None => (
-                "POST",
-                "/playlists".into(),
-                json!({"name":name,"bindings":[entry]}),
-            ),
-            Some((id, revision)) => {
-                let path = format!("/playlists/{}", check_id(id)?);
-                let list = self.settings_json("GET", &path, None, &[]).await?;
-                if list["playlistId"] != id || list["ruleRevision"].as_u64() != Some(revision) {
-                    return Err("Playlist changed (HTTP 409).".into());
-                }
-                let mut bindings = list["bindings"]
-                    .as_array()
-                    .ok_or("Invalid playlist bindings.")?
-                    .clone();
-                bindings.push(entry);
-                (
-                    "PUT",
-                    path,
-                    json!({"name":list["name"],"bindings":bindings,"expectedRevision":revision}),
-                )
-            }
+        let refs = [(track_id.to_owned(), pin.map(str::to_owned))];
+        self.add_track_references(target, name, &refs, key).await
+    }
+    pub async fn add_track_references(
+        &self,
+        target: Option<(&str, u64)>,
+        name: &str,
+        tracks: &[(String, Option<String>)],
+        key: &str,
+    ) -> Result<()> {
+        let body = self.prepare_track_references(target, name, tracks).await?;
+        self.submit_track_references(target.map(|(id, _)| id), &body, key)
+            .await
+    }
+    pub async fn prepare_track_references(
+        &self,
+        target: Option<(&str, u64)>,
+        name: &str,
+        tracks: &[(String, Option<String>)],
+    ) -> Result<Value> {
+        if tracks.is_empty() {
+            return Err("The track selection is empty.".into());
+        }
+        let entries = tracks
+            .iter()
+            .map(|(id, pin)| reference(id, pin.as_deref()))
+            .collect::<Result<Vec<_>>>()?;
+        let binding = json!({"kind":"local","entries":entries});
+        let Some((id, revision)) = target else {
+            return Ok(json!({"name":name,"bindings":[binding]}));
         };
-        self.settings_json(method, &path, Some(&body), &[("Idempotency-Key", key)])
+        let path = format!("/playlists/{}", check_id(id)?);
+        let list = self.settings_json("GET", &path, None, &[]).await?;
+        if list["playlistId"] != id || list["ruleRevision"].as_u64() != Some(revision) {
+            return Err("Playlist changed (HTTP 409).".into());
+        }
+        let mut bindings = list["bindings"]
+            .as_array()
+            .ok_or("Invalid playlist bindings.")?
+            .clone();
+        bindings.push(binding);
+        Ok(json!({"name":list["name"],"bindings":bindings,"expectedRevision":revision}))
+    }
+    // 重试提交时复用完整原始请求体；歌单的当前修订可能已被这次请求推进。
+    pub async fn submit_track_references(
+        &self,
+        target: Option<&str>,
+        body: &Value,
+        key: &str,
+    ) -> Result<()> {
+        let (method, path) = match target {
+            Some(id) => ("PUT", format!("/playlists/{}", check_id(id)?)),
+            None => ("POST", "/playlists".to_owned()),
+        };
+        self.settings_json(method, &path, Some(body), &[("Idempotency-Key", key)])
             .await?;
         Ok(())
     }
@@ -90,14 +119,11 @@ mod tests {
     use super::*;
     #[test]
     fn song_references_only_pin_an_explicit_version() {
-        let automatic = binding("song", None).unwrap();
-        let pinned = binding("song", Some("live")).unwrap();
-        assert!(automatic["entries"][0]["source"]["forcedSourceTrackId"].is_null());
-        assert_eq!(pinned["entries"][0]["source"]["trackId"], "song");
-        assert_eq!(
-            pinned["entries"][0]["source"]["forcedSourceTrackId"],
-            "live"
-        );
-        assert!(pinned["entries"][0]["source"]["sourceTrackId"].is_null());
+        let automatic = reference("song", None).unwrap();
+        let pinned = reference("song", Some("live")).unwrap();
+        assert!(automatic["source"]["forcedSourceTrackId"].is_null());
+        assert_eq!(pinned["source"]["trackId"], "song");
+        assert_eq!(pinned["source"]["forcedSourceTrackId"], "live");
+        assert!(pinned["source"]["sourceTrackId"].is_null());
     }
 }

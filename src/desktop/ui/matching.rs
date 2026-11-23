@@ -34,6 +34,10 @@ pub(super) struct Matching {
     plugin_settings: bool,
 }
 
+fn row_key(t: &Track) -> (&str, Option<&str>) {
+    (&t.id, t.forced_source_track_id.as_deref())
+}
+
 impl Matching {
     pub fn selected_tracks(&self) -> &[Track] {
         &self.selected
@@ -46,7 +50,10 @@ impl Matching {
     }
 
     pub fn row(&mut self, ui: &mut egui::Ui, track: &Track) {
-        let position = self.selected.iter().position(|t| t.id == track.id);
+        let position = self
+            .selected
+            .iter()
+            .position(|t| row_key(t) == row_key(track));
         let mut checked = position.is_some();
         let response = ui.add_enabled(
             !self.decisions.locked(),
@@ -98,11 +105,10 @@ impl Matching {
         }));
     }
 
-    pub fn show(
+    pub fn update(
         &mut self,
         ui: &mut egui::Ui,
         svc: Services<'_>,
-        allow_manual: bool,
         lookup: &dyn Fn(&str) -> String,
     ) -> bool {
         let ctx = ui.ctx().clone();
@@ -123,70 +129,6 @@ impl Matching {
         if refresh {
             self.changed(&ctx, svc);
         }
-        ui.horizontal_wrapped(|ui| {
-            if ui.button(tr("重复识别")).clicked() {
-                self.dialog = Some(Dialog::Candidates);
-            }
-            if self
-                .revision
-                .as_ref()
-                .is_some_and(|r| r.bulk_merge_available)
-                && ui
-                    .add_enabled(
-                        !self.decisions.locked(),
-                        egui::Button::new(tr("一键合并重复音乐")),
-                    )
-                    .clicked()
-            {
-                self.dialog = Some(Dialog::Bulk {
-                    by_score: true,
-                    minimum: "80".into(),
-                    preview: false,
-                });
-                self.revision(&ctx, svc);
-            }
-            if !self.selected.is_empty() {
-                ui.weak(tr("已选择 {0} 项").replace("{0}", &self.selected.len().to_string()));
-                if ui.button(tr("清除选择")).clicked() {
-                    self.clear_selection();
-                }
-                let editable = self.selected.len() >= 2 && !self.decisions.locked();
-                if allow_manual
-                    && ui
-                        .add_enabled(editable, egui::Button::new(tr("合并歌曲")))
-                        .clicked()
-                {
-                    let items = evidence::selected(&self.selected);
-                    self.dialog = Some(merge(
-                        items,
-                        self.revision.as_ref().map(|r| r.revision),
-                        false,
-                    ));
-                }
-                if self.selected.len() == 2 && !self.decisions.locked() {
-                    let left = self.selected[0].source();
-                    let right = self.selected[1].source();
-                    if let (Some(a), Some(b)) = (left, right) {
-                        if a.source_track_id != b.source_track_id {
-                            for (excluded, label) in [(true, "不是同一录音"), (false, "撤销排除")]
-                            {
-                                if ui.button(tr(label)).clicked() {
-                                    self.dialog = Some(exclusion(
-                                        vec![
-                                            Evidence::version(&self.selected[0], a),
-                                            Evidence::version(&self.selected[1], b),
-                                        ],
-                                        self.revision.as_ref().map(|r| r.revision),
-                                        excluded,
-                                        false,
-                                    ));
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        });
         if let Some(error) = &self.error {
             ui.colored_label(ui.visuals().error_fg_color, error);
             if ui.button(tr("重新检查一键合并功能")).clicked() {
@@ -197,6 +139,95 @@ impl Matching {
             refresh |= self.modal(&ctx, svc, lookup);
         }
         refresh
+    }
+
+    pub fn supports_bulk(&self) -> bool {
+        self.revision
+            .as_ref()
+            .is_some_and(|r| r.bulk_merge_available)
+    }
+    pub(super) fn buttons(&mut self, ui: &mut egui::Ui, svc: Services<'_>) {
+        if self.supports_bulk()
+            && ui
+                .add_enabled(!self.locked(), egui::Button::new(tr("一键合并重复音乐")))
+                .clicked()
+        {
+            self.dialog = Some(Dialog::Bulk {
+                by_score: true,
+                minimum: "80".into(),
+                preview: false,
+            });
+            self.revision(ui.ctx(), svc);
+        }
+        if ui.button(tr("重复识别")).clicked() {
+            self.dialog = Some(Dialog::Candidates);
+        }
+    }
+
+    pub(super) fn selection_buttons(&mut self, ui: &mut egui::Ui, allow_manual: bool) {
+        if !self.selected.is_empty() {
+            let editable = self.selected.len() >= 2 && !self.decisions.locked();
+            if allow_manual
+                && ui
+                    .add_enabled(editable, egui::Button::new(tr("合并歌曲")))
+                    .clicked()
+            {
+                let items = evidence::selected(&self.selected);
+                self.dialog = Some(merge(
+                    items,
+                    self.revision.as_ref().map(|r| r.revision),
+                    false,
+                ));
+            }
+            if self.selected.len() == 2 && !self.decisions.locked() {
+                let left = self.selected[0].source();
+                let right = self.selected[1].source();
+                if let (Some(a), Some(b)) = (left, right) {
+                    if a.source_track_id != b.source_track_id {
+                        for (excluded, label) in [(true, "不是同一录音"), (false, "撤销排除")]
+                        {
+                            if ui.button(tr(label)).clicked() {
+                                self.dialog = Some(exclusion(
+                                    vec![
+                                        Evidence::version(&self.selected[0], a),
+                                        Evidence::version(&self.selected[1], b),
+                                    ],
+                                    self.revision.as_ref().map(|r| r.revision),
+                                    excluded,
+                                    false,
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn locked(&self) -> bool {
+        self.decisions.locked()
+    }
+    pub fn selected(&self, track: &Track) -> bool {
+        self.selected.iter().any(|t| row_key(t) == row_key(track))
+    }
+    pub fn select_rows(&mut self, rows: &[Track], checked: bool) {
+        if self.locked() {
+            return;
+        }
+        let mut ids: std::collections::HashSet<_> = rows.iter().map(row_key).collect();
+        if checked {
+            for t in &self.selected {
+                ids.remove(&row_key(t));
+            }
+            let added: Vec<_> = rows
+                .iter()
+                .filter(|t| ids.remove(&row_key(t)))
+                .cloned()
+                .collect();
+            self.selected.extend(added);
+        } else {
+            self.selected.retain(|t| !ids.contains(&row_key(t)));
+        }
     }
 
     fn changed(&mut self, ctx: &egui::Context, svc: Services<'_>) {

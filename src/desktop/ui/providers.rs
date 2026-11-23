@@ -7,6 +7,64 @@ use eframe::egui;
 use serde::Deserialize;
 use std::collections::HashMap;
 
+pub(super) fn dropdown(id: &'static str, width: f32) -> egui::ComboBox {
+    egui::ComboBox::from_id_salt(id)
+        .width(width)
+        .truncate()
+        .icon(|ui, rect, visuals, open, _| {
+            let center = rect.center();
+            let dy = if open { -2.5 } else { 2.5 };
+            ui.painter().add(egui::Shape::line(
+                vec![
+                    center + egui::vec2(-4.5, -dy),
+                    center + egui::vec2(0., dy),
+                    center + egui::vec2(4.5, -dy),
+                ],
+                egui::Stroke::new(1.4_f32, visuals.fg_stroke.color),
+            ));
+        })
+}
+
+// 保留不可操作的选择框语义，并让值与普通表单文字保持同样的可读性。
+pub(super) fn disabled_select(
+    ui: &mut egui::Ui,
+    id: &'static str,
+    label: &str,
+    width: f32,
+    font_size: f32,
+    help: &str,
+) {
+    let painter = ui.painter().clone();
+    let color = ui.visuals().text_color();
+    ui.allocate_ui_with_layout(
+        egui::vec2(width, ui.spacing().interact_size.y),
+        egui::Layout::left_to_right(egui::Align::Center),
+        |ui| {
+            ui.disable();
+            let response = dropdown(id, width)
+                .selected_text("")
+                .show_ui(ui, |_| {})
+                .response;
+            response.widget_info(|| {
+                egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, false, label)
+            });
+            let available = egui::Rect::from_min_max(
+                response.rect.left_top() + egui::vec2(12., 0.),
+                response.rect.right_bottom() - egui::vec2(22., 0.),
+            );
+            painter
+                .with_clip_rect(available.intersect(painter.clip_rect()))
+                .text(
+                    available.left_center(),
+                    egui::Align2::LEFT_CENTER,
+                    label,
+                    egui::FontId::proportional(font_size),
+                    color,
+                );
+            response.on_disabled_hover_text(help);
+        },
+    );
+}
 #[derive(Deserialize)]
 struct Identity {
     name: String,
@@ -93,7 +151,7 @@ impl Providers {
     }
     pub fn select(&mut self, ui: &mut egui::Ui) -> bool {
         let old = self.selected.clone();
-        egui::ComboBox::from_label(tr("来源"))
+        let response = dropdown("library-provider", 125.)
             .selected_text(
                 self.selected
                     .as_ref()
@@ -105,7 +163,19 @@ impl Providers {
                 for item in &self.items {
                     ui.selectable_value(&mut self.selected, Some(item.id.clone()), item.label());
                 }
-            });
+            })
+            .response;
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, true, tr("来源"))
+        });
+        response.on_hover_text(tr("来源"));
+        old != self.selected
+    }
+    pub fn refresh(&mut self) {
+        self.started = false;
+        self.error = None;
+    }
+    pub fn status(&mut self, ui: &mut egui::Ui) {
         if let Some(error) = &self.error {
             ui.colored_label(ui.visuals().error_fg_color, error);
             if ui.button(tr("重试")).clicked() {
@@ -113,6 +183,5 @@ impl Providers {
                 self.error = None;
             }
         }
-        old != self.selected
     }
 }

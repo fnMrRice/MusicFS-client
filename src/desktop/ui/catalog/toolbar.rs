@@ -1,0 +1,365 @@
+use super::super::actions::Actions;
+use super::*;
+use crate::icons;
+use musicfs_server_adapter::Playlist;
+
+impl Catalog {
+    pub(super) fn category_tabs(&mut self, ui: &mut egui::Ui) {
+        let span = ui.max_rect().intersect(ui.clip_rect());
+        let mut underline = None;
+        let width = ui.available_width();
+        let mut selected = None;
+        let row = egui::ScrollArea::horizontal()
+            .id_salt("catalog-tabs")
+            .auto_shrink([false, true])
+            .show(ui, |ui| {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = if width < 460.0 { 14. } else { 28. };
+                    for tab in [
+                        CategoryTab::All,
+                        CategoryTab::Artist,
+                        CategoryTab::Album,
+                        CategoryTab::Genre,
+                        CategoryTab::Folder,
+                    ] {
+                        let active = self.tabs == tab;
+                        let text = RichText::new(tab.label()).size(16.);
+                        let text = if active {
+                            text.font(style::bold(ui, 16.))
+                                .color(ui.visuals().strong_text_color())
+                        } else {
+                            text.color(style::muted(ui.visuals().dark_mode))
+                        };
+                        ui.spacing_mut().button_padding = egui::vec2(4., 10.);
+                        let r = ui.add(
+                            egui::Button::new(text)
+                                .frame(false)
+                                .min_size(egui::vec2(0., 46.)),
+                        );
+                        r.widget_info(|| {
+                            egui::WidgetInfo::selected(
+                                egui::WidgetType::SelectableLabel,
+                                ui.is_enabled(),
+                                active,
+                                tab.label(),
+                            )
+                        });
+                        if r.clicked() && !active {
+                            selected = Some(tab);
+                        }
+                        if active {
+                            let mut rect = r.rect;
+                            rect.min.y = rect.bottom() - 3.;
+                            underline = Some(rect);
+                        }
+                    }
+                });
+            });
+        let y = underline.map_or(row.inner_rect.bottom(), |rect| rect.bottom());
+        let rule =
+            egui::Rect::from_min_max(egui::pos2(span.left(), y - 1.), egui::pos2(span.right(), y));
+        ui.painter()
+            .rect_filled(rule, 0, style::line(ui.visuals().dark_mode));
+        if let Some(rect) = underline {
+            ui.painter()
+                .rect_filled(rect.intersect(span), 2, style::accent(ui));
+        }
+        ui.add_space(10.);
+        if let Some(tab) = selected {
+            self.list_query.clear();
+            self.list_draft.clear();
+            self.tabs = tab;
+            self.reset_categories();
+        }
+    }
+
+    pub(super) fn list_search(&mut self, ui: &mut egui::Ui) {
+        let focus = ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::F));
+        let has_text = !self.list_draft.is_empty() || !self.list_query.is_empty();
+        let after = if ui.layout().main_dir().is_horizontal() {
+            36. + ui.spacing().item_spacing.x
+                + if has_text {
+                    28. + ui.spacing().item_spacing.x
+                } else {
+                    0.
+                }
+        } else {
+            0.
+        };
+        let field = ui.add_sized(
+            [
+                (ui.available_rect_before_wrap().width() - after).clamp(100., 190.),
+                36.,
+            ],
+            egui::TextEdit::singleline(&mut self.list_draft)
+                .hint_text(tr("搜索当前列表"))
+                .margin(egui::Margin::symmetric(12, 4))
+                .char_limit(256)
+                .vertical_align(egui::Align::Center),
+        );
+        if focus {
+            field.request_focus();
+        }
+        let submit = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+        let clear = has_text && icons::button(ui, "close", tr("清除"), 28., 14.).clicked();
+        if clear {
+            self.list_draft.clear();
+        }
+        if (submit || clear || self.list_draft.is_empty())
+            && self.list_query != self.list_draft.trim()
+        {
+            self.list_query = self.list_draft.trim().into();
+            self.categories = Default::default();
+            self.reset_tracks();
+        }
+    }
+
+    fn filters(&mut self, ui: &mut egui::Ui) -> bool {
+        let changed = self.providers.select(ui);
+        providers::disabled_select(
+            ui,
+            "format-filter",
+            tr("全部格式"),
+            125.,
+            13.,
+            tr("等待服务端提供全库格式筛选"),
+        );
+        ui.scope(|ui| {
+            style::checkbox_style(ui);
+            for (label, hint) in [
+                ("仅收藏", "请在我的收藏中查看已收藏曲目"),
+                ("仅可播放", "等待服务端提供全库可播放过滤"),
+            ] {
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 5.;
+                    ui.spacing_mut().interact_size.x = 16.;
+                    let check = ui.add_enabled(false, egui::Checkbox::without_text(&mut false));
+                    check.widget_info(|| {
+                        egui::WidgetInfo::selected(
+                            egui::WidgetType::Checkbox,
+                            false,
+                            false,
+                            tr(label),
+                        )
+                    });
+                    check.on_disabled_hover_text(tr(hint));
+                    ui.label(egui::RichText::new(tr(label)).size(13.))
+                        .on_hover_text(tr(hint));
+                });
+            }
+        });
+        ui.add_enabled(false, egui::Button::new(tr("更多筛选")))
+            .on_disabled_hover_text(tr("等待服务端提供组合筛选"));
+        changed
+    }
+
+    fn list_controls(
+        &mut self,
+        ui: &mut egui::Ui,
+        svc: Services<'_>,
+        actions: &mut Actions,
+    ) -> bool {
+        let before = self.list_query.clone();
+        if ui.button(tr("新建曲目")).clicked() {
+            self.creation = Some(Default::default());
+        }
+        self.matching.buttons(ui, svc);
+        self.list_search(ui);
+        let refresh = icons::button(ui, "refresh", tr("刷新列表"), 36., 18.).clicked();
+        if refresh {
+            self.providers.refresh();
+            self.artwork = Default::default();
+            actions.favorites.refresh();
+        }
+        refresh || self.list_query != before
+    }
+
+    fn source_filters(
+        &mut self,
+        ui: &mut egui::Ui,
+        svc: Services<'_>,
+        actions: &mut Actions,
+    ) -> bool {
+        let mut changed = false;
+        let wide = ui.available_width() >= 1200.0;
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().item_spacing.x = 12.;
+            ui.spacing_mut().interact_size.y = 39.;
+            changed |= self.filters(ui);
+            if wide {
+                let space =
+                    (ui.available_rect_before_wrap().width() - self.actions_width(ui)).max(0.);
+                ui.add_space(space);
+                changed |= self.list_controls(ui, svc, actions);
+            }
+        });
+        if !wide {
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().interact_size.y = 39.;
+                let space =
+                    (ui.available_rect_before_wrap().width() - self.actions_width(ui)).max(0.);
+                if space > 0. {
+                    ui.add_space(space);
+                }
+                changed |= self.list_controls(ui, svc, actions);
+            });
+        }
+        self.providers.status(ui);
+        if let Some(saved) = self
+            .creation
+            .as_mut()
+            .and_then(|dialog| dialog.show(ui, svc))
+        {
+            self.creation = None;
+            if saved {
+                self.providers.selected = None;
+                self.feedback = Some(tr("已新建曲目，可在搜索中查看。").into());
+                changed = true;
+            }
+        }
+        changed
+    }
+
+    fn actions_width(&self, ui: &egui::Ui) -> f32 {
+        let font = egui::TextStyle::Button.resolve(ui.style());
+        let buttons = [
+            Some("新建曲目"),
+            self.matching.supports_bulk().then_some("一键合并重复音乐"),
+            Some("重复识别"),
+        ];
+        let x = ui.spacing().button_padding.x * 2. + ui.spacing().item_spacing.x;
+        buttons
+            .iter()
+            .flatten()
+            .map(|t| {
+                ui.painter()
+                    .layout_no_wrap(tr(t).to_owned(), font.clone(), egui::Color32::WHITE)
+                    .size()
+                    .x
+                    + x
+            })
+            .sum::<f32>()
+            + 190.
+            + 36.
+            + ui.spacing().item_spacing.x * 2.
+            + if self.list_draft.is_empty() { 0. } else { 34. }
+    }
+
+    pub fn table_toolbar(
+        &mut self,
+        ui: &mut egui::Ui,
+        svc: Services<'_>,
+        actions: &mut Actions,
+        query: &TrackQuery,
+        lists: &[Playlist],
+    ) -> bool {
+        let all = matches!(query, TrackQuery::AvailableSources { .. });
+        let matching = all || matches!(query, TrackQuery::Category { .. } | TrackQuery::Library(_));
+        let mut refresh = false;
+        if all {
+            refresh = self.source_filters(ui, svc, actions);
+        } else if matching {
+            ui.horizontal_wrapped(|ui| self.matching.buttons(ui, svc));
+        }
+        if matching {
+            refresh |= self
+                .matching
+                .update(ui, svc, &|id| self.providers.label(id).into());
+        }
+        if refresh {
+            self.reset_tracks();
+            return true;
+        }
+        self.poll_queue(svc, actions);
+        let album = match query {
+            TrackQuery::Category {
+                tab: CategoryTab::Album,
+                id,
+                ..
+            } => Some(id),
+            _ => None,
+        };
+        ui.add_space(17.);
+        let width = ui.available_width();
+        ui.horizontal_wrapped(|ui| {
+            ui.spacing_mut().interact_size.y = 38.;
+            let checked = self.matching.selected_tracks();
+            if checked.is_empty() {
+                self.queue_buttons(ui, svc, actions);
+            } else {
+                ui.strong(tr("已选择 {0} 项").replace("{0}", &checked.len().to_string()));
+                if ui
+                    .add_enabled(
+                        checked.iter().any(|t| t.playable_source_id().is_some()),
+                        egui::Button::new(tr("加入队列")),
+                    )
+                    .clicked()
+                {
+                    match super::queue::enqueue(
+                        svc,
+                        checked.iter().filter_map(queue_track).collect(),
+                    ) {
+                        Ok(message) => self.feedback = Some(message),
+                        Err(error) => actions.notice = Some((error, true)),
+                    }
+                }
+                if ui
+                    .add_enabled(
+                        !actions.busy() && checked.iter().all(|t| !t.unresolved),
+                        egui::Button::new(tr("添加到歌单")),
+                    )
+                    .clicked()
+                {
+                    actions.open_many(checked, lists);
+                }
+                if ui
+                    .add_enabled(
+                        actions.can_favorite_many(checked),
+                        egui::Button::new(tr("收藏")),
+                    )
+                    .clicked()
+                {
+                    actions.favorite_many(ui, svc, checked);
+                }
+                if let Some(id) = album {
+                    refresh |= self.album_merge.show(ui, svc, id, checked);
+                }
+                if matching {
+                    self.matching.selection_buttons(ui, album.is_none());
+                }
+                if ui.button(tr("清空选择")).clicked() {
+                    self.matching.clear_selection();
+                }
+            }
+            if !all && icons::button(ui, "refresh", tr("刷新列表"), 32., 17.).clicked() {
+                self.artwork = Default::default();
+                actions.favorites.refresh();
+                refresh = true;
+            }
+            if self.tracks.busy() || self.complete.is_some() {
+                ui.spinner();
+            }
+            let remain = ui.available_rect_before_wrap().width();
+            if width >= 520. && remain > 116. {
+                ui.add_space(remain - 116.);
+            }
+            providers::disabled_select(
+                ui,
+                "track-sort",
+                tr("默认顺序"),
+                108.,
+                16.,
+                tr("等待服务端提供完整查询排序能力"),
+            );
+        });
+        ui.add_space(10.);
+        if let Some(message) = self.feedback.take() {
+            actions.notice = Some((message, false));
+        }
+        actions.favorites.status(ui);
+        if refresh {
+            self.reset_tracks();
+        }
+        refresh
+    }
+}

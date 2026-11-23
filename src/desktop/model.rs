@@ -1,7 +1,9 @@
 use crate::{connection::Connection, task::Task};
 use directories::ProjectDirs;
 use eframe::egui::Context;
-use musicfs_player_core::{FadeSettings, PlayerCommand};
+use musicfs_player_core::FadeSettings;
+#[path = "model/audio.rs"]
+pub mod audio;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::PathBuf, time::Duration};
 use tokio::runtime::Handle;
@@ -11,7 +13,9 @@ use tokio::runtime::Handle;
 pub struct Preferences {
     pub endpoint: String,
     pub theme: String,
+    pub language: String,
     pub fades: FadeSettings,
+    pub audio: audio::AudioPreferences,
 }
 
 impl Default for Preferences {
@@ -19,7 +23,9 @@ impl Default for Preferences {
         Self {
             endpoint: "http://127.0.0.1:8080".into(),
             theme: "dark".into(),
+            language: "system".into(),
             fades: FadeSettings::default(),
+            audio: Default::default(),
         }
     }
 }
@@ -70,11 +76,12 @@ impl DesktopState {
                     .map(|d| d.config_dir().to_owned())
             })
             .map(|dir| dir.join("preferences.json"));
-        let prefs = settings_file
+        let mut prefs: Preferences = settings_file
             .as_ref()
             .and_then(|file| fs::read(file).ok())
             .and_then(|bytes| serde_json::from_slice(&bytes).ok())
             .unwrap_or_default();
+        prefs.audio.normalize();
         Self {
             runtime,
             connection: None,
@@ -86,8 +93,9 @@ impl DesktopState {
         }
     }
 
-    pub fn save_preferences(&self) {
+    pub fn save_preferences(&mut self) {
         let Some(path) = &self.settings_file else {
+            self.error = Some("Desktop preferences storage is unavailable.".into());
             return;
         };
         let Some(dir) = path.parent() else { return };
@@ -98,8 +106,8 @@ impl DesktopState {
             file.persist(path)?;
             Ok(())
         };
-        if save().is_err() {
-            eprintln!("Could not save desktop preferences.");
+        if let Err(error) = save() {
+            self.error = Some(format!("Could not save desktop preferences: {error}"));
         }
     }
 
@@ -132,9 +140,7 @@ impl DesktopState {
             match result {
                 Ok(connection) => {
                     if let Some(active) = &connection {
-                        if let Err(error) = active.player.command(PlayerCommand::SetFades {
-                            settings: self.prefs.fades,
-                        }) {
+                        if let Err(error) = self.prefs.audio.initialize(active, self.prefs.fades) {
                             self.error = Some(error);
                         }
                         self.prefs.endpoint.clone_from(&active.server.info.endpoint);

@@ -1,4 +1,5 @@
 use super::style;
+use crate::i18n::tr;
 use crate::model::DesktopState;
 use eframe::egui::{self, Align, Color32, Layout, RichText, Vec2};
 
@@ -40,10 +41,10 @@ impl Login {
                             ui.set_min_width((form_width - 9.0).max(160.0));
                             style::note(ui);
                             ui.add_space(27.0);
-                            ui.heading("连接音乐库");
-                            ui.weak("使用服务器地址和管理员提供的令牌登录 MusicFS。");
+                            ui.heading(tr("连接音乐库"));
+                            ui.weak(tr("使用服务器地址和管理员提供的令牌登录 MusicFS。"));
                             ui.add_space(16.0);
-                            let endpoint_label = ui.label("服务器地址");
+                            let endpoint_label = ui.label(tr("服务器地址"));
                             ui.add_enabled(
                                 !state.busy,
                                 egui::TextEdit::singleline(&mut self.endpoint)
@@ -52,13 +53,13 @@ impl Login {
                             )
                             .labelled_by(endpoint_label.id);
                             ui.add_space(8.0);
-                            let token_label = ui.label("管理员登录令牌");
+                            let token_label = ui.label(tr("管理员登录令牌"));
                             let password = ui
                                 .add_enabled(
                                     !state.busy,
                                     egui::TextEdit::singleline(&mut self.token)
                                         .password(true)
-                                        .hint_text("输入登录令牌")
+                                        .hint_text(tr("输入登录令牌"))
                                         .desired_width(f32::INFINITY),
                                 )
                                 .labelled_by(token_label.id);
@@ -73,9 +74,9 @@ impl Login {
                                 && ui.input(|i| i.key_pressed(egui::Key::Enter));
                             let button = egui::Button::new(
                                 RichText::new(if state.busy {
-                                    "正在连接…"
+                                    tr("正在连接…")
                                 } else {
-                                    "连接并登录"
+                                    tr("连接并登录")
                                 })
                                 .strong()
                                 .color(Color32::WHITE),
@@ -86,6 +87,14 @@ impl Login {
                             if ui.add_enabled(enabled, button).clicked() || (enabled && enter) {
                                 let token = std::mem::take(&mut self.token);
                                 state.connect(self.endpoint.trim().to_owned(), token, ctx);
+                            }
+                            ui.add_space(10.0);
+                            if let Some(language) =
+                                super::settings::language_menu(ui, &state.prefs.language)
+                            {
+                                state.prefs.language = language;
+                                state.save_preferences();
+                                ctx.request_repaint();
                             }
                         });
                     },

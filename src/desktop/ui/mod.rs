@@ -1,3 +1,4 @@
+use crate::i18n::tr;
 mod actions;
 mod catalog;
 mod data;
@@ -36,6 +37,7 @@ pub struct DesktopUi {
 
 #[derive(Default)]
 struct SignedUi {
+    settings: settings::Settings,
     screen: Screen,
     player: PlayerUi,
     browse: BrowseUi,
@@ -49,13 +51,16 @@ struct SignedUi {
 }
 
 enum HostAction {
+    Audio(crate::model::audio::AudioAction),
     Logout,
+    Language(String),
     Theme(String),
     Fades(FadeSettings),
 }
 
 impl DesktopUi {
     pub fn show(&mut self, ctx: &egui::Context, state: &mut DesktopState) {
+        crate::i18n::apply(&state.prefs.language);
         if !self.initialized {
             self.login.endpoint = if state.prefs.endpoint.is_empty() {
                 "http://127.0.0.1:8080".into()
@@ -80,7 +85,16 @@ impl DesktopUi {
             player: &connection.player,
         };
         match ui.show(ctx, svc, &state.prefs, state.busy, state.error.as_deref()) {
+            Some(HostAction::Audio(action)) => match state.prefs.audio.apply(connection, action) {
+                Ok(()) => state.save_preferences(),
+                Err(error) => state.error = Some(error),
+            },
             Some(HostAction::Logout) => state.disconnect(ctx),
+            Some(HostAction::Language(language)) => {
+                state.prefs.language = language;
+                state.save_preferences();
+                ctx.request_repaint();
+            }
             Some(HostAction::Theme(theme)) => {
                 state.prefs.theme = theme;
                 state.save_preferences();
@@ -125,14 +139,14 @@ impl SignedUi {
                 .iter()
                 .find(|p| p.id == *id)
                 .map(|p| p.name.clone())
-                .unwrap_or_else(|| "歌单详情".into()),
+                .unwrap_or_else(|| tr("歌单详情").into()),
             Screen::Works(id) => self
                 .browse
                 .types()
                 .iter()
                 .find(|t| t.id == *id)
-                .map(|t| t.name.clone())
-                .unwrap_or_else(|| "作品库".into()),
+                .map(|t| tr(&t.name).to_owned())
+                .unwrap_or_else(|| tr("作品库").into()),
             screen => screen.label().into(),
         }
     }
@@ -160,10 +174,18 @@ impl SignedUi {
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::K)) {
             self.navigate(Screen::Search);
         }
-        self.player.show(ctx, svc.player, svc.server, svc.runtime);
+        let changed_volume = self.player.show(
+            ctx,
+            svc.player,
+            svc.server,
+            svc.runtime,
+            prefs.audio.volume,
+            prefs.audio.last_volume,
+        );
         self.sidebar(ctx, svc);
         let dark = ctx.style().visuals.dark_mode;
-        let mut action = None;
+        let mut action =
+            changed_volume.map(|v| HostAction::Audio(crate::model::audio::AudioAction::Volume(v)));
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::new()
@@ -174,19 +196,22 @@ impl SignedUi {
                 ui.horizontal(|ui| {
                     ui.heading(self.title());
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if ui.button("账号与设置").clicked() {
+                        if ui.button(tr("账号与设置")).clicked() {
                             self.navigate(Screen::Settings);
                         }
-                        ui.menu_button("换肤", |ui| {
+                        ui.menu_button(tr("换肤"), |ui| {
                             for (value, label) in themes() {
-                                if ui.selectable_label(prefs.theme == value, label).clicked() {
+                                if ui
+                                    .selectable_label(prefs.theme == value, tr(label))
+                                    .clicked()
+                                {
                                     action = Some(HostAction::Theme(value.into()));
                                     ui.close_menu();
                                 }
                             }
                         });
                         if ui.available_width() > 120.0 {
-                            ui.colored_label(style::muted(dark), "● 已连接")
+                            ui.colored_label(style::muted(dark), tr("● 已连接"))
                                 .on_hover_text(&svc.server.info.endpoint);
                         }
                     });
@@ -202,7 +227,7 @@ impl SignedUi {
                             },
                             msg,
                         );
-                        if msg.contains("HTTP 401") && ui.button("重新登录").clicked() {
+                        if msg.contains("HTTP 401") && ui.button(tr("重新登录")).clicked() {
                             action = Some(HostAction::Logout);
                         }
                     });
@@ -211,9 +236,7 @@ impl SignedUi {
                     ui.colored_label(ui.visuals().error_fg_color, error);
                 }
                 if self.screen == Screen::Settings {
-                    egui::ScrollArea::vertical().show(ui, |ui| {
-                        settings::show(ui, &svc.server.info, prefs, busy, &mut action);
-                    });
+                    self.settings.show(ui, svc, prefs, busy, &mut action);
                 } else {
                     self.page(ui, svc);
                 }
@@ -235,7 +258,7 @@ impl SignedUi {
             Screen::Search => {
                 self.catalog.search_bar(ui);
                 if self.catalog.search.is_empty() {
-                    ui.weak("输入关键词并按回车搜索音乐库。");
+                    ui.weak(tr("输入关键词并按回车搜索音乐库。"));
                     return;
                 }
                 TrackQuery::Library(self.catalog.search.clone())
@@ -243,9 +266,9 @@ impl SignedUi {
             Screen::Favorites => TrackQuery::Favorites,
             Screen::History => {
                 ui.horizontal_wrapped(|ui| {
-                    ui.selectable_value(&mut self.history_type, String::new(), "音乐");
+                    ui.selectable_value(&mut self.history_type, String::new(), tr("音乐"));
                     for t in self.browse.types().iter().filter(|t| t.separate_history) {
-                        ui.selectable_value(&mut self.history_type, t.id.clone(), &t.name);
+                        ui.selectable_value(&mut self.history_type, t.id.clone(), tr(&t.name));
                     }
                 });
                 ui.separator();
@@ -272,25 +295,28 @@ impl SignedUi {
                         ui.spinner();
                     } else if let Some(error) = &self.lists.error {
                         ui.colored_label(ui.visuals().error_fg_color, error);
-                        if ui.button("重试读取歌单").clicked() {
+                        if ui.button(tr("重试读取歌单")).clicked() {
                             self.lists = Pages::default();
                         }
                     } else if self.lists.next.is_some() {
                         self.load_lists(ui.ctx(), svc);
                         ui.spinner();
                     } else {
-                        ui.weak("此歌单已删除或无法访问。");
+                        ui.weak(tr("此歌单已删除或无法访问。"));
                     }
-                    if ui.button("返回歌单列表").clicked() {
+                    if ui.button(tr("返回歌单列表")).clicked() {
                         self.navigate(Screen::Playlists);
                     }
                     return;
                 };
                 if p.stale {
                     ui.horizontal(|ui| {
-                        ui.weak("歌单有未应用的更改。");
+                        ui.weak(tr("歌单有未应用的更改。"));
                         if ui
-                            .add_enabled(!self.actions.busy(), egui::Button::new("更新歌单内容"))
+                            .add_enabled(
+                                !self.actions.busy(),
+                                egui::Button::new(tr("更新歌单内容")),
+                            )
                             .clicked()
                         {
                             self.actions.rebuild(ui, svc, p);
@@ -347,8 +373,8 @@ impl SignedUi {
     }
     fn playlists(&mut self, ui: &mut egui::Ui, svc: Services<'_>) {
         ui.horizontal(|ui| {
-            ui.strong(format!("{} 个歌单", self.lists.items.len()));
-            if ui.button("刷新歌单").clicked() {
+            ui.strong(tr("{0} 个歌单").replace("{0}", &self.lists.items.len().to_string()));
+            if ui.button(tr("刷新歌单")).clicked() {
                 self.lists = Pages::default();
             }
             if self.lists.busy() {
@@ -364,7 +390,7 @@ impl SignedUi {
             && self.lists.error.is_none()
             && self.lists.items.is_empty()
         {
-            ui.weak("暂无歌单。可从曲目右侧的「＋」新建歌单。");
+            ui.weak(tr("暂无歌单。可从曲目右侧的「＋」新建歌单。"));
         }
         let mut selected = None;
         let mut more = false;
@@ -384,7 +410,7 @@ impl SignedUi {
                 }
                 if self.lists.next.is_some() || self.lists.error.is_some() {
                     more = ui
-                        .add_enabled(!self.lists.busy(), egui::Button::new("继续读取歌单"))
+                        .add_enabled(!self.lists.busy(), egui::Button::new(tr("继续读取歌单")))
                         .clicked();
                 }
             });

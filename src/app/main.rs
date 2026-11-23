@@ -6,6 +6,8 @@ mod browse;
 mod connection;
 #[path = "../desktop/fonts.rs"]
 mod fonts;
+#[path = "../desktop/i18n.rs"]
+mod i18n;
 #[path = "../desktop/model.rs"]
 mod model;
 #[path = "../desktop/player_ui/mod.rs"]

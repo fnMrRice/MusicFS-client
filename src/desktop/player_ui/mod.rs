@@ -1,3 +1,4 @@
+use crate::i18n::tr;
 mod controls;
 pub(crate) mod cover;
 mod lyrics;
@@ -23,7 +24,6 @@ pub struct PlayerUi {
     last_full: Option<Instant>,
     error: Option<String>,
     seek_draft: Option<u64>,
-    last_loud: f32,
     queue_open: bool,
     cover: Cover,
     windows: Windows,
@@ -42,7 +42,10 @@ impl PlayerUi {
         player: &Player,
         server: &ServerSession,
         runtime: &Handle,
-    ) {
+        volume: f32,
+        last_volume: f32,
+    ) -> Option<f32> {
+        let mut volume_change = None;
         if self.last_poll.is_none_or(|t| t.elapsed() >= TICK) {
             self.poll(player);
             self.last_poll = Some(Instant::now());
@@ -70,12 +73,12 @@ impl PlayerUi {
             .show(ctx, |ui| {
                 self.timeline(ui, player);
                 ui.add_space(4.);
-                self.toolbar(ui, player);
+                self.toolbar(ui, player, volume, last_volume, &mut volume_change);
                 if let Some(error) = error {
                     ui.horizontal(|ui| {
                         ui.colored_label(ui.visuals().error_fg_color, error);
                         if self.snapshot.status == Status::Error
-                            && ui.small_button("重新播放").clicked()
+                            && ui.small_button(tr("重新播放")).clicked()
                         {
                             self.run(player, PlayerCommand::Play);
                         }
@@ -87,6 +90,7 @@ impl PlayerUi {
         }
         self.windows.show(ctx, player, server, runtime);
         ctx.request_repaint_after(TICK);
+        volume_change
     }
 
     fn poll(&mut self, player: &Player) {
@@ -156,7 +160,11 @@ impl PlayerUi {
                             .show_value(false)
                             .trailing_fill(true),
                     )
-                    .on_hover_text(format!("播放进度 · {}", time(target)))
+                    .on_hover_text(format!(
+                        "{} · {}",
+                        tr("播放进度"),
+                        time(target)
+                    ))
                 })
                 .inner;
             if response.changed() {
@@ -185,12 +193,19 @@ impl PlayerUi {
                     .fill(ACCENT)
                     .desired_height(4.),
             )
-            .on_hover_text("播放进度");
+            .on_hover_text(tr("播放进度"));
             ui.add_space(6.);
         }
     }
 
-    fn toolbar(&mut self, ui: &mut Ui, player: &Player) {
+    fn toolbar(
+        &mut self,
+        ui: &mut Ui,
+        player: &Player,
+        mut volume: f32,
+        last_volume: f32,
+        volume_change: &mut Option<f32>,
+    ) {
         let width = ui.available_width();
         let narrow = width < 790.;
         ui.horizontal(|ui| {
@@ -231,8 +246,8 @@ impl PlayerUi {
                     if let Some(track) = self.current_track() {
                         heading(ui, &track.title, &track.artists);
                     } else {
-                        ui.label(RichText::new("暂无音频").size(16.).strong());
-                        ui.small("尚未选择曲目");
+                        ui.label(RichText::new(tr("暂无音频")).size(16.).strong());
+                        ui.small(tr("尚未选择曲目"));
                     }
                 },
             );
@@ -241,7 +256,7 @@ impl PlayerUi {
             if icon_button(
                 ui,
                 Glyph::Previous,
-                "上一首",
+                tr("上一首"),
                 index.is_some_and(|i| i > 0),
                 false,
             )
@@ -252,7 +267,7 @@ impl PlayerUi {
             if icon_button(
                 ui,
                 if playing { Glyph::Pause } else { Glyph::Play },
-                if playing { "暂停" } else { "播放" },
+                if playing { tr("暂停") } else { tr("播放") },
                 index.is_some(),
                 true,
             )
@@ -263,7 +278,7 @@ impl PlayerUi {
             if icon_button(
                 ui,
                 Glyph::Next,
-                "下一首",
+                tr("下一首"),
                 index.is_some_and(|i| i + 1 < self.snapshot.queue.len()),
                 false,
             )
@@ -282,16 +297,15 @@ impl PlayerUi {
                 ));
             }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if icon_button(ui, Glyph::Queue, "播放队列", true, false).clicked() {
+                if icon_button(ui, Glyph::Queue, tr("播放队列"), true, false).clicked() {
                     self.queue_open = !self.queue_open;
                 }
-                if icon_button(ui, Glyph::Lyrics, "桌面歌词", true, false).clicked() {
+                if icon_button(ui, Glyph::Lyrics, tr("桌面歌词"), true, false).clicked() {
                     self.windows.open_lyrics(ui.ctx());
                 }
-                if icon_button(ui, Glyph::Mini, "迷你播放器", true, false).clicked() {
+                if icon_button(ui, Glyph::Mini, tr("迷你播放器"), true, false).clicked() {
                     self.windows.open_mini(ui.ctx());
                 }
-                let mut volume = self.snapshot.volume;
                 if !narrow {
                     ui.spacing_mut().slider_width = 66.;
                     ui.spacing_mut().interact_size.y = 16.;
@@ -300,10 +314,10 @@ impl PlayerUi {
                             [66., 16.],
                             egui::Slider::new(&mut volume, 0.0..=1.0).show_value(false),
                         )
-                        .on_hover_text("音量")
+                        .on_hover_text(tr("音量"))
                         .changed()
                     {
-                        self.run(player, PlayerCommand::Volume { volume });
+                        *volume_change = Some(volume);
                     }
                 }
                 if icon_button(
@@ -314,24 +328,16 @@ impl PlayerUi {
                         Glyph::Volume
                     },
                     if volume == 0. {
-                        "取消静音"
+                        tr("取消静音")
                     } else {
-                        "静音"
+                        tr("静音")
                     },
                     true,
                     false,
                 )
                 .clicked()
                 {
-                    let next = if volume > 0. {
-                        self.last_loud = volume;
-                        0.
-                    } else if self.last_loud > 0. {
-                        self.last_loud
-                    } else {
-                        0.7
-                    };
-                    self.run(player, PlayerCommand::Volume { volume: next });
+                    *volume_change = Some(if volume > 0. { 0. } else { last_volume });
                 }
             });
         });
@@ -340,7 +346,7 @@ impl PlayerUi {
     fn queue(&mut self, ctx: &Context, player: &Player) {
         let mut open = self.queue_open;
         let mut command = None;
-        egui::Window::new("播放队列")
+        egui::Window::new(tr("播放队列"))
             .id(egui::Id::new("musicfs-queue"))
             .open(&mut open)
             .default_width(390.)
@@ -348,11 +354,13 @@ impl PlayerUi {
             .min_width(255.)
             .show(ctx, |ui| {
                 ui.horizontal(|ui| {
-                    ui.weak(format!("{} 首曲目", self.snapshot.queue.len()));
+                    ui.weak(
+                        tr("{0} 首曲目").replace("{0}", &self.snapshot.queue.len().to_string()),
+                    );
                     if ui
                         .add_enabled(
                             !self.snapshot.queue.is_empty(),
-                            egui::Button::new("清空队列"),
+                            egui::Button::new(tr("清空队列")),
                         )
                         .clicked()
                     {
@@ -361,7 +369,7 @@ impl PlayerUi {
                 });
                 ui.separator();
                 if self.snapshot.queue.is_empty() {
-                    ui.weak("队列为空");
+                    ui.weak(tr("队列为空"));
                 }
                 egui::ScrollArea::vertical().show_rows(
                     ui,

@@ -12,6 +12,8 @@ MusicFS Desktop connects to a running MusicFS Server. The interface, server conn
 2. If your library is empty, an administrator can open **Settings → Music sources**, add a directory from the server's allowed locations and follow the scan. When connected remotely, the directory picker shows paths on the server.
 3. Open the track list, select a source filter or browse artists, albums, genres and folders. Double-click a track to play. The bottom bar includes the queue, mini player and desktop lyrics. Drag the progress indicator to seek on supported byte-range streams.
 
+On Windows, right-click the MusicFS taskbar button or notification area icon to show the main window, control playback or quit. On macOS, use the menu bar icon. Linux desktops with StatusNotifierItem support show a tray menu. The system media controls display the current track and artwork, and work while the main window is minimized.
+
 ## Library and settings
 
 - A song can have multiple source recordings. You can audition a version, set a preferred source or pin a favorite or playlist entry to one version. An unpinned entry follows the default source. Playing a file in the folder browser uses that file's source.
@@ -37,7 +39,7 @@ Linux builds require the system windowing, OpenGL, ALSA and D-Bus development li
 ## Design documents
 
 - The [desktop validation record](validation/desktop.md) lists Windows x64 device and window checks, isolated server tests and outstanding platform checks.
-- [Desktop architecture](architecture.md) and the [implementation plan](implementation.md) cover the client and player. An installable client plugin host, managed server startup and system media keys are planned.
+- [Desktop architecture](architecture.md) and the [implementation plan](implementation.md) cover the client and player. An installable client plugin host and managed server startup are planned.
 - [Server integration](implementation/server-integration.md) covers sign-in, playback negotiation, and audio streaming.
 - [Audio processing](audio-processing.md) and the [plugin host](plugin-capabilities.md) describe extensions for decoding, effects, and device output.
 - The [cross-platform validation plan](implementation/platforms-validation.md) covers packaging and device testing on each operating system.

@@ -12,6 +12,8 @@ MusicFS 桌面播放器连接已有的 MusicFS Server。窗口、界面、服务
 2. 已有曲库可以直接播放。要导入音乐，请用管理员账号打开「设置 → 音乐源」，从服务端允许访问的目录中添加音乐目录，查看扫描进度和曲目统计。远程连接时选择的是服务端上的目录。
 3. 在「作品库 → 曲目列表」中按来源、歌手、专辑或流派筛选，或打开「文件夹」逐层浏览。双击曲目开始播放。底部播放栏可切歌、调节音量、打开队列、迷你播放器和桌面歌词。支持字节范围定位的音频可以拖动进度条。
 
+Windows 下右键点击任务栏上的 MusicFS 按钮或通知区域图标，可显示主窗口、控制播放或退出。macOS 使用菜单栏图标，Linux 在支持 StatusNotifierItem 的桌面显示托盘菜单。系统媒体控件会显示当前曲目的信息和封面，可在主窗口最小化时控制播放。
+
 ## 曲库与设置
 
 - **曲目与来源版本。** 曲目可以包含多个音源。在「来源版本」中可试听、指定默认来源，或把收藏和歌单条目固定到某个版本。自动选择的条目在以后播放时跟随默认来源。文件夹中的文件则按它自身的来源播放。
@@ -34,7 +36,7 @@ cargo run --locked --release -p musicfs-desktop
 ## 设计文档
 
 - [桌面验证记录](docs/validation/desktop.md)列出 Windows x64 的窗口、播放和服务端往返验证，以及尚待实测的平台与设备。
-- [桌面架构](docs/architecture.md)与[实现方案](docs/implementation.md)说明界面、原生播放器与 Server 的职责。桌面可安装插件宿主、托管 Server 启动和系统媒体键属于后续计划。
+- [桌面架构](docs/architecture.md)与[实现方案](docs/implementation.md)说明界面、原生播放器与 Server 的职责。桌面可安装插件宿主和托管 Server 启动属于后续计划。
 - [连接 MusicFS Server](docs/implementation/server-integration.md)说明登录、播放协商和音频流读取。
 - [音频处理](docs/audio-processing.md)与[插件宿主](docs/plugin-capabilities.md)说明解码、音效和设备输出的扩展方式。
 - [跨平台验证计划](docs/implementation/platforms-validation.md)列出各系统的打包与设备验证项目。

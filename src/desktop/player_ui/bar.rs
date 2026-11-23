@@ -3,6 +3,10 @@ use crate::{i18n::tr, icons, ui::style};
 use eframe::egui::{self, Align, Color32, Layout, Rect, RichText, Ui, UiBuilder};
 use musicfs_player_core::{Player, PlayerCommand, Status};
 
+#[cfg(test)]
+#[path = "../../../tests/native/player_timeline.rs"]
+mod tests;
+
 impl PlayerUi {
     pub(super) fn bar(
         &mut self,
@@ -14,7 +18,9 @@ impl PlayerUi {
     ) {
         let width = ui.available_width();
         let (bar, _) = ui.allocate_exact_size(egui::vec2(width, 105.), egui::Sense::hover());
-        self.timeline(ui, bar, player);
+        if let Some(position_ms) = self.timeline(ui, bar) {
+            self.run(player, PlayerCommand::Seek { position_ms });
+        }
         let narrow = width <= 850.;
         let compact = width <= 1150.;
         let padding = if compact { 18. } else { 27. };
@@ -52,7 +58,7 @@ impl PlayerUi {
         self.extras(&mut extras, volume, last_volume, change, compact, narrow);
     }
 
-    fn timeline(&mut self, ui: &mut Ui, bar: Rect, player: &Player) {
+    fn timeline(&mut self, ui: &mut Ui, bar: Rect) -> Option<u64> {
         let hit = bar.with_max_y(bar.top() + 13.);
         let mut region = ui.new_child(
             UiBuilder::new()
@@ -77,6 +83,7 @@ impl PlayerUi {
             .add_enabled(
                 range.is_some(),
                 egui::Slider::new(&mut target, start..=end.max(start.saturating_add(1)))
+                    .clamping(egui::SliderClamping::Edits)
                     .step_by(100.)
                     .show_value(false),
             )
@@ -87,16 +94,7 @@ impl PlayerUi {
         if response.changed() {
             self.seek_draft = Some(target);
         }
-        if (response.drag_stopped() || (response.changed() && !response.dragged()))
-            && self.seek_draft.take().is_some()
-        {
-            self.run(
-                player,
-                PlayerCommand::Seek {
-                    position_ms: target,
-                },
-            );
-        }
+        let committed = response.drag_stopped() || (response.changed() && !response.dragged());
         let painter = ui.painter();
         let dark = ui.visuals().dark_mode;
         painter.rect_filled(hit, 0., style::sidebar(dark));
@@ -147,6 +145,11 @@ impl PlayerUi {
                 ink,
             );
         }
+        if committed {
+            self.seek_draft.take()
+        } else {
+            None
+        }
     }
 
     fn track_info(&self, ui: &mut Ui, narrow: bool) {
@@ -158,7 +161,14 @@ impl PlayerUi {
                 .corner_radius(6)
                 .paint_at(ui, art);
         } else {
-            style::vinyl(ui, art);
+            ui.painter()
+                .rect_filled(art, 6, Color32::from_rgb(35, 46, 56));
+            icons::paint(
+                ui,
+                "music",
+                Rect::from_center_size(art.center(), egui::Vec2::splat(22.)),
+                Color32::from_rgb(151, 165, 183),
+            );
         }
         let track = self.current_track();
         let artist = track

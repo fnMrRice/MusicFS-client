@@ -15,6 +15,8 @@ use std::collections::HashSet;
 
 #[derive(Default)]
 pub struct Catalog {
+    pub matching: super::matching::Matching,
+    pub album_merge: super::album_merge::AlbumMerge,
     folders: super::folders::Folders,
     pub versions: versions::Versions,
     pub artwork: artwork::Artwork,
@@ -34,6 +36,7 @@ pub struct Catalog {
 
 impl Catalog {
     pub fn reset_tracks(&mut self) {
+        self.matching.clear_selection();
         self.versions = Default::default();
         self.tracks = Pages::default();
         self.query = None;

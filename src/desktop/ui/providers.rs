@@ -29,7 +29,11 @@ struct Provider {
 impl Provider {
     fn label(&self) -> &str {
         let Some(plugin) = &self.plugin else {
-            return &self.name;
+            return if self.name.is_empty() || self.name == self.id {
+                tr("未知来源")
+            } else {
+                &self.name
+            };
         };
         language_tags()
             .iter()
@@ -81,11 +85,11 @@ impl Providers {
             }));
         }
     }
-    pub fn label<'a>(&'a self, id: &'a str) -> &'a str {
+    pub fn label(&self, id: &str) -> &str {
         self.items
             .iter()
             .find(|p| p.id == id)
-            .map_or(id, Provider::label)
+            .map_or(tr("未知来源"), Provider::label)
     }
     pub fn select(&mut self, ui: &mut egui::Ui) -> bool {
         let old = self.selected.clone();

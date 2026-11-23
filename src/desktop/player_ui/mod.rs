@@ -36,6 +36,13 @@ impl PlayerUi {
             .and_then(|index| self.snapshot.queue.get(index))
     }
 
+    pub fn current_source_id(&self) -> Option<&str> {
+        self.snapshot.active_source_track_id.as_deref().or_else(|| {
+            self.current_track()
+                .and_then(|track| track.source_track_id.as_deref())
+        })
+    }
+
     pub fn show(
         &mut self,
         ctx: &Context,

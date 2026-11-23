@@ -23,7 +23,20 @@ async fn grouped_versions_follow_the_default_or_the_explicit_pin() {
         .collect();
     assert_eq!(ids.len(), 2);
     let rev = session.matching_revision().await.unwrap();
-    let linked=session.settings_json("POST","/matching/links",Some(&serde_json::json!({"expectedRevision":rev,"targetRecordingId":null,"sourceTrackIds":ids})),&[("Idempotency-Key",&key())]).await.unwrap();
+    let decision = serde_json::json!({
+        "expectedRevision": rev,
+        "targetRecordingId": null,
+        "sourceTrackIds": ids,
+    });
+    let linked = session
+        .settings_json(
+            "POST",
+            "/matching/links",
+            Some(&decision),
+            &[("Idempotency-Key", &key())],
+        )
+        .await
+        .unwrap();
     let recording = linked["recordingId"].as_str().unwrap();
     session
         .choose_default_source(

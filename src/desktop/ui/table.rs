@@ -43,6 +43,36 @@ pub fn tracks(
     data.sync(ui, svc, &query);
     data.artwork.poll(ui.ctx());
     data.providers.sync(ui, svc);
+    let can_match = matches!(
+        query,
+        TrackQuery::AvailableSources { .. } | TrackQuery::Category { .. } | TrackQuery::Library(_)
+    );
+    if can_match {
+        let album = matches!(
+            query,
+            TrackQuery::Category {
+                tab: super::data::CategoryTab::Album,
+                ..
+            }
+        );
+        let mut refresh = data
+            .matching
+            .show(ui, svc, !album, &|id| data.providers.label(id).to_owned());
+        if let TrackQuery::Category {
+            tab: super::data::CategoryTab::Album,
+            id,
+            ..
+        } = &query
+        {
+            refresh |= data
+                .album_merge
+                .show(ui, svc, id, data.matching.selected_tracks());
+        }
+        if refresh {
+            data.reset_tracks();
+            return;
+        }
+    }
     ui.horizontal_wrapped(|ui| {
         if let Some(error) = data.play_all(ui, svc) {
             actions.notice = Some((error, true));
@@ -105,7 +135,8 @@ pub fn tracks(
     } else {
         0.0
     };
-    let title_w = (width - artist_w - album_w - 321.0).max(55.0);
+    let select_w = if can_match { 24.0 } else { 0.0 };
+    let title_w = (width - artist_w - album_w - 321.0 - select_w).max(55.0);
     egui::Frame::new()
         .fill(style::surface(dark))
         .corner_radius(6)
@@ -114,6 +145,9 @@ pub fn tracks(
             ui.set_min_width(width);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
+                if can_match {
+                    ui.add_space(select_w);
+                }
                 for (w, t) in [
                     (34.0, "#"),
                     (32.0, ""),
@@ -161,6 +195,9 @@ pub fn tracks(
                         ui.horizontal(|ui| {
                             ui.spacing_mut().item_spacing.x = 4.0;
                             ui.add_space(3.0);
+                            if can_match {
+                                data.matching.row(ui, t);
+                            }
                             let playable = t.playable_source_id().is_some();
                             let index = if selected {
                                 "▶".into()
@@ -275,6 +312,7 @@ pub fn tracks(
         &data.tracks.items,
         &mut actions.favorites,
         &data.providers,
+        can_match.then_some(&mut data.matching),
     ) {
         data.reset_tracks();
     }

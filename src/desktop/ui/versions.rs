@@ -56,6 +56,7 @@ impl Versions {
         rows: &[Track],
         favs: &mut Favorites,
         providers: &super::providers::Providers,
+        mut matching: Option<&mut super::super::matching::Matching>,
     ) -> bool {
         let Some((i, id)) = self.row.clone() else {
             return false;
@@ -87,6 +88,7 @@ impl Versions {
         }
         let mut open = true;
         let mut choice = None;
+        let mut confirming_unlink = false;
         egui::Window::new(tr("来源版本"))
             .id(egui::Id::new("source-versions"))
             .open(&mut open)
@@ -163,6 +165,11 @@ impl Versions {
                                         choice = Some(Choice::Play(src.source_track_id.clone()));
                                     }
                                     let available = self.pending.is_none();
+                                    if group.choices().count() > 1 {
+                                        if let Some(manager) = matching.as_deref_mut() {
+                                            confirming_unlink |= manager.unlink_button(ui, src, t);
+                                        }
+                                    }
                                     if ui
                                         .add_enabled(available, egui::Button::new(tr("收藏此版本")))
                                         .clicked()
@@ -242,7 +249,7 @@ impl Versions {
             }
             None => {}
         }
-        if !open && self.pending.is_none() {
+        if confirming_unlink || (!open && self.pending.is_none()) {
             self.row = None;
         }
         false

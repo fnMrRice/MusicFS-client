@@ -1,4 +1,5 @@
 mod catalog;
+pub mod folders;
 mod lyrics;
 mod playback;
 mod playlist_edit;

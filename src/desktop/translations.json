@@ -1,4 +1,10 @@
 {
+  "全选已加载曲目": ["Select all loaded tracks","全選已載入曲目","読み込み済みの曲をすべて選択"],
+  "播放 {0}": ["Play {0}","播放 {0}","{0} を再生"],
+  "展开 {0} 的来源版本": ["Expand sources for {0}","展開 {0} 的來源版本","{0} のソースを展開"],
+  "收起 {0} 的来源版本": ["Collapse sources for {0}","收合 {0} 的來源版本","{0} のソースを折りたたむ"],
+  "更多操作": ["More actions","更多操作","その他の操作"],
+  "下一首播放": ["Play next","下一首播放","次に再生"],
   "CD 抓轨": ["CD dumps","CD 擷取","CD リッピング"],
   "CD专辑": ["CD albums","CD專輯","CDアルバム"],
   "MusicFS · 桌面歌词": ["MusicFS · Desktop lyrics","MusicFS · 桌面歌詞","MusicFS · デスクトップ歌詞"],

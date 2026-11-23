@@ -71,14 +71,19 @@ pub fn paint(ui: &Ui, name: &str, rect: Rect, tint: Color32) {
     if !ui.is_rect_visible(rect) {
         return;
     }
-    let index = NAMES.iter().position(|item| *item == name).unwrap_or(0);
+    let flip = name == "chevron-up";
+    let icon = if flip { "chevron" } else { name };
+    let index = NAMES.iter().position(|item| *item == icon).unwrap_or(0);
     let rows = NAMES.len().div_ceil(COLUMNS) as f32;
     let x = (index % COLUMNS) as f32;
     let y = (index / COLUMNS) as f32;
-    let uv = Rect::from_min_max(
+    let mut uv = Rect::from_min_max(
         egui::pos2(x / COLUMNS as f32, y / rows),
         egui::pos2((x + 1.) / COLUMNS as f32, (y + 1.) / rows),
     );
+    if flip {
+        std::mem::swap(&mut uv.min.y, &mut uv.max.y);
+    }
     ui.painter().image(atlas(ui).id(), rect, uv, tint);
 }
 

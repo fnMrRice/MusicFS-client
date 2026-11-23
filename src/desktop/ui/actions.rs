@@ -1,3 +1,4 @@
+use crate::i18n::tr;
 use super::data::{Pages, Services};
 use super::favorites::Favorites;
 use super::style;
@@ -93,9 +94,9 @@ impl Actions {
                     self.favorites.record(id, enabled);
                     self.notice = Some((
                         (if enabled {
-                            "已加入收藏"
+                            tr("已加入收藏")
                         } else {
-                            "已取消收藏"
+                            tr("已取消收藏")
                         })
                         .into(),
                         false,
@@ -105,9 +106,9 @@ impl Actions {
                 Ok(Change::Playlist) => {
                     self.notice = Some((
                         (if self.editor.is_some() {
-                            "已加入歌单"
+                            tr("已加入歌单")
                         } else {
-                            "歌单内容已更新"
+                            tr("歌单内容已更新")
                         })
                         .into(),
                         false,
@@ -139,7 +140,7 @@ impl Actions {
         let mut close = false;
         let mut more = false;
         let mut apply = None;
-        egui::Window::new("加入歌单")
+        egui::Window::new(tr("加入歌单"))
             .id(egui::Id::new("add-to-playlist"))
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .collapsible(false)
@@ -149,7 +150,7 @@ impl Actions {
                 ui.strong(&ed.track.title);
                 ui.separator();
                 ui.add_enabled_ui(!busy, |ui| {
-                    egui::ComboBox::from_label(crate::i18n::tr("播放来源"))
+                    egui::ComboBox::from_label(tr("播放来源"))
                         .selected_text(
                             ed.pin
                                 .as_deref()
@@ -161,13 +162,13 @@ impl Actions {
                                         .find(|v| v.source_track_id == pin)
                                         .map(|v| v.display_name.as_str())
                                 })
-                                .unwrap_or(crate::i18n::tr("跟随曲目默认来源")),
+                                .unwrap_or(tr("跟随曲目默认来源")),
                         )
                         .show_ui(ui, |ui| {
                             ui.selectable_value(
                                 &mut ed.pin,
                                 None,
-                                crate::i18n::tr("跟随曲目默认来源"),
+                                tr("跟随曲目默认来源"),
                             );
                             if let Some(group) = &ed.track.sources {
                                 for v in group.choices() {
@@ -183,14 +184,14 @@ impl Actions {
                         .items
                         .iter()
                         .find(|p| Some(&p.id) == ed.target_id.as_ref());
-                    egui::ComboBox::from_label("目标歌单")
+                    egui::ComboBox::from_label(tr("目标歌单"))
                         .selected_text(match (existing, &ed.target_id) {
                             (Some(p), _) => &p.name,
-                            (None, Some(_)) => "未找到已选歌单",
-                            (None, None) => "新建歌单…",
+                            (None, Some(_)) => tr("未找到已选歌单"),
+                            (None, None) => tr("新建歌单…"),
                         })
                         .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut ed.target_id, None, "新建歌单…");
+                            ui.selectable_value(&mut ed.target_id, None, tr("新建歌单…"));
                             for p in &lists.items {
                                 ui.selectable_value(&mut ed.target_id, Some(p.id.clone()), &p.name);
                             }
@@ -199,15 +200,15 @@ impl Actions {
                         ui.spinner();
                     } else if let Some(error) = &lists.error {
                         ui.colored_label(ui.visuals().error_fg_color, error);
-                        more = ui.button("重试读取歌单").clicked();
+                        more = ui.button(tr("重试读取歌单")).clicked();
                     } else if lists.next.is_some() {
-                        more = ui.button("读取更多目标歌单").clicked();
+                        more = ui.button(tr("读取更多目标歌单")).clicked();
                     }
                     if ed.target_id.is_none() {
-                        ui.label("新歌单名称");
+                        ui.label(tr("新歌单名称"));
                         ui.add(
                             egui::TextEdit::singleline(&mut ed.name)
-                                .hint_text("输入歌单名称")
+                                .hint_text(tr("输入歌单名称"))
                                 .desired_width(280.0),
                         );
                     }
@@ -223,7 +224,7 @@ impl Actions {
                     let name = ed.name.trim();
                     if style::primary(
                         ui,
-                        if busy { "正在保存…" } else { "保存" },
+                        if busy { tr("正在保存…") } else { tr("保存") },
                         !busy
                             && (existing.is_some() || (ed.target_id.is_none() && !name.is_empty())),
                     )
@@ -241,7 +242,7 @@ impl Actions {
                         ed.retry = Some((target.clone(), ed.pin.clone(), key.clone()));
                         apply = Some((target, key, ed.track.id.clone(), ed.pin.clone()));
                     }
-                    close = ui.add_enabled(!busy, egui::Button::new("取消")).clicked();
+                    close = ui.add_enabled(!busy, egui::Button::new(tr("取消"))).clicked();
                 });
             });
         if close {

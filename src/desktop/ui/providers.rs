@@ -14,10 +14,17 @@ struct Identity {
     names: HashMap<String, String>,
 }
 #[derive(Deserialize)]
+struct Root {
+    id: String,
+    name: String,
+}
+#[derive(Deserialize)]
 struct Provider {
     id: String,
     name: String,
     plugin: Option<Identity>,
+    #[serde(default)]
+    roots: Option<Vec<Root>>,
 }
 impl Provider {
     fn label(&self) -> &str {
@@ -39,6 +46,16 @@ pub struct Providers {
     error: Option<String>,
 }
 impl Providers {
+    pub fn root_label(&self, provider: &str, root: &str) -> Option<&str> {
+        self.items
+            .iter()
+            .find(|p| p.id == provider)?
+            .roots
+            .as_ref()?
+            .iter()
+            .find(|r| r.id == root)
+            .map(|r| r.name.as_str())
+    }
     pub fn sync(&mut self, ui: &egui::Ui, svc: Services<'_>) {
         if let Some(result) = self.task.as_mut().and_then(Task::poll) {
             self.task = None;

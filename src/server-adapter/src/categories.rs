@@ -41,9 +41,13 @@ impl ServerSession {
         &self,
         kind: CategoryKind,
         provider: Option<&str>,
+        query: &str,
         cursor: Option<&str>,
     ) -> Result<Page<Category>> {
         let mut url = self.page_url(&format!("library/{}s", kind.key()), "after", cursor);
+        if !query.trim().is_empty() {
+            url.query_pairs_mut().append_pair("q", query.trim());
+        }
         if let Some(id) = provider {
             url.query_pairs_mut().append_pair("providerInstanceId", id);
         }
@@ -76,9 +80,13 @@ impl ServerSession {
         kind: CategoryKind,
         id: &str,
         provider: Option<&str>,
+        query: &str,
         cursor: Option<&str>,
     ) -> Result<Page<Track>> {
         let mut url = self.page_url("library/tracks", "after", cursor);
+        if !query.trim().is_empty() {
+            url.query_pairs_mut().append_pair("q", query.trim());
+        }
         if let Some(id) = provider {
             url.query_pairs_mut().append_pair("providerInstanceId", id);
         }

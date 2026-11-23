@@ -10,6 +10,7 @@ use tokio::runtime::Handle;
 #[derive(Clone, Copy)]
 pub struct Services<'a> {
     pub runtime: &'a Handle,
+    pub activity: &'a musicfs_server_adapter::activity::ActivityStream,
     pub server: &'a ServerSession,
     pub player: &'a Player,
 }
@@ -86,6 +87,7 @@ pub enum CategoryTab {
     Artist,
     Album,
     Genre,
+    Folder,
 }
 
 impl CategoryTab {
@@ -95,11 +97,12 @@ impl CategoryTab {
             Self::Artist => tr("歌手"),
             Self::Album => tr("专辑"),
             Self::Genre => tr("流派"),
+            Self::Folder => tr("文件夹"),
         }
     }
     pub fn kind(self) -> Option<CategoryKind> {
         match self {
-            Self::All => None,
+            Self::All | Self::Folder => None,
             Self::Artist => Some(CategoryKind::Artist),
             Self::Album => Some(CategoryKind::Album),
             Self::Genre => Some(CategoryKind::Genre),
@@ -110,7 +113,10 @@ impl CategoryTab {
 #[derive(Clone, PartialEq, Eq)]
 pub enum TrackQuery {
     Library(String),
-    AvailableSources(Option<String>),
+    AvailableSources {
+        provider: Option<String>,
+        query: String,
+    },
     Favorites,
     History,
     Playlist {
@@ -121,6 +127,7 @@ pub enum TrackQuery {
         tab: CategoryTab,
         id: String,
         provider: Option<String>,
+        query: String,
     },
 }
 
@@ -132,18 +139,26 @@ impl TrackQuery {
     ) -> Result<Page<Track>, String> {
         match self {
             Self::Library(q) => server.tracks(q, after).await,
-            Self::AvailableSources(provider) => {
-                server.sourced_tracks(provider.as_deref(), after).await
+            Self::AvailableSources { provider, query } => {
+                server
+                    .search_sourced_tracks(provider.as_deref(), query, after)
+                    .await
             }
             Self::History => server.history(after).await,
             Self::Favorites => server.favorites(after).await,
             Self::Playlist { id, revision } => server.playlist_tracks(id, *revision, after).await,
-            Self::Category { tab, id, provider } => {
+            Self::Category {
+                tab,
+                id,
+                provider,
+                query,
+            } => {
                 server
                     .category_tracks(
                         tab.kind().ok_or("Invalid category.")?,
                         id,
                         provider.as_deref(),
+                        query,
                         after,
                     )
                     .await

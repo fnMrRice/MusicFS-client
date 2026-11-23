@@ -111,8 +111,20 @@ impl ServerSession {
         provider: Option<&str>,
         cursor: Option<&str>,
     ) -> Result<Page<Track>> {
+        self.search_sourced_tracks(provider, "", cursor).await
+    }
+
+    pub async fn search_sourced_tracks(
+        &self,
+        provider: Option<&str>,
+        query: &str,
+        cursor: Option<&str>,
+    ) -> Result<Page<Track>> {
         let mut url = self.page_url("library/tracks", "after", cursor);
         url.query_pairs_mut().append_pair("sourceOnly", "true");
+        if !query.trim().is_empty() {
+            url.query_pairs_mut().append_pair("q", query.trim());
+        }
         if let Some(id) = provider {
             url.query_pairs_mut().append_pair("providerInstanceId", id);
         }

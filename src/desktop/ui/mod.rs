@@ -3,6 +3,7 @@ mod actions;
 mod catalog;
 mod data;
 mod favorites;
+mod folders;
 mod login;
 mod nav_icons;
 mod navigation;
@@ -30,6 +31,7 @@ use navigation::Screen;
 #[derive(Default)]
 pub struct DesktopUi {
     login: login::Login,
+    activity: Option<musicfs_server_adapter::activity::ActivityStream>,
     signed: Option<SignedUi>,
     theme: String,
     initialized: bool,
@@ -75,12 +77,17 @@ impl DesktopUi {
         }
         let Some(connection) = &state.connection else {
             self.signed = None;
+            self.activity = None;
             self.login.show(ctx, state);
             return;
         };
         let ui = self.signed.get_or_insert_with(SignedUi::default);
         let svc = Services {
             runtime: &state.runtime,
+            activity: self.activity.get_or_insert_with(|| {
+                let ctx = ctx.clone();
+                connection.server.listen_activity(move || ctx.request_repaint())
+            }),
             server: &connection.server,
             player: &connection.player,
         };

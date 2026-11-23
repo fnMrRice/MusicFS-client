@@ -4,6 +4,7 @@ use super::{
     data::{play_row, Services, TrackQuery},
     style,
 };
+use crate::i18n::tr;
 use eframe::egui::{self, Align, Color32, Layout, RichText, Sense, Vec2};
 use musicfs_server_adapter::Playlist;
 
@@ -46,20 +47,17 @@ pub fn tracks(
         if let Some(error) = data.play_all(ui, svc) {
             actions.notice = Some((error, true));
         }
-        if ui.button("刷新").clicked() {
+        if ui.button(tr("刷新")).clicked() {
             data.reset_tracks();
             data.artwork = Default::default();
             actions.favorites.refresh();
         }
-        ui.weak(format!(
-            "{}{} 首",
-            if data.tracks.next.is_some() {
-                "已显示 "
-            } else {
-                "共 "
-            },
-            data.tracks.items.len()
-        ));
+        let count_label = if data.tracks.next.is_some() {
+            "已显示 {0} 首"
+        } else {
+            "共 {0} 首"
+        };
+        ui.weak(tr(count_label).replace("{0}", &data.tracks.items.len().to_string()));
         if data.tracks.busy() {
             ui.spinner();
         }
@@ -67,21 +65,27 @@ pub fn tracks(
     });
     if let Some(error) = data.tracks.error.as_ref() {
         ui.colored_label(ui.visuals().error_fg_color, error);
-        if ui.button("重试加载曲目").clicked() {
+        if ui.button(tr("重试加载曲目")).clicked() {
             data.more(ui, svc);
         }
     }
     if data.tracks.items.is_empty() {
         if !data.tracks.busy() && data.tracks.error.is_none() {
             let label = match query {
-                TrackQuery::Library(ref q) if !q.is_empty() => "没有找到相关曲目",
-                TrackQuery::Library(_) | TrackQuery::AvailableSources(_) => {
-                    "在服务端添加音乐目录并扫描后，曲目会出现在这里。"
+                TrackQuery::Library(ref q)
+                | TrackQuery::AvailableSources { query: ref q, .. }
+                | TrackQuery::Category { query: ref q, .. }
+                    if !q.is_empty() =>
+                {
+                    tr("没有找到相关曲目")
                 }
-                TrackQuery::Favorites => "收藏列表为空",
-                TrackQuery::History => "暂无播放记录",
-                TrackQuery::Playlist { .. } => "歌单中暂无曲目",
-                TrackQuery::Category { .. } => "此分类暂无曲目",
+                TrackQuery::Library(_) | TrackQuery::AvailableSources { .. } => {
+                    tr("在服务端添加音乐目录并扫描后，曲目会出现在这里。")
+                }
+                TrackQuery::Favorites => tr("收藏列表为空"),
+                TrackQuery::History => tr("暂无播放记录"),
+                TrackQuery::Playlist { .. } => tr("歌单中暂无曲目"),
+                TrackQuery::Category { .. } => tr("此分类暂无曲目"),
             };
             ui.vertical_centered(|ui| {
                 ui.add_space(72.0);
@@ -113,15 +117,15 @@ pub fn tracks(
                 for (w, t) in [
                     (34.0, "#"),
                     (32.0, ""),
-                    (title_w, "曲名"),
-                    (artist_w, "歌手"),
+                    (title_w, tr("曲名")),
+                    (artist_w, tr("歌手")),
                 ] {
                     text_cell(ui, w, t, muted);
                 }
                 if show_album {
-                    text_cell(ui, album_w, "专辑", muted);
+                    text_cell(ui, album_w, tr("专辑"), muted);
                 }
-                text_cell(ui, 51.0, "时长", muted);
+                text_cell(ui, 51.0, tr("时长"), muted);
             });
         });
     let count = data.tracks.items.len();
@@ -135,7 +139,7 @@ pub fn tracks(
             for i in range {
                 if i == count {
                     more = ui
-                        .add_enabled(!data.tracks.busy(), egui::Button::new("加载更多曲目"))
+                        .add_enabled(!data.tracks.busy(), egui::Button::new(tr("加载更多曲目")))
                         .clicked();
                     continue;
                 }
@@ -175,9 +179,9 @@ pub fn tracks(
                                     .min_size(Vec2::new(34.0, 30.0)),
                                 )
                                 .on_hover_text(if playable {
-                                    "播放曲目"
+                                    tr("播放曲目")
                                 } else {
-                                    "暂无可用音源"
+                                    tr("暂无可用音源")
                                 })
                                 .clicked()
                             {
@@ -205,11 +209,8 @@ pub fn tracks(
                             if ui
                                 .add_enabled(
                                     count > 0,
-                                    egui::Button::new(format!(
-                                        "{} {count}",
-                                        crate::i18n::tr("来源")
-                                    ))
-                                    .frame(false),
+                                    egui::Button::new(format!("{} {count}", tr("来源")))
+                                        .frame(false),
                                 )
                                 .clicked()
                             {
@@ -236,9 +237,9 @@ pub fn tracks(
                                     .frame(false),
                                 )
                                 .on_hover_text(match favorite {
-                                    Some(true) => "取消收藏",
-                                    Some(false) => "加入收藏",
-                                    None => "尚未读取收藏状态",
+                                    Some(true) => tr("取消收藏"),
+                                    Some(false) => tr("加入收藏"),
+                                    None => tr("尚未读取收藏状态"),
                                 })
                                 .clicked()
                             {
@@ -246,7 +247,7 @@ pub fn tracks(
                             }
                             if ui
                                 .add_enabled(!t.unresolved, egui::Button::new("＋").frame(false))
-                                .on_hover_text("加入歌单")
+                                .on_hover_text(tr("加入歌单"))
                                 .clicked()
                             {
                                 actions.open(t, lists);

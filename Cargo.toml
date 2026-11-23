@@ -3,4 +3,4 @@ members = ["src/app", "src/server-adapter", "src/player-core"]
 resolver = "2"
 
 [workspace.package]
-version = "0.49.0"
+version = "0.51.0"

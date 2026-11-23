@@ -1,4 +1,4 @@
-use crate::fade::{Envelope, FadeControl, FADE_MS};
+use crate::fade::{Envelope, FadeControl, MAX_FADE_MS};
 use rodio::Source;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender, TryRecvError, TrySendError};
@@ -77,8 +77,8 @@ impl Drop for Producer {
 impl PcmSource {
     pub fn pipe(channels: u16, rate: u32, origin_ms: u64) -> (Producer, Self, Clock) {
         let samples_per_second = u64::from(channels) * u64::from(rate);
-        let fade_blocks = (samples_per_second * FADE_MS).div_ceil(1000 * BLOCK_SAMPLES as u64);
-        let (sender, incoming) = sync_channel(fade_blocks.clamp(15, 255) as usize + 1);
+        let fade_blocks = (samples_per_second * MAX_FADE_MS).div_ceil(1000 * BLOCK_SAMPLES as u64);
+        let (sender, incoming) = sync_channel(fade_blocks.clamp(15, 4096) as usize + 1);
         let fades = Arc::new(FadeControl::default());
         let producer = Producer {
             sender,
@@ -107,9 +107,11 @@ impl PcmSource {
     }
 }
 
-impl Iterator for PcmSource {
-    type Item = f32;
-    fn next(&mut self) -> Option<f32> {
+impl PcmSource {
+    pub fn gain(&self) -> f32 {
+        self.gain
+    }
+    pub fn next_raw(&mut self) -> Option<f32> {
         if self.silence != 0 {
             self.silence -= 1;
             return Some(0.0);
@@ -136,11 +138,18 @@ impl Iterator for PcmSource {
                 .envelope
                 .gain(self.played / u64::from(self.channels), self.channels)?;
         }
-        let sample = self.current.data[self.cursor] * self.gain;
+        let sample = self.current.data[self.cursor];
         self.cursor += 1;
         self.played += 1;
         self.clock.samples.store(self.played, Ordering::Relaxed);
         Some(sample)
+    }
+}
+
+impl Iterator for PcmSource {
+    type Item = f32;
+    fn next(&mut self) -> Option<f32> {
+        self.next_raw().map(|v| v * self.gain)
     }
 }
 

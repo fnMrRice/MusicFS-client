@@ -43,6 +43,8 @@ struct Actor {
     fades: FadeSettings,
     fade_in: bool,
     paused: bool,
+    processing: crate::audio::Processing,
+    duration_ms: u64,
 }
 
 impl Actor {
@@ -60,6 +62,8 @@ impl Actor {
             fades: FadeSettings::default(),
             fade_in: false,
             paused: false,
+            processing: Default::default(),
+            duration_ms: crate::fade::FADE_MS,
         }
     }
     fn presentation(&self) -> Presentation {
@@ -153,6 +157,25 @@ impl Actor {
                 }
                 Ok(())
             }
+            PlayerCommand::FadeDuration { ms } => {
+                self.duration_ms = ms.clamp(100, crate::fade::MAX_FADE_MS);
+                if let Some(clock) = &self.output.clock {
+                    clock
+                        .fades
+                        .duration_ms
+                        .store(self.duration_ms, Ordering::Relaxed);
+                }
+                Ok(())
+            }
+            PlayerCommand::Processing { mut settings } => {
+                settings.dsp.normalize();
+                if self.processing != settings {
+                    self.output.configure(&settings);
+                    self.processing = settings;
+                }
+                self.state.output = self.output.capabilities(&self.processing);
+                Ok(())
+            }
             PlayerCommand::Seek { position_ms } => self.seek(position_ms),
         }
     }
@@ -163,6 +186,7 @@ impl Actor {
 
     fn reset_media(&mut self, drain_tail: bool, fade: bool) {
         self.output.detach(fade);
+        self.state.output = Default::default();
         self.generation = self.decoder.cancel();
         self.seeks = None;
         if !drain_tail && !fade {
@@ -318,12 +342,22 @@ impl Actor {
                     return Ok(());
                 }
                 source.envelope.fade_in = self.fade_in;
+                clock
+                    .fades
+                    .duration_ms
+                    .store(self.duration_ms, Ordering::Relaxed);
                 clock.fades.track_tail.store(
                     self.fades.track_change && self.has_next(),
                     Ordering::Release,
                 );
-                self.output
-                    .attach(*source, clock, self.state.volume, self.paused)?;
+                self.output.attach(
+                    *source,
+                    clock,
+                    self.state.volume,
+                    self.paused,
+                    &self.processing,
+                )?;
+                self.state.output = self.output.capabilities(&self.processing);
                 self.state.seek_range_ms = self
                     .lifecycle
                     .as_ref()

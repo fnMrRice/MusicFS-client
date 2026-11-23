@@ -1,8 +1,14 @@
 mod actor;
+pub mod audio;
 mod decode;
 mod fade;
+mod filters;
+mod level;
 mod output;
 mod pcm;
+mod processing;
+mod routing;
+pub use output::device_channels;
 
 #[cfg(test)]
 #[path = "../../tests/native/player.rs"]
@@ -84,6 +90,7 @@ pub struct PlayerSnapshot {
     pub seek_range_ms: Option<(u64, u64)>,
     pub active_source_track_id: Option<String>,
     pub error: Option<String>,
+    pub output: audio::OutputStatus,
 }
 
 impl Default for PlayerSnapshot {
@@ -99,6 +106,7 @@ impl Default for PlayerSnapshot {
             seek_range_ms: None,
             active_source_track_id: None,
             error: None,
+            output: Default::default(),
         }
     }
 }
@@ -120,6 +128,8 @@ pub enum PlayerCommand {
     Seek { position_ms: u64 },
     Volume { volume: f32 },
     SetFades { settings: FadeSettings },
+    FadeDuration { ms: u64 },
+    Processing { settings: audio::Processing },
     Select { index: usize },
 }
 

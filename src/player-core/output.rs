@@ -1,6 +1,17 @@
 use crate::pcm::{Clock, PcmSource};
-use crate::Status;
-use rodio::{OutputStream, OutputStreamBuilder, Sink};
+use crate::{
+    audio::{OutputStatus, Processing},
+    processing::{GraphControl, RenderSource, MAX_CHANNELS},
+    routing::target,
+    Status,
+};
+use rodio::{
+    cpal::{
+        self,
+        traits::{DeviceTrait, HostTrait},
+    },
+    OutputStream, OutputStreamBuilder, Sink, Source,
+};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -11,6 +22,29 @@ pub struct Output {
     sink: Option<Sink>,
     retiring: Option<Sink>,
     pub clock: Option<Clock>,
+    control: Option<GraphControl>,
+}
+fn device_config() -> Result<(cpal::Device, cpal::SupportedStreamConfig), String> {
+    let device = cpal::default_host()
+        .default_output_device()
+        .ok_or("Audio output device is unavailable.")?;
+    let default = device.default_output_config().map_err(|e| e.to_string())?;
+    let mut best = default.clone();
+    if let Ok(configs) = device.supported_output_configs() {
+        for config in configs {
+            let n = config.channels();
+            if usize::from(n) <= MAX_CHANNELS && n > best.channels() {
+                let rate = default
+                    .sample_rate()
+                    .clamp(config.min_sample_rate(), config.max_sample_rate());
+                best = config.with_sample_rate(rate);
+            }
+        }
+    }
+    Ok((device, best))
+}
+pub fn device_channels() -> Result<u16, String> {
+    device_config().map(|(_, c)| c.channels())
 }
 
 impl Output {
@@ -20,20 +54,30 @@ impl Output {
         clock: Clock,
         volume: f32,
         paused: bool,
+        settings: &Processing,
     ) -> Result<(), String> {
         if self.device.is_none() {
             self.lost = Arc::new(AtomicBool::new(false));
             let lost = self.lost.clone();
-            let builder = OutputStreamBuilder::from_default_device()
+            let (hardware, config) = device_config()?;
+            let builder = OutputStreamBuilder::from_device(hardware)
                 .map_err(|e| format!("Audio output device is unavailable: {e}"))?;
             let mut device = builder
+                .with_supported_config(&config)
                 .with_error_callback(move |_| lost.store(true, Ordering::Release))
                 .open_stream_or_fallback()
                 .map_err(|e| format!("Audio output failed: {e}"))?;
             device.log_on_drop(false);
             self.device = Some(device);
         }
-        let sink = Sink::connect_new(self.device.as_ref().unwrap().mixer());
+        let device = self.device.as_ref().unwrap();
+        let channels = device.config().channel_count();
+        if usize::from(channels) > MAX_CHANNELS || usize::from(source.channels()) > MAX_CHANNELS {
+            return Err("Audio output supports up to 32 channels.".into());
+        }
+        let (source, control) = RenderSource::new(source, channels, settings);
+        self.control = Some(control);
+        let sink = Sink::connect_new(device.mixer());
         sink.set_volume(volume);
         if paused || self.retiring.is_some() {
             sink.pause();
@@ -45,6 +89,7 @@ impl Output {
     }
 
     pub fn detach(&mut self, fade_out: bool) {
+        self.control = None;
         if !fade_out {
             self.retiring = None;
         }
@@ -52,6 +97,28 @@ impl Output {
             if fade_out && !sink.is_paused() && !sink.empty() && clock.started() {
                 clock.fades.retiring.store(true, Ordering::Release);
                 self.retiring = Some(sink);
+            }
+        }
+    }
+    pub fn configure(&self, settings: &Processing) {
+        if let Some(control) = &self.control {
+            control.update(settings);
+        }
+    }
+    pub fn capabilities(&self, config: &Processing) -> OutputStatus {
+        let max_channels = self.device.as_ref().map(|d| d.config().channel_count());
+        if let Some(control) = &self.control {
+            let logical = target(config.routing, control.source, control.device);
+            OutputStatus {
+                max_channels,
+                source_channels: Some(control.source),
+                output_channels: Some(logical),
+                limited: logical != config.routing.layout.channels(control.source),
+            }
+        } else {
+            OutputStatus {
+                max_channels,
+                ..Default::default()
             }
         }
     }

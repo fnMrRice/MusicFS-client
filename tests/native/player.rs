@@ -143,3 +143,14 @@ fn clear_invalidates_a_blocked_load_and_closes_its_late_lease() {
     release.recv_timeout(Duration::from_secs(3)).unwrap();
     assert_eq!(player.snapshot().unwrap().status, Status::Idle);
 }
+#[test]
+fn enqueue_preserves_idle_or_active_selection() {
+    let player = crate::Player::new(|_| Err("Unused test loader".into())).unwrap();
+    let first = player.enqueue(track("first")).unwrap();
+    assert_eq!(first.status, crate::Status::Idle);
+    assert_eq!(first.index, Some(0));
+    let second = player.enqueue(track("second")).unwrap();
+    assert_eq!(second.index, first.index);
+    assert_eq!(second.queue.len(), 2);
+    assert_eq!(first.queue.len(), 1);
+}

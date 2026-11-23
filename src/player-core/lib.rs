@@ -129,12 +129,14 @@ pub enum PlayerCommand {
     Volume { volume: f32 },
     SetFades { settings: FadeSettings },
     FadeDuration { ms: u64 },
+    AutoVolume { enabled: bool },
     Processing { settings: audio::Processing },
     Select { index: usize },
 }
 
 enum Operation {
     Snapshot,
+    Enqueue(Track),
     Queue(Vec<Track>, usize),
     Command(PlayerCommand),
 }
@@ -200,6 +202,9 @@ impl Player {
 
     pub fn set_queue(&self, tracks: Vec<Track>, start_index: usize) -> Reply {
         self.request(Operation::Queue(tracks, start_index))
+    }
+    pub fn enqueue(&self, track: Track) -> Reply {
+        self.request(Operation::Enqueue(track))
     }
 
     pub fn command(&self, command: PlayerCommand) -> Reply {

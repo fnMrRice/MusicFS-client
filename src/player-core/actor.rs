@@ -89,6 +89,23 @@ impl Actor {
     fn apply(&mut self, op: Operation) -> Result<(), String> {
         match op {
             Operation::Snapshot => Ok(()),
+            Operation::Enqueue(track) => {
+                if track.id.is_empty() {
+                    return Err("Missing track identifier.".into());
+                }
+                if self.state.index.is_none() {
+                    self.state.index = Some(0);
+                    self.state.duration_ms = track.duration_ms;
+                }
+                Arc::make_mut(&mut self.state.queue).push(track);
+                if let Some(clock) = &self.output.clock {
+                    clock.fades.track_tail.store(
+                        self.fades.track_change && self.has_next(),
+                        Ordering::Release,
+                    );
+                }
+                Ok(())
+            }
             Operation::Queue(tracks, start) => {
                 if tracks.is_empty() {
                     return self.command(PlayerCommand::Clear);
@@ -166,6 +183,11 @@ impl Actor {
                         .store(self.duration_ms, Ordering::Relaxed);
                 }
                 Ok(())
+            }
+            PlayerCommand::AutoVolume { enabled } => {
+                let mut settings = self.processing.clone();
+                settings.auto_volume = enabled;
+                self.command(PlayerCommand::Processing { settings })
             }
             PlayerCommand::Processing { mut settings } => {
                 settings.dsp.normalize();

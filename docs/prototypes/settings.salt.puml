@@ -79,7 +79,7 @@
     Desktop Audio Processing
     { Decoder | ^Automatic / WMF (Windows) / Bundled FFmpeg^ }
     { DSP chain | [Configure plugins] | Output device | ^System default^ }
-    { [X] 跳转时淡出淡入 | [X] 切歌时淡出淡入 }
+    { [X] 淡出淡入 | 切歌 | "300 ms" | 暂停 | "300 ms" | 跳转 | "300 ms" }
     Decoder adapters and plugin support require technical validation
   }
   {+

@@ -88,19 +88,60 @@ fn levels_preserve_phase_and_lfe_never_downmixes_into_front_speakers() {
 }
 
 #[test]
+fn pause_ramps_preserve_position_and_reverse_without_a_gain_jump() {
+    let (mut producer, input, clock) = PcmSource::pipe(1, 1000, 0);
+    let mut block = Block::empty();
+    block.len = 200;
+    block.data.fill(1.);
+    producer.try_send(block).unwrap();
+    let (mut stream, control) = RenderSource::new(input, 2, &Processing::default(), false);
+    let mut frame = || {
+        let left = stream.next().unwrap();
+        assert_eq!(stream.next(), Some(left));
+        left
+    };
+    let close = |actual: f32, expected: f32| assert!((actual - expected).abs() < 0.0001);
+    close(frame(), 1.);
+    control.pause.pause(10);
+    for i in 1..=5 {
+        close(frame(), 1. - i as f32 / 10.);
+    }
+    control.pause.resume(5, false);
+    for i in 1..=5 {
+        close(frame(), 0.5 + i as f32 / 10.);
+    }
+    control.pause.pause(3);
+    close(frame(), 2. / 3.);
+    close(frame(), 1. / 3.);
+    close(frame(), 0.);
+    let position = clock.position_ms();
+    for _ in 0..20 {
+        close(frame(), 0.);
+    }
+    assert_eq!(clock.position_ms(), position);
+    control.pause.resume(4, true);
+    for i in 1..=4 {
+        close(frame(), i as f32 / 4.);
+    }
+    control.pause.pause(0);
+    close(frame(), 0.);
+    control.pause.resume(0, true);
+    close(frame(), 1.);
+}
+
+#[test]
 fn processing_updates_during_playback_and_seek_fade_obeys_requested_length() {
-    let (mut producer, mut input, clock) = PcmSource::pipe(1, 1000, 0);
-    input.envelope.fade_in = true;
+    let (mut producer, input, clock) = PcmSource::pipe(1, 1000, 0);
     clock
         .fades
-        .duration_ms
+        .incoming_ms
         .store(100, std::sync::atomic::Ordering::Relaxed);
     let mut block = Block::empty();
     block.len = 600;
     block.data.fill(0.1);
     producer.try_send(block).unwrap();
     drop(producer);
-    let (mut stream, control) = RenderSource::new(input, 2, &Processing::default());
+    let (mut stream, control) = RenderSource::new(input, 2, &Processing::default(), false);
     let mut take = |count| stream.by_ref().take(count).collect::<Vec<_>>();
     let fade = take(200);
     assert_eq!(&fade[..2], &[0., 0.]);

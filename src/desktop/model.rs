@@ -42,27 +42,62 @@ impl Default for Preferences {
     }
 }
 
+impl Preferences {
+    fn decode(bytes: &[u8]) -> serde_json::Result<Self> {
+        let saved: serde_json::Value = serde_json::from_slice(bytes)?;
+        // 旧配置将两个开关和公共时长分别保存在 fades 与 audio 中。
+        let old_flags = &saved["fades"];
+        let old_ms = saved["audio"]["fade_ms"]
+            .as_u64()
+            .unwrap_or(300)
+            .clamp(100, 2000);
+        let legacy = old_flags.get("enabled").is_none()
+            && (old_flags.get("seek").is_some()
+                || old_flags.get("track_change").is_some()
+                || saved["audio"].get("fade_ms").is_some());
+        let track = old_flags["track_change"].as_bool().unwrap_or(true);
+        let seek = old_flags["seek"].as_bool().unwrap_or(true);
+        let mut prefs: Self = serde_json::from_value(saved)?;
+        if legacy {
+            let enabled = track || seek;
+            prefs.fades = FadeSettings {
+                enabled,
+                track_ms: if track || !enabled { old_ms } else { 0 },
+                seek_ms: if seek || !enabled { old_ms } else { 0 },
+                ..Default::default()
+            };
+        }
+        prefs.fades.normalize();
+        Ok(prefs)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn fade_preferences_default_on_and_round_trip_independently() {
-        let old: Preferences = serde_json::from_str(r#"{"theme":"light"}"#).unwrap();
+    fn fade_preferences_keep_old_choices_and_save_each_duration() {
+        let old = Preferences::decode(br#"{"theme":"light"}"#).unwrap();
         assert_eq!(old.theme, "light");
-        assert!(old.fades.seek && old.fades.track_change);
+        assert_eq!(old.fades, FadeSettings::default());
         for seek in [true, false] {
             for track_change in [true, false] {
-                let fades = FadeSettings { seek, track_change };
-                let prefs = Preferences {
-                    fades,
-                    ..Default::default()
-                };
-                let saved = serde_json::to_vec(&prefs).unwrap();
+                let legacy = serde_json::json!({"audio":{"fade_ms":650}, "fades":{ "seek":seek, "track_change":track_change }});
+                let mut prefs = Preferences::decode(&serde_json::to_vec(&legacy).unwrap()).unwrap();
+                assert_eq!(prefs.fades.enabled, seek || track_change);
                 assert_eq!(
-                    serde_json::from_slice::<Preferences>(&saved).unwrap().fades,
-                    fades
+                    prefs.fades.seek_ms,
+                    if seek || !track_change { 650 } else { 0 }
                 );
+                assert_eq!(
+                    prefs.fades.track_ms,
+                    if track_change || !seek { 650 } else { 0 }
+                );
+                assert_eq!(prefs.fades.pause_ms, 300);
+                prefs.fades.pause_ms = 120;
+                let saved = serde_json::to_vec(&prefs).unwrap();
+                assert_eq!(Preferences::decode(&saved).unwrap().fades, prefs.fades);
             }
         }
     }
@@ -98,7 +133,7 @@ impl DesktopState {
         let mut prefs: Preferences = settings_file
             .as_ref()
             .and_then(|file| fs::read(file).ok())
-            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+            .and_then(|bytes| Preferences::decode(&bytes).ok())
             .unwrap_or_default();
         prefs.audio.normalize();
         Self {

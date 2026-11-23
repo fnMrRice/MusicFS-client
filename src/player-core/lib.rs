@@ -5,6 +5,7 @@ mod fade;
 mod filters;
 mod level;
 mod output;
+mod pause;
 mod pcm;
 mod processing;
 mod routing;
@@ -25,15 +26,35 @@ pub const SUPPORTED_MIMES: &[&str] = &["audio/mpeg", "audio/flac", "audio/wav", 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize)]
 #[serde(default)]
 pub struct FadeSettings {
-    pub seek: bool,
-    pub track_change: bool,
+    pub enabled: bool,
+    pub track_ms: u64,
+    pub pause_ms: u64,
+    pub seek_ms: u64,
 }
 
 impl Default for FadeSettings {
     fn default() -> Self {
         Self {
-            seek: true,
-            track_change: true,
+            enabled: true,
+            track_ms: fade::FADE_MS,
+            pause_ms: fade::FADE_MS,
+            seek_ms: fade::FADE_MS,
+        }
+    }
+}
+
+impl FadeSettings {
+    pub fn normalize(&mut self) {
+        self.track_ms = self.track_ms.min(fade::MAX_FADE_MS);
+        self.pause_ms = self.pause_ms.min(fade::MAX_FADE_MS);
+        self.seek_ms = self.seek_ms.min(fade::MAX_FADE_MS);
+    }
+
+    fn duration(self, millis: u64) -> u64 {
+        if self.enabled {
+            millis
+        } else {
+            0
         }
     }
 }
@@ -128,7 +149,6 @@ pub enum PlayerCommand {
     Seek { position_ms: u64 },
     Volume { volume: f32 },
     SetFades { settings: FadeSettings },
-    FadeDuration { ms: u64 },
     AutoVolume { enabled: bool },
     Processing { settings: audio::Processing },
     Select { index: usize },

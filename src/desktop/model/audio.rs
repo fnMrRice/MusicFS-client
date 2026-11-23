@@ -12,7 +12,6 @@ pub struct AudioPreferences {
     pub volume: f32,
     pub last_volume: f32,
     pub force_processing: bool,
-    pub fade_ms: u64,
     pub processing: Processing,
 }
 impl Default for AudioPreferences {
@@ -21,7 +20,6 @@ impl Default for AudioPreferences {
             volume: 0.8,
             last_volume: 0.8,
             force_processing: false,
-            fade_ms: 300,
             processing: Default::default(),
         }
     }
@@ -36,7 +34,6 @@ impl AudioPreferences {
         } else if !self.last_volume.is_finite() || self.last_volume <= 0. || self.last_volume > 1. {
             self.last_volume = 0.8;
         }
-        self.fade_ms = self.fade_ms.clamp(100, 2000);
         self.processing.dsp.normalize();
     }
     pub fn initialize(&self, c: &Connection, fades: FadeSettings) -> Result<(), String> {
@@ -47,7 +44,6 @@ impl AudioPreferences {
                 volume: self.volume,
             },
             PlayerCommand::SetFades { settings: fades },
-            PlayerCommand::FadeDuration { ms: self.fade_ms },
             PlayerCommand::Processing {
                 settings: self.processing.clone(),
             },
@@ -69,11 +65,6 @@ impl AudioPreferences {
                 c.force_processing.store(value, Ordering::Release);
                 self.force_processing = value;
             }
-            AudioAction::Fade(ms) => {
-                let ms = ms.clamp(100, 2000);
-                c.player.command(PlayerCommand::FadeDuration { ms })?;
-                self.fade_ms = ms;
-            }
             AudioAction::Level(value) => {
                 c.player
                     .command(PlayerCommand::AutoVolume { enabled: value })?;
@@ -88,7 +79,6 @@ impl AudioPreferences {
 pub enum AudioAction {
     Volume(f32),
     Force(bool),
-    Fade(u64),
     Level(bool),
     SaveDsp(LocalDsp),
     SaveRouting(Routing),
@@ -104,7 +94,6 @@ mod tests {
             volume: 0.,
             last_volume: 0.37,
             force_processing: true,
-            fade_ms: 1200,
             ..Default::default()
         };
         prefs
@@ -123,6 +112,5 @@ mod tests {
         assert_eq!(restored.volume, 0.);
         assert_eq!(restored.processing, prefs.processing);
         assert!(restored.force_processing);
-        assert_eq!(restored.fade_ms, 1200);
     }
 }

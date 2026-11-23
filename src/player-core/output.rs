@@ -20,7 +20,7 @@ pub struct Output {
     device: Option<OutputStream>,
     lost: Arc<AtomicBool>,
     sink: Option<Sink>,
-    retiring: Option<Sink>,
+    retiring: Option<(Sink, Arc<crate::pause::PauseControl>)>,
     pub clock: Option<Clock>,
     control: Option<GraphControl>,
 }
@@ -75,7 +75,7 @@ impl Output {
         if usize::from(channels) > MAX_CHANNELS || usize::from(source.channels()) > MAX_CHANNELS {
             return Err("Audio output supports up to 32 channels.".into());
         }
-        let (source, control) = RenderSource::new(source, channels, settings);
+        let (source, control) = RenderSource::new(source, channels, settings, paused);
         self.control = Some(control);
         let sink = Sink::connect_new(device.mixer());
         sink.set_volume(volume);
@@ -88,21 +88,51 @@ impl Output {
         Ok(())
     }
 
-    pub fn detach(&mut self, fade_out: bool) {
-        self.control = None;
-        if !fade_out {
+    pub fn detach(&mut self, duration_ms: u64) {
+        if duration_ms == 0 {
             self.retiring = None;
         }
-        if let (Some(sink), Some(clock)) = (self.sink.take(), self.clock.take()) {
-            if fade_out && !sink.is_paused() && !sink.empty() && clock.started() {
-                clock.fades.retiring.store(true, Ordering::Release);
-                self.retiring = Some(sink);
+        if let (Some(sink), Some(clock), Some(control)) =
+            (self.sink.take(), self.clock.take(), self.control.take())
+        {
+            if duration_ms > 0 && !sink.is_paused() && !sink.empty() && clock.started() {
+                clock
+                    .fades
+                    .retiring_ms
+                    .store(duration_ms, Ordering::Release);
+                self.retiring = Some((sink, control.pause));
             }
         }
     }
     pub fn configure(&self, settings: &Processing) {
         if let Some(control) = &self.control {
             control.update(settings);
+        }
+    }
+    pub fn update_fades(
+        &mut self,
+        settings: crate::FadeSettings,
+        track_tail_ms: u64,
+        paused: bool,
+    ) {
+        if let Some(clock) = &self.clock {
+            clock
+                .fades
+                .track_tail_ms
+                .store(track_tail_ms, Ordering::Release);
+            if !settings.enabled {
+                clock.fades.incoming_ms.store(0, Ordering::Relaxed);
+            }
+        }
+        if !settings.enabled {
+            self.retiring = None;
+        }
+        if settings.duration(settings.pause_ms) == 0 {
+            if paused {
+                self.pause(0);
+            } else {
+                self.resume(0);
+            }
         }
     }
     pub fn capabilities(&self, config: &Processing) -> OutputStatus {
@@ -127,32 +157,61 @@ impl Output {
         if self.lost.swap(false, Ordering::AcqRel) {
             return Err("Audio output device disconnected.".into());
         }
-        if self.retiring.as_ref().is_some_and(Sink::empty) {
+        if self
+            .retiring
+            .as_ref()
+            .is_some_and(|(sink, gate)| sink.empty() || gate.silent.load(Ordering::Acquire))
+        {
             self.retiring = None;
             if !paused {
-                self.play();
+                if let Some(sink) = &self.sink {
+                    sink.play();
+                }
+            }
+        }
+        if paused
+            && self
+                .control
+                .as_ref()
+                .is_some_and(|c| c.pause.silent.load(Ordering::Acquire))
+        {
+            if let Some(sink) = &self.sink {
+                sink.pause();
             }
         }
         Ok(())
     }
 
-    pub fn play(&self) {
-        if self.retiring.is_none() {
-            if let Some(sink) = &self.sink {
+    pub fn resume(&self, ms: u64) {
+        if let (Some(sink), Some(control)) = (&self.sink, &self.control) {
+            control.pause.resume(ms, sink.is_paused());
+            if self.retiring.is_none() {
                 sink.play();
             }
         }
     }
 
-    pub fn pause(&mut self) {
-        self.retiring = None;
-        if let Some(sink) = &self.sink {
-            sink.pause();
+    pub fn pause(&mut self, ms: u64) {
+        if ms == 0 {
+            self.retiring = None;
+            if let Some(sink) = &self.sink {
+                sink.pause();
+            }
+        }
+        if let Some((_, gate)) = &self.retiring {
+            gate.pause(ms);
+        }
+        if let Some(control) = &self.control {
+            control.pause.pause(ms);
         }
     }
 
     pub fn set_volume(&self, volume: f32) {
-        for sink in self.sink.iter().chain(&self.retiring) {
+        for sink in self
+            .sink
+            .iter()
+            .chain(self.retiring.iter().map(|(sink, _)| sink))
+        {
             sink.set_volume(volume);
         }
     }

@@ -41,10 +41,9 @@ struct Actor {
     lifecycle: Option<Lifecycle>,
     output: Output,
     fades: FadeSettings,
-    fade_in: bool,
+    fade_in_ms: u64,
     paused: bool,
     processing: crate::audio::Processing,
-    duration_ms: u64,
 }
 
 impl Actor {
@@ -60,10 +59,9 @@ impl Actor {
             lifecycle: None,
             output: Output::default(),
             fades: FadeSettings::default(),
-            fade_in: false,
+            fade_in_ms: 0,
             paused: false,
             processing: Default::default(),
-            duration_ms: crate::fade::FADE_MS,
         }
     }
     fn presentation(&self) -> Presentation {
@@ -86,6 +84,13 @@ impl Actor {
             .index
             .is_some_and(|i| i + 1 < self.state.queue.len())
     }
+    fn track_tail_ms(&self) -> u64 {
+        if self.has_next() {
+            self.fades.duration(self.fades.track_ms)
+        } else {
+            0
+        }
+    }
     fn apply(&mut self, op: Operation) -> Result<(), String> {
         match op {
             Operation::Snapshot => Ok(()),
@@ -99,10 +104,10 @@ impl Actor {
                 }
                 Arc::make_mut(&mut self.state.queue).push(track);
                 if let Some(clock) = &self.output.clock {
-                    clock.fades.track_tail.store(
-                        self.fades.track_change && self.has_next(),
-                        Ordering::Release,
-                    );
+                    clock
+                        .fades
+                        .track_tail_ms
+                        .store(self.track_tail_ms(), Ordering::Release);
                 }
                 Ok(())
             }
@@ -164,23 +169,13 @@ impl Actor {
                 self.output.set_volume(volume);
                 Ok(())
             }
-            PlayerCommand::SetFades { settings } => {
+            PlayerCommand::SetFades { mut settings } => {
+                settings.normalize();
                 self.fades = settings;
-                if let Some(clock) = &self.output.clock {
-                    clock
-                        .fades
-                        .track_tail
-                        .store(settings.track_change && self.has_next(), Ordering::Release);
-                }
-                Ok(())
-            }
-            PlayerCommand::FadeDuration { ms } => {
-                self.duration_ms = ms.clamp(100, crate::fade::MAX_FADE_MS);
-                if let Some(clock) = &self.output.clock {
-                    clock
-                        .fades
-                        .duration_ms
-                        .store(self.duration_ms, Ordering::Relaxed);
+                self.output
+                    .update_fades(settings, self.track_tail_ms(), self.paused);
+                if !settings.enabled {
+                    self.fade_in_ms = 0;
                 }
                 Ok(())
             }
@@ -203,18 +198,18 @@ impl Actor {
     }
 
     fn stop_output(&mut self) {
-        self.reset_media(false, false);
+        self.reset_media(false, 0);
     }
 
-    fn reset_media(&mut self, drain_tail: bool, fade: bool) {
-        self.output.detach(fade);
+    fn reset_media(&mut self, drain_tail: bool, fade_ms: u64) {
+        self.output.detach(fade_ms);
         self.state.output = Default::default();
         self.generation = self.decoder.cancel();
         self.seeks = None;
-        if !drain_tail && !fade {
+        if !drain_tail && fade_ms == 0 {
             self.output = Output::default();
         }
-        self.fade_in = fade;
+        self.fade_in_ms = fade_ms;
         self.lifecycle = None;
         self.state.seekable = false;
         self.state.seek_range_ms = None;
@@ -233,7 +228,11 @@ impl Actor {
             .get(index)
             .ok_or("Queue index is out of range.")?
             .clone();
-        let fade = self.fades.track_change && self.seeks.is_some();
+        let fade = if self.seeks.is_some() {
+            self.fades.duration(self.fades.track_ms)
+        } else {
+            0
+        };
         self.reset_media(drain_tail, fade);
         self.revision = 0;
         self.state.index = Some(index);
@@ -258,18 +257,24 @@ impl Actor {
         if self.seeks.is_none() {
             return self.select(index);
         }
+        if self.paused {
+            let ms = self.fades.duration(self.fades.pause_ms);
+            if self.output.clock.is_none() {
+                self.fade_in_ms = ms;
+            }
+            self.output.resume(ms);
+        }
         self.paused = false;
-        self.output.play();
         self.state.status = self.output.status(false);
         Ok(())
     }
 
     fn pause(&mut self) {
-        if self.seeks.is_none() {
+        if self.seeks.is_none() || self.paused {
             return;
         }
         self.paused = true;
-        self.output.pause();
+        self.output.pause(self.fades.duration(self.fades.pause_ms));
         self.state.status = Status::Paused;
     }
 
@@ -279,7 +284,7 @@ impl Actor {
             return self.start(index + 1, drain_tail);
         }
         // 曲终时保留输出设备，让系统缓冲区内的末尾样本实际播完。
-        self.reset_media(drain_tail, false);
+        self.reset_media(drain_tail, 0);
         self.state.status = Status::Ended;
         Ok(())
     }
@@ -300,8 +305,12 @@ impl Actor {
             .send((revision, target))
             .map_err(|_| "Decoder is unavailable.")?;
         self.revision = revision;
-        self.fade_in = self.fades.seek && !self.paused;
-        self.output.detach(self.fade_in);
+        self.fade_in_ms = if self.paused {
+            0
+        } else {
+            self.fades.duration(self.fades.seek_ms)
+        };
+        self.output.detach(self.fade_in_ms);
         self.state.position_ms = target;
         self.state.status = if self.paused {
             Status::Paused
@@ -338,7 +347,7 @@ impl Actor {
                 }
             }
         }
-        if self.output.ended() {
+        if !self.paused && self.output.ended() {
             if let Err(error) = self.advance(true) {
                 self.fail(error);
             }
@@ -355,7 +364,7 @@ impl Actor {
             }
             Event::Ready {
                 revision,
-                mut source,
+                source,
                 clock,
                 duration_ms,
                 seekable,
@@ -363,15 +372,14 @@ impl Actor {
                 if revision != self.revision {
                     return Ok(());
                 }
-                source.envelope.fade_in = self.fade_in;
                 clock
                     .fades
-                    .duration_ms
-                    .store(self.duration_ms, Ordering::Relaxed);
-                clock.fades.track_tail.store(
-                    self.fades.track_change && self.has_next(),
-                    Ordering::Release,
-                );
+                    .incoming_ms
+                    .store(self.fade_in_ms, Ordering::Relaxed);
+                clock
+                    .fades
+                    .track_tail_ms
+                    .store(self.track_tail_ms(), Ordering::Release);
                 self.output.attach(
                     *source,
                     clock,

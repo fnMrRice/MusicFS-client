@@ -57,25 +57,27 @@ impl AudioSettingsUi {
         });
         ui.separator();
         let mut fades = prefs.fades;
-        ui.checkbox(&mut fades.seek, tr("进度跳转淡出淡入"));
-        ui.checkbox(&mut fades.track_change, tr("切歌淡出淡入"));
-        if fades != prefs.fades {
-            *action = Some(HostAction::Fades(fades));
-        }
-        if fades.seek || fades.track_change {
-            ui.horizontal_wrapped(|ui| {
-                ui.label(tr("淡出淡入时长（毫秒）"));
-                let mut ms = audio.fade_ms;
-                if ui
-                    .add(egui::DragValue::new(&mut ms).range(100..=2000).speed(5.))
-                    .changed()
-                {
-                    *action = Some(HostAction::Audio(AudioAction::Fade(ms)));
+        ui.horizontal_wrapped(|ui| {
+            ui.checkbox(&mut fades.enabled, tr("淡出淡入"));
+            ui.add_enabled_ui(fades.enabled, |ui| {
+                for (label, ms) in [
+                    (tr("切歌"), &mut fades.track_ms),
+                    (tr("暂停"), &mut fades.pause_ms),
+                    (tr("跳转"), &mut fades.seek_ms),
+                ] {
+                    let label = ui.label(label);
+                    ui.add(
+                        egui::DragValue::new(ms)
+                            .range(0..=2000)
+                            .speed(5.)
+                            .suffix(" ms"),
+                    )
+                    .labelled_by(label.id);
                 }
             });
-            ui.weak(tr(
-                "100–2000 毫秒，默认 300 毫秒。此时长分别用于淡出和淡入。",
-            ));
+        });
+        if fades != prefs.fades {
+            *action = Some(HostAction::Fades(fades));
         }
         ui.separator();
         let mut level = audio.processing.auto_volume;

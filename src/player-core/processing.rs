@@ -1,6 +1,7 @@
 use crate::audio::Processing;
 use crate::filters::Unit;
 use crate::level::Level;
+use crate::pause::{PauseControl, PauseEnvelope};
 use crate::pcm::PcmSource;
 use crate::routing::{target, Matrix};
 use rodio::Source;
@@ -62,6 +63,7 @@ pub struct GraphControl {
     pending: Arc<Mutex<Option<Graph>>>,
     pub source: u16,
     pub device: u16,
+    pub pause: Arc<PauseControl>,
     rate: u32,
 }
 impl GraphControl {
@@ -74,6 +76,7 @@ impl GraphControl {
 }
 pub struct RenderSource {
     input: PcmSource,
+    pause: PauseEnvelope,
     config: GraphControl,
     graph: Graph,
     previous: Option<Graph>,
@@ -84,19 +87,27 @@ pub struct RenderSource {
     pos: usize,
 }
 impl RenderSource {
-    pub fn new(input: PcmSource, device: u16, settings: &Processing) -> (Self, GraphControl) {
+    pub fn new(
+        input: PcmSource,
+        device: u16,
+        settings: &Processing,
+        paused: bool,
+    ) -> (Self, GraphControl) {
         let rate = input.sample_rate();
         let source = input.channels();
+        let pause = PauseEnvelope::new(rate, paused);
         let config = GraphControl {
             pending: Arc::default(),
             source,
             device,
+            pause: pause.control.clone(),
             rate,
         };
         let graph = Graph::new(settings, source, device, rate);
         (
             Self {
                 input,
+                pause,
                 config: config.clone(),
                 graph,
                 previous: None,
@@ -110,11 +121,18 @@ impl RenderSource {
         )
     }
     fn render_frame(&mut self) -> Option<()> {
+        if self.pause.holding() {
+            self.frame.fill(0.);
+            self.pos = 0;
+            return Some(());
+        }
+        let played = self.input.played_samples();
         let mut input = [0.; MAX_CHANNELS];
         let channels = self.config.source as usize;
         for v in &mut input[..channels] {
             *v = self.input.next_raw()?;
         }
+        let pause_gain = self.pause.next_gain(self.input.played_samples() != played);
         if self.countdown == 0 {
             if let Ok(mut pending) = self.config.pending.try_lock() {
                 if let Some(graph) = pending.take() {
@@ -141,7 +159,7 @@ impl RenderSource {
             }
         }
         for v in out {
-            *v = (*v * self.input.gain()).clamp(-1., 1.);
+            *v = (*v * self.input.gain() * pause_gain).clamp(-1., 1.);
         }
         self.pos = 0;
         Some(())

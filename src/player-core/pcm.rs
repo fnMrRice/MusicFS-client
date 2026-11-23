@@ -108,6 +108,9 @@ impl PcmSource {
 }
 
 impl PcmSource {
+    pub fn played_samples(&self) -> u64 {
+        self.played
+    }
     pub fn gain(&self) -> f32 {
         self.gain
     }
@@ -124,7 +127,7 @@ impl PcmSource {
                 }
                 Err(TryRecvError::Disconnected) => return None,
                 Err(TryRecvError::Empty) => {
-                    if self.clock.fades.retiring.load(Ordering::Acquire) {
+                    if self.clock.fades.retiring_ms.load(Ordering::Acquire) != 0 {
                         return None;
                     }
                     // 欠载以整帧静音填充；只用真实媒体样本推进时钟。

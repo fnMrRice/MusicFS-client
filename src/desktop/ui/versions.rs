@@ -55,6 +55,7 @@ impl Versions {
         svc: Services<'_>,
         rows: &[Track],
         favs: &mut Favorites,
+        providers: &super::providers::Providers,
     ) -> bool {
         let Some((i, id)) = self.row.clone() else {
             return false;
@@ -136,7 +137,8 @@ impl Versions {
                                         ui.weak(tr("已固定"));
                                     }
                                 });
-                                let mut meta = vec![src.provider_instance_id.clone()];
+                                let mut meta =
+                                    vec![providers.label(&src.provider_instance_id).to_owned()];
                                 if let Some(codec) = src.container.as_ref().or(src.codec.as_ref()) {
                                     meta.push(codec.to_uppercase());
                                 }

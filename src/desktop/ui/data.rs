@@ -110,10 +110,18 @@ impl CategoryTab {
 #[derive(Clone, PartialEq, Eq)]
 pub enum TrackQuery {
     Library(String),
+    AvailableSources(Option<String>),
     Favorites,
     History,
-    Playlist { id: String, revision: u64 },
-    Category { tab: CategoryTab, id: String },
+    Playlist {
+        id: String,
+        revision: u64,
+    },
+    Category {
+        tab: CategoryTab,
+        id: String,
+        provider: Option<String>,
+    },
 }
 
 impl TrackQuery {
@@ -124,12 +132,20 @@ impl TrackQuery {
     ) -> Result<Page<Track>, String> {
         match self {
             Self::Library(q) => server.tracks(q, after).await,
+            Self::AvailableSources(provider) => {
+                server.sourced_tracks(provider.as_deref(), after).await
+            }
             Self::History => server.history(after).await,
             Self::Favorites => server.favorites(after).await,
             Self::Playlist { id, revision } => server.playlist_tracks(id, *revision, after).await,
-            Self::Category { tab, id } => {
+            Self::Category { tab, id, provider } => {
                 server
-                    .category_tracks(tab.kind().ok_or("Invalid category.")?, id, after)
+                    .category_tracks(
+                        tab.kind().ok_or("Invalid category.")?,
+                        id,
+                        provider.as_deref(),
+                        after,
+                    )
                     .await
             }
         }

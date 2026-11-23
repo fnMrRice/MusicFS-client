@@ -1,5 +1,7 @@
 #[path = "artwork.rs"]
 mod artwork;
+#[path = "providers.rs"]
+mod providers;
 #[path = "versions.rs"]
 mod versions;
 use super::data::{queue_track, CategoryTab, Pages, Services, TrackQuery};
@@ -15,6 +17,7 @@ pub struct Catalog {
     pub versions: versions::Versions,
     pub artwork: artwork::Artwork,
     pub tabs: CategoryTab,
+    pub providers: providers::Providers,
     pub category: Option<(String, String)>,
     pub categories: Pages<Category>,
     pub tracks: Pages<Track>,
@@ -76,8 +79,14 @@ impl Catalog {
             }
         });
         ui.separator();
+        self.providers.sync(ui, svc);
+        if self.providers.select(ui) {
+            self.reset_categories();
+        }
         let Some(kind) = self.tabs.kind() else {
-            return Some(TrackQuery::Library(String::new()));
+            return Some(TrackQuery::AvailableSources(
+                self.providers.selected.clone(),
+            ));
         };
         if let Some((id, name)) = self.category.clone() {
             let mut back = false;
@@ -94,7 +103,11 @@ impl Catalog {
                 self.category = None;
                 self.reset_tracks();
             } else {
-                return Some(TrackQuery::Category { tab: self.tabs, id });
+                return Some(TrackQuery::Category {
+                    tab: self.tabs,
+                    id,
+                    provider: self.providers.selected.clone(),
+                });
             }
         }
         self.categories.poll();
@@ -160,8 +173,11 @@ impl Catalog {
         if load {
             let server = svc.server.clone();
             let cursor = self.categories.next.clone();
+            let provider = self.providers.selected.clone();
             self.categories.load(ui.ctx(), svc.runtime, async move {
-                server.categories(kind, cursor.as_deref()).await
+                server
+                    .categories(kind, provider.as_deref(), cursor.as_deref())
+                    .await
             });
         }
         None

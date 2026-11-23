@@ -40,9 +40,13 @@ impl ServerSession {
     pub async fn categories(
         &self,
         kind: CategoryKind,
+        provider: Option<&str>,
         cursor: Option<&str>,
     ) -> Result<Page<Category>> {
-        let url = self.page_url(&format!("library/{}s", kind.key()), "after", cursor);
+        let mut url = self.page_url(&format!("library/{}s", kind.key()), "after", cursor);
+        if let Some(id) = provider {
+            url.query_pairs_mut().append_pair("providerInstanceId", id);
+        }
         let page: WirePage<Entry> = self.get(url).await?;
         let items = page
             .items
@@ -71,9 +75,13 @@ impl ServerSession {
         &self,
         kind: CategoryKind,
         id: &str,
+        provider: Option<&str>,
         cursor: Option<&str>,
     ) -> Result<Page<Track>> {
         let mut url = self.page_url("library/tracks", "after", cursor);
+        if let Some(id) = provider {
+            url.query_pairs_mut().append_pair("providerInstanceId", id);
+        }
         let key = match kind {
             CategoryKind::Artist => "artistId",
             CategoryKind::Album => "albumId",

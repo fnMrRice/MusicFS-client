@@ -106,6 +106,19 @@ impl ServerSession {
         self.track_page(url).await
     }
 
+    pub async fn sourced_tracks(
+        &self,
+        provider: Option<&str>,
+        cursor: Option<&str>,
+    ) -> Result<Page<Track>> {
+        let mut url = self.page_url("library/tracks", "after", cursor);
+        url.query_pairs_mut().append_pair("sourceOnly", "true");
+        if let Some(id) = provider {
+            url.query_pairs_mut().append_pair("providerInstanceId", id);
+        }
+        self.track_page(url).await
+    }
+
     async fn track_page(&self, url: Url) -> Result<Page<Track>> {
         let page: WirePage<MusicTrack> = self.get(url).await?;
         Ok(Page {

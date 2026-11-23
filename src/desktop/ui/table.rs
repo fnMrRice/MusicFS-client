@@ -41,6 +41,7 @@ pub fn tracks(
     let favorites = query == TrackQuery::Favorites;
     data.sync(ui, svc, &query);
     data.artwork.poll(ui.ctx());
+    data.providers.sync(ui, svc);
     ui.horizontal_wrapped(|ui| {
         if let Some(error) = data.play_all(ui, svc) {
             actions.notice = Some((error, true));
@@ -74,7 +75,9 @@ pub fn tracks(
         if !data.tracks.busy() && data.tracks.error.is_none() {
             let label = match query {
                 TrackQuery::Library(ref q) if !q.is_empty() => "没有找到相关曲目",
-                TrackQuery::Library(_) => "在服务端添加音乐目录并扫描后，曲目会出现在这里。",
+                TrackQuery::Library(_) | TrackQuery::AvailableSources(_) => {
+                    "在服务端添加音乐目录并扫描后，曲目会出现在这里。"
+                }
                 TrackQuery::Favorites => "收藏列表为空",
                 TrackQuery::History => "暂无播放记录",
                 TrackQuery::Playlist { .. } => "歌单中暂无曲目",
@@ -137,7 +140,13 @@ pub fn tracks(
                     continue;
                 }
                 let t = &data.tracks.items[i];
-                let selected = active_source.is_some() && t.playable_source_id() == active_source;
+                let selected = active_source.is_some()
+                    && (t.playable_source_id() == active_source
+                        || (t.forced_source_track_id.is_none()
+                            && t.sources.as_ref().is_some_and(|g| {
+                                g.choices()
+                                    .any(|s| Some(s.source_track_id.as_str()) == active_source)
+                            })));
                 let text = if selected {
                     style::ACCENT
                 } else {
@@ -259,10 +268,13 @@ pub fn tracks(
                 }
             }
         });
-    if data
-        .versions
-        .show(ui, svc, &data.tracks.items, &mut actions.favorites)
-    {
+    if data.versions.show(
+        ui,
+        svc,
+        &data.tracks.items,
+        &mut actions.favorites,
+        &data.providers,
+    ) {
         data.reset_tracks();
     }
     if more {

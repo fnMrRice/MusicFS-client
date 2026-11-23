@@ -1,3 +1,4 @@
+use crate::i18n::tr;
 use crate::task::Task;
 use eframe::egui::Context;
 use musicfs_player_core::{Player, Track as QueueTrack};
@@ -66,7 +67,7 @@ impl<T: Send + 'static> Pages<T> {
                     .as_ref()
                     .is_some_and(|c| !self.seen.insert(c.clone()))
                 {
-                    self.error = Some("服务器分页未向前推进，请刷新列表。".into());
+                    self.error = Some(tr("服务器分页未向前推进，请刷新列表。").into());
                     self.next = None;
                     return;
                 }
@@ -90,10 +91,10 @@ pub enum CategoryTab {
 impl CategoryTab {
     pub fn label(self) -> &'static str {
         match self {
-            Self::All => "全部曲目",
-            Self::Artist => "歌手",
-            Self::Album => "专辑",
-            Self::Genre => "流派",
+            Self::All => tr("全部曲目"),
+            Self::Artist => tr("歌手"),
+            Self::Album => tr("专辑"),
+            Self::Genre => tr("流派"),
         }
     }
     pub fn kind(self) -> Option<CategoryKind> {
@@ -151,18 +152,22 @@ pub fn queue_track(track: &Track) -> Option<QueueTrack> {
 }
 
 pub fn play_row(player: &Player, rows: &[Track], index: usize) -> Result<(), String> {
-    if rows
-        .get(index)
-        .and_then(|t| t.playable_source_id())
-        .is_none()
-    {
-        return Err("此曲目暂无可用音源。".into());
+    play_row_version(player, rows, index, None)
+}
+pub fn play_row_version(
+    player: &Player,
+    rows: &[Track],
+    index: usize,
+    explicit: Option<String>,
+) -> Result<(), String> {
+    let mut selected = rows.get(index).ok_or("Invalid track row.")?.clone();
+    if explicit.is_some() {
+        selected.forced_source_track_id = explicit;
     }
-    let start = rows[..index]
-        .iter()
-        .filter(|t| t.playable_source_id().is_some())
-        .count();
-    player
-        .set_queue(rows.iter().filter_map(queue_track).collect(), start)
-        .map(|_| ())
+    let item = queue_track(&selected).ok_or(tr("此曲目暂无可用音源。"))?;
+    let mut queue: Vec<_> = rows[..index].iter().filter_map(queue_track).collect();
+    let start = queue.len();
+    queue.push(item);
+    queue.extend(rows[index + 1..].iter().filter_map(queue_track));
+    player.set_queue(queue, start).map(|_| ())
 }

@@ -98,7 +98,7 @@ pub fn tracks(
     } else {
         0.0
     };
-    let title_w = (width - artist_w - album_w - 269.0).max(55.0);
+    let title_w = (width - artist_w - album_w - 321.0).max(55.0);
     egui::Frame::new()
         .fill(style::surface(dark))
         .corner_radius(6)
@@ -192,11 +192,25 @@ pub fn tracks(
                                 &time(t.source().and_then(|s| s.duration_ms)),
                                 muted,
                             );
+                            let count = t.sources.as_ref().map_or(0, |g| g.choices().count());
+                            if ui
+                                .add_enabled(
+                                    count > 0,
+                                    egui::Button::new(format!(
+                                        "{} {count}",
+                                        crate::i18n::tr("来源")
+                                    ))
+                                    .frame(false),
+                                )
+                                .clicked()
+                            {
+                                data.versions.open(ui, svc, i, t);
+                            }
                             let favorite = actions.favorites.contains(&t.id, favorites);
                             let on = favorite == Some(true);
                             if ui
                                 .add_enabled(
-                                    favorite.is_some() && !actions.busy(),
+                                    favorite.is_some() && !t.unresolved && !actions.busy(),
                                     egui::Button::new(
                                         RichText::new(match favorite {
                                             Some(true) => "♥",
@@ -222,7 +236,7 @@ pub fn tracks(
                                 actions.toggle(ui, svc, t, !on);
                             }
                             if ui
-                                .add_enabled(playable, egui::Button::new("＋").frame(false))
+                                .add_enabled(!t.unresolved, egui::Button::new("＋").frame(false))
                                 .on_hover_text("加入歌单")
                                 .clicked()
                             {
@@ -245,6 +259,12 @@ pub fn tracks(
                 }
             }
         });
+    if data
+        .versions
+        .show(ui, svc, &data.tracks.items, &mut actions.favorites)
+    {
+        data.reset_tracks();
+    }
     if more {
         data.more(ui, svc);
     }

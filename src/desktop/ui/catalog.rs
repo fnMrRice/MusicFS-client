@@ -1,5 +1,7 @@
 #[path = "artwork.rs"]
 mod artwork;
+#[path = "versions.rs"]
+mod versions;
 use super::data::{queue_track, CategoryTab, Pages, Services, TrackQuery};
 use super::style;
 use crate::task::Task;
@@ -10,6 +12,7 @@ use std::collections::HashSet;
 
 #[derive(Default)]
 pub struct Catalog {
+    pub versions: versions::Versions,
     pub artwork: artwork::Artwork,
     pub tabs: CategoryTab,
     pub category: Option<(String, String)>,
@@ -24,6 +27,7 @@ pub struct Catalog {
 
 impl Catalog {
     pub fn reset_tracks(&mut self) {
+        self.versions = Default::default();
         self.tracks = Pages::default();
         self.query = None;
         self.complete = None;

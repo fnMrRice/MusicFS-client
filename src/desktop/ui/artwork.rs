@@ -77,7 +77,7 @@ impl Artwork {
         painter.circle_stroke(
             rect.center(),
             10.,
-            egui::Stroke::new(1.5, ui.visuals().weak_text_color()),
+            egui::Stroke::new(1.5_f32, ui.visuals().weak_text_color()),
         );
         painter.circle_filled(rect.center(), 2.5, ui.visuals().weak_text_color());
     }

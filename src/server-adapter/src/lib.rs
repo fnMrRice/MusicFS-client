@@ -6,6 +6,7 @@ mod reader;
 mod recommendations;
 mod settings;
 mod track;
+mod track_actions;
 pub use track::{SourceGroup, SourceVersion};
 mod works;
 

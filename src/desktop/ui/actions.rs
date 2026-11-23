@@ -16,11 +16,11 @@ enum Change {
     Playlist,
 }
 struct Editor {
-    source: String,
-    title: String,
+    track: Track,
+    pin: Option<String>,
     target_id: Option<String>,
     name: String,
-    retry: Option<(Target, String)>,
+    retry: Option<(Target, Option<String>, String)>,
 }
 
 #[derive(Default)]
@@ -43,10 +43,10 @@ impl Actions {
         self.pending.is_some()
     }
     pub fn open(&mut self, track: &Track, lists: &[Playlist]) {
-        if let Some(source) = track.playable_source_id() {
+        if !track.unresolved {
             self.editor = Some(Editor {
-                source: source.to_owned(),
-                title: track.title.clone(),
+                pin: track.forced_source_track_id.clone(),
+                track: track.clone(),
                 target_id: lists.first().map(|p| p.id.clone()),
                 name: String::new(),
                 retry: None,
@@ -146,9 +146,39 @@ impl Actions {
             .resizable(false)
             .min_width(310.0)
             .show(ctx, |ui| {
-                ui.strong(&ed.title);
+                ui.strong(&ed.track.title);
                 ui.separator();
                 ui.add_enabled_ui(!busy, |ui| {
+                    egui::ComboBox::from_label(crate::i18n::tr("播放来源"))
+                        .selected_text(
+                            ed.pin
+                                .as_deref()
+                                .and_then(|pin| {
+                                    ed.track
+                                        .sources
+                                        .as_ref()?
+                                        .choices()
+                                        .find(|v| v.source_track_id == pin)
+                                        .map(|v| v.display_name.as_str())
+                                })
+                                .unwrap_or(crate::i18n::tr("跟随曲目默认来源")),
+                        )
+                        .show_ui(ui, |ui| {
+                            ui.selectable_value(
+                                &mut ed.pin,
+                                None,
+                                crate::i18n::tr("跟随曲目默认来源"),
+                            );
+                            if let Some(group) = &ed.track.sources {
+                                for v in group.choices() {
+                                    ui.selectable_value(
+                                        &mut ed.pin,
+                                        Some(v.source_track_id.clone()),
+                                        &v.display_name,
+                                    );
+                                }
+                            }
+                        });
                     let existing = lists
                         .items
                         .iter()
@@ -205,11 +235,11 @@ impl Actions {
                         let key = ed
                             .retry
                             .as_ref()
-                            .filter(|(t, _)| *t == target)
-                            .map(|(_, k)| k.clone())
+                            .filter(|(t, pin, _)| *t == target && *pin == ed.pin)
+                            .map(|(_, _, k)| k.clone())
                             .unwrap_or_else(|| Uuid::new_v4().to_string());
-                        ed.retry = Some((target.clone(), key.clone()));
-                        apply = Some((target, key, ed.source.clone()));
+                        ed.retry = Some((target.clone(), ed.pin.clone(), key.clone()));
+                        apply = Some((target, key, ed.track.id.clone(), ed.pin.clone()));
                     }
                     close = ui.add_enabled(!busy, egui::Button::new("取消")).clicked();
                 });
@@ -217,19 +247,17 @@ impl Actions {
         if close {
             self.editor = None;
         }
-        if let Some((target, key, source)) = apply {
+        if let Some((target, key, track, pin)) = apply {
             self.notice = None;
             let server = svc.server.clone();
             self.pending = Some(Task::spawn(svc.runtime, ctx, async move {
-                let sources = [source];
-                match target {
-                    Target::Existing(id, revision) => {
-                        server
-                            .append_playlist(&id, revision, &sources, &key)
-                            .await?
-                    }
-                    Target::New(name) => server.create_playlist(&name, &sources, &key).await?,
+                let (existing, name) = match &target {
+                    Target::Existing(id, revision) => (Some((id.as_str(), *revision)), ""),
+                    Target::New(name) => (None, name.as_str()),
                 };
+                server
+                    .add_track_reference(existing, name, &track, pin.as_deref(), &key)
+                    .await?;
                 Ok(Change::Playlist)
             }));
         }

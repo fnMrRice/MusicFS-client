@@ -7,11 +7,11 @@ mod favorites;
 mod folders;
 mod login;
 mod matching;
-mod nav_icons;
 mod navigation;
 mod pages;
 mod settings;
-mod style;
+mod shell;
+pub(crate) mod style;
 mod table;
 
 #[cfg(test)]
@@ -26,7 +26,7 @@ use crate::{
 use actions::Actions;
 use catalog::Catalog;
 use data::{Pages, Services};
-use eframe::egui::{self, Align, Layout};
+use eframe::egui;
 use musicfs_player_core::{FadeSettings, PlayerCommand};
 use musicfs_server_adapter::Playlist;
 use navigation::Screen;
@@ -37,6 +37,7 @@ pub struct DesktopUi {
     activity: Option<musicfs_server_adapter::activity::ActivityStream>,
     signed: Option<SignedUi>,
     theme: String,
+    accent: String,
     initialized: bool,
 }
 
@@ -49,10 +50,11 @@ struct SignedUi {
     catalog: Catalog,
     lists: Pages<Playlist>,
     actions: Actions,
-    works_open: bool,
+    works_closed: bool,
     mine_closed: bool,
     lists_closed: bool,
     history_type: String,
+    shell: shell::Shell,
 }
 
 enum HostAction {
@@ -61,6 +63,7 @@ enum HostAction {
     Logout,
     Language(String),
     Theme(String),
+    Accent(String),
     Fades(FadeSettings),
 }
 
@@ -88,9 +91,13 @@ impl DesktopUi {
             };
             self.initialized = true;
         }
-        if self.theme != state.prefs.theme || self.theme.is_empty() {
+        if self.theme != state.prefs.theme
+            || self.accent != state.prefs.accent
+            || self.theme.is_empty()
+        {
             self.theme = state.prefs.theme.clone();
-            style::apply(ctx, &self.theme);
+            self.accent = state.prefs.accent.clone();
+            style::apply(ctx, &self.theme, &self.accent);
         }
         let Some(connection) = &state.connection else {
             self.signed = None;
@@ -126,6 +133,11 @@ impl DesktopUi {
                 state.prefs.theme = theme;
                 state.save_preferences();
             }
+            Some(HostAction::Accent(accent)) => {
+                state.prefs.accent = accent;
+                state.save_preferences();
+                ctx.request_repaint();
+            }
             Some(HostAction::Fades(settings)) => {
                 match svc.player.command(PlayerCommand::SetFades { settings }) {
                     Ok(_) => {
@@ -150,9 +162,24 @@ impl SignedUi {
     }
     fn navigate(&mut self, screen: Screen) {
         if self.screen != screen {
+            self.shell.history.push(self.screen.clone());
+        }
+        self.set_screen(screen);
+    }
+    fn back(&mut self, wide: bool) {
+        if let Some(screen) = self.shell.history.pop() {
+            self.set_screen(screen);
+        } else {
+            self.shell.navigation = Some(!self.shell.navigation.unwrap_or(wide));
+            self.works_closed = false;
+        }
+    }
+    fn set_screen(&mut self, screen: Screen) {
+        if self.screen != screen {
             self.catalog.reset_tracks();
             self.actions.notice = None;
         }
+        self.shell.navigation = None;
         if matches!(screen, Screen::Search) {
             self.catalog.focus_search = true;
         }
@@ -201,6 +228,9 @@ impl SignedUi {
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::K)) {
             self.navigate(Screen::Search);
         }
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::ALT, egui::Key::ArrowLeft)) {
+            self.back(ctx.screen_rect().width() > 850.);
+        }
         let changed_volume = self.player.show(
             ctx,
             svc.player,
@@ -209,7 +239,13 @@ impl SignedUi {
             prefs.audio.volume,
             prefs.audio.last_volume,
         );
-        self.sidebar(ctx, svc);
+        if self
+            .shell
+            .navigation
+            .unwrap_or(ctx.screen_rect().width() > 850.)
+        {
+            self.sidebar(ctx, svc);
+        }
         let dark = ctx.style().visuals.dark_mode;
         let mut action =
             changed_volume.map(|v| HostAction::Audio(crate::model::audio::AudioAction::Volume(v)));
@@ -217,33 +253,17 @@ impl SignedUi {
             .frame(
                 egui::Frame::new()
                     .fill(style::background(dark))
-                    .inner_margin(egui::Margin::symmetric(25, 17)),
+                    .inner_margin(egui::Margin::symmetric(
+                        if ctx.screen_rect().width() <= 850. {
+                            18
+                        } else {
+                            30
+                        },
+                        0,
+                    )),
             )
             .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.heading(self.title());
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if ui.button(tr("账号与设置")).clicked() {
-                            self.navigate(Screen::Settings);
-                        }
-                        ui.menu_button(tr("换肤"), |ui| {
-                            for (value, label) in themes() {
-                                if ui
-                                    .selectable_label(prefs.theme == value, tr(label))
-                                    .clicked()
-                                {
-                                    action = Some(HostAction::Theme(value.into()));
-                                    ui.close_menu();
-                                }
-                            }
-                        });
-                        if ui.available_width() > 120.0 {
-                            ui.colored_label(style::muted(dark), tr("● 已连接"))
-                                .on_hover_text(&svc.server.info.endpoint);
-                        }
-                    });
-                });
-                ui.add_space(12.0);
+                self.header(ui, svc, prefs, &mut action);
                 if let Some((msg, is_error)) = &self.actions.notice {
                     ui.horizontal_wrapped(|ui| {
                         ui.colored_label(

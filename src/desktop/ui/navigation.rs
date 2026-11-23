@@ -1,6 +1,6 @@
 use super::{data::Services, style, SignedUi};
 use crate::i18n::tr;
-use eframe::egui::{self, Color32, RichText, Vec2};
+use eframe::egui::{self, Vec2};
 
 #[derive(Clone, Default, PartialEq, Eq)]
 pub enum Screen {
@@ -21,7 +21,7 @@ impl Screen {
             Self::Library => tr("曲目列表"),
             Self::Search => tr("搜索"),
             Self::Recommendations => tr("推荐"),
-            Self::Playlists => tr("我的歌单"),
+            Self::Playlists => tr("歌单管理"),
             Self::Playlist(_) => tr("歌单详情"),
             Self::Favorites => tr("我的收藏"),
             Self::History => tr("最近播放"),
@@ -33,12 +33,17 @@ impl Screen {
 
 fn entry(ui: &mut egui::Ui, title: &str, symbol: &str, active: bool, nested: bool) -> bool {
     let (rect, response) = ui.allocate_exact_size(
-        Vec2::new(ui.available_width(), if nested { 34. } else { 40. }),
+        Vec2::new(ui.available_width(), if nested { 39. } else { 46. }),
         egui::Sense::click(),
     );
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, title));
+    let within = nested || symbol == "▾";
     let color = if active {
-        Color32::WHITE
+        if within {
+            style::accent(ui)
+        } else {
+            style::on_accent(ui)
+        }
     } else {
         ui.visuals().text_color()
     };
@@ -48,24 +53,50 @@ fn entry(ui: &mut egui::Ui, title: &str, symbol: &str, active: bool, nested: boo
             rect,
             7.,
             if active {
-                style::ACCENT
+                if within {
+                    style::accent_soft(ui)
+                } else {
+                    style::accent_fill(ui)
+                }
             } else {
                 ui.visuals().widgets.hovered.weak_bg_fill
             },
         );
     }
-    let center = egui::pos2(rect.left() + 18., rect.center().y);
-    super::nav_icons::draw(&p, center, symbol, color);
+    let center = egui::pos2(rect.left() + 25., rect.center().y);
+    let icon = match symbol {
+        "⌕" => "search",
+        "⌂" => "home",
+        "♫" => "music",
+        "▾" | "▸" => "album",
+        "◉" | "disc" => "album",
+        "♡" => "heart",
+        "◷" => "clock",
+        "▤" => "folder",
+        "headphones" => "headphones",
+        "radio" => "radio",
+        _ => "album",
+    };
+    crate::icons::paint(
+        ui,
+        icon,
+        egui::Rect::from_center_size(center, Vec2::splat(20.)),
+        color,
+    );
     let parent = matches!(symbol, "▸" | "▾");
     let text_clip = egui::Rect::from_min_max(
         rect.min,
         egui::pos2(rect.right() - if parent { 26. } else { 7. }, rect.bottom()),
     );
     p.with_clip_rect(text_clip.intersect(ui.clip_rect())).text(
-        center + egui::vec2(18., 0.),
+        center + egui::vec2(24., 0.),
         egui::Align2::LEFT_CENTER,
         title,
-        egui::FontId::proportional(if nested { 14. } else { 15. }),
+        if active && nested {
+            style::bold(ui, 14.)
+        } else {
+            egui::FontId::proportional(if nested { 14. } else { 15. })
+        },
         color,
     );
     if parent {
@@ -87,20 +118,42 @@ fn entry(ui: &mut egui::Ui, title: &str, symbol: &str, active: bool, nested: boo
 
 impl SignedUi {
     pub(super) fn sidebar(&mut self, ctx: &egui::Context, svc: Services<'_>) {
-        let wide = ctx.screen_rect().width() >= 950.0;
+        let wide = ctx.screen_rect().width() > 850.0;
         let dark = ctx.style().visuals.dark_mode;
         egui::SidePanel::left("sidebar")
-            .exact_width(if wide { 225.0 } else { 173.0 })
+            .exact_width(if wide { 240.0 } else { 190.0 })
             .resizable(false)
+            .show_separator_line(false)
             .frame(
                 egui::Frame::new()
                     .fill(style::sidebar(dark))
-                    .inner_margin(egui::Margin::symmetric(14, 18)),
+                    .inner_margin(egui::Margin::symmetric(if wide { 16 } else { 8 }, 0)),
             )
             .show(ctx, |ui| {
-                ui.add_space(5.0);
-                style::note(ui);
-                ui.add_space(21.0);
+                let side = ui.max_rect();
+                ui.painter().vline(
+                    side.right() + if wide { 15. } else { 7. },
+                    side.y_range(),
+                    egui::Stroke::new(1.0_f32, style::line(dark)),
+                );
+                let top = ui.cursor().top();
+                ui.add_space(26.);
+                let brand = ui.horizontal(|ui| {
+                    ui.add_space(12.);
+                    style::note(ui);
+                });
+                let link = ui.interact(
+                    brand.response.rect,
+                    ui.make_persistent_id("library-home"),
+                    egui::Sense::click(),
+                );
+                link.widget_info(|| {
+                    egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "MusicFS")
+                });
+                if link.clicked() {
+                    self.navigate(Screen::Library);
+                }
+                ui.add_space((top + if wide { 104. } else { 88. } - ui.cursor().top()).max(0.));
                 let mut go = None;
                 let mut more = false;
                 egui::ScrollArea::vertical()
@@ -118,14 +171,13 @@ impl SignedUi {
                         if entry(
                             ui,
                             tr("作品库"),
-                            if self.works_open { "▾" } else { "▸" },
-                            !self.works_open
-                                && matches!(self.screen, Screen::Library | Screen::Works(_)),
+                            if self.works_closed { "▸" } else { "▾" },
+                            matches!(self.screen, Screen::Library | Screen::Works(_)),
                             false,
                         ) {
-                            self.works_open = !self.works_open;
+                            self.works_closed = !self.works_closed;
                         }
-                        if self.works_open {
+                        if !self.works_closed {
                             ui.indent("work-entries", |ui| {
                                 if entry(
                                     ui,
@@ -153,7 +205,7 @@ impl SignedUi {
                         }
                         if entry(
                             ui,
-                            tr("我的歌单"),
+                            tr("歌单管理"),
                             "▤",
                             self.screen == Screen::Playlists,
                             false,
@@ -169,19 +221,7 @@ impl SignedUi {
                                 &mut self.lists_closed
                             };
                             let label = if mine { tr("我的") } else { tr("歌单") };
-                            if ui
-                                .add(
-                                    egui::Button::new(
-                                        RichText::new(format!(
-                                            "{}  {label}",
-                                            if *collapsed { "+" } else { "−" }
-                                        ))
-                                        .color(style::muted(dark)),
-                                    )
-                                    .frame(false),
-                                )
-                                .clicked()
-                            {
+                            if group_button(ui, label, *collapsed) {
                                 *collapsed = !*collapsed;
                             }
                             if *collapsed {
@@ -228,4 +268,29 @@ impl SignedUi {
                 }
             });
     }
+}
+
+fn group_button(ui: &mut egui::Ui, label: &str, collapsed: bool) -> bool {
+    let (r, response) =
+        ui.allocate_exact_size(Vec2::new(ui.available_width(), 29.), egui::Sense::click());
+    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, label));
+    let ink = style::muted(ui.visuals().dark_mode);
+    let center = egui::pos2(r.left() + 12., r.center().y);
+    let points = if collapsed {
+        [(-2., -4.), (2., 0.), (-2., 4.)]
+    } else {
+        [(-4., -2.), (0., 2.), (4., -2.)]
+    };
+    ui.painter().add(egui::Shape::line(
+        Vec::from(points.map(|(x, y)| center + egui::vec2(x, y))),
+        egui::Stroke::new(1.4_f32, ink),
+    ));
+    ui.painter().text(
+        center + egui::vec2(17., 0.),
+        egui::Align2::LEFT_CENTER,
+        label,
+        egui::FontId::proportional(14.),
+        ink,
+    );
+    response.clicked()
 }

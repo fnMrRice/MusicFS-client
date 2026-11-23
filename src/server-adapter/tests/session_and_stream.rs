@@ -100,6 +100,7 @@ async fn isolated_server_round_trip() {
             track.source_track_id.as_deref().unwrap(),
             None,
             &["audio/wav", "audio/mpeg", "audio/flac"],
+            false,
         )
         .await
         .unwrap();

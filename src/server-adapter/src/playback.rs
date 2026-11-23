@@ -167,6 +167,7 @@ impl ServerSession {
         source_track_id: &str,
         forced_source_track_id: Option<&str>,
         mimes: &[&str],
+        force_processing: bool,
     ) -> Result<StreamLease> {
         check_id(source_track_id)?;
         if let Some(id) = forced_source_track_id {
@@ -181,7 +182,13 @@ impl ServerSession {
             self.playback_source(track_id, forced_source_track_id)
                 .await?
         };
-        let body = create_body(track_id, &source, forced_source_track_id, mimes);
+        let body = create_body(
+            track_id,
+            &source,
+            forced_source_track_id,
+            mimes,
+            force_processing,
+        );
         let reply = self
             .command("POST", "/playback/sessions", Some(body))
             .await?;
@@ -266,13 +273,14 @@ fn create_body(
     source_id: &str,
     forced_source_id: Option<&str>,
     mimes: &[&str],
+    force_processing: bool,
 ) -> Value {
     let formats: Vec<Value> = mimes
         .iter()
         .map(|mime| json!({"mime":mime, "canPlay":"probably"}))
         .collect();
     let mut body = json!({ "sourceTrackId":source_id, "capabilities":{"nativeHttp":true,"formats":formats},
-        "preferences":{"dspExecution":"server"} });
+        "preferences":{"dspExecution":"client","forceProcessing":force_processing,"gainDb":0} });
     if !track_id.is_empty() {
         body["trackId"] = json!(track_id);
     }
@@ -286,7 +294,9 @@ fn create_body(
 mod tests {
     #[test]
     fn work_track_uses_only_its_source_identity() {
-        let body = super::create_body("", "work-audio", None, &["audio/wav"]);
+        let body = super::create_body("", "work-audio", None, &["audio/wav"], true);
+        assert_eq!(body["preferences"]["forceProcessing"], true);
+        assert_eq!(body["preferences"]["dspExecution"], "client");
         assert_eq!(body["sourceTrackId"], "work-audio");
         assert!(body.get("trackId").is_none());
         assert!(body.get("forcedSourceTrackId").is_none());

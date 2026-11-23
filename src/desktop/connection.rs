@@ -1,10 +1,15 @@
 use musicfs_player_core::{Media, Player, PlayerCommand, Track, SUPPORTED_MIMES};
 use musicfs_server_adapter::ServerSession;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 use tokio::runtime::Handle;
 
 pub struct Connection {
     pub server: ServerSession,
     pub player: Player,
+    pub force_processing: Arc<AtomicBool>,
 }
 
 impl Connection {
@@ -13,8 +18,21 @@ impl Connection {
         drop(token);
         let playback = server.clone();
         let runtime = Handle::current();
-        match Player::new(move |track| load(&runtime, &playback, track)) {
-            Ok(player) => Ok(Self { server, player }),
+        let force_processing = Arc::new(AtomicBool::new(false));
+        let preference = force_processing.clone();
+        match Player::new(move |track| {
+            load(
+                &runtime,
+                &playback,
+                track,
+                preference.load(Ordering::Acquire),
+            )
+        }) {
+            Ok(player) => Ok(Self {
+                server,
+                player,
+                force_processing,
+            }),
             Err(error) => {
                 let _ = server.logout().await;
                 Err(error)
@@ -30,7 +48,12 @@ impl Connection {
 }
 
 // 在播放器的加载线程打开授权的固定音频表示。设备线程只消费 PCM。
-fn load(runtime: &Handle, server: &ServerSession, track: &Track) -> Result<Media, String> {
+fn load(
+    runtime: &Handle,
+    server: &ServerSession,
+    track: &Track,
+    force_processing: bool,
+) -> Result<Media, String> {
     let source = track
         .source_track_id
         .as_deref()
@@ -40,6 +63,7 @@ fn load(runtime: &Handle, server: &ServerSession, track: &Track) -> Result<Media
         source,
         track.forced_source_track_id.as_deref(),
         SUPPORTED_MIMES,
+        force_processing,
     ))?;
     let reader = match server.open_audio_reader(&lease) {
         Ok(reader) => reader,

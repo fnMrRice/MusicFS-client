@@ -1,9 +1,12 @@
 mod activation;
 mod jump_list;
 mod menu;
+mod thumbnail;
+mod thumbnail_icons;
 mod tray;
 
 pub(crate) use activation::handle_activation;
+pub(super) use thumbnail::Thumbnail;
 
 use super::{SystemAction, SystemSender, SystemState};
 use std::cell::{Cell, RefCell};

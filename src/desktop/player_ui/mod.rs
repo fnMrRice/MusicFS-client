@@ -1,5 +1,5 @@
 mod controls;
-mod cover;
+pub(crate) mod cover;
 mod lyrics;
 mod windows;
 

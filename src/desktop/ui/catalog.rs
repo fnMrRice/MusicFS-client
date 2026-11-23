@@ -1,3 +1,5 @@
+#[path = "artwork.rs"]
+mod artwork;
 use super::data::{queue_track, CategoryTab, Pages, Services, TrackQuery};
 use super::style;
 use crate::task::Task;
@@ -8,6 +10,7 @@ use std::collections::HashSet;
 
 #[derive(Default)]
 pub struct Catalog {
+    pub artwork: artwork::Artwork,
     pub tabs: CategoryTab,
     pub category: Option<(String, String)>,
     pub categories: Pages<Category>,

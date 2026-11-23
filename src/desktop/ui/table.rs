@@ -40,12 +40,14 @@ pub fn tracks(
 ) {
     let favorites = query == TrackQuery::Favorites;
     data.sync(ui, svc, &query);
+    data.artwork.poll(ui.ctx());
     ui.horizontal_wrapped(|ui| {
         if let Some(error) = data.play_all(ui, svc) {
             actions.notice = Some((error, true));
         }
         if ui.button("刷新").clicked() {
             data.reset_tracks();
+            data.artwork = Default::default();
             actions.favorites.refresh();
         }
         ui.weak(format!(
@@ -96,7 +98,7 @@ pub fn tracks(
     } else {
         0.0
     };
-    let title_w = (width - artist_w - album_w - 224.0).max(55.0);
+    let title_w = (width - artist_w - album_w - 269.0).max(55.0);
     egui::Frame::new()
         .fill(style::surface(dark))
         .corner_radius(6)
@@ -105,7 +107,12 @@ pub fn tracks(
             ui.set_min_width(width);
             ui.horizontal(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
-                for (w, t) in [(34.0, "#"), (title_w, "曲名"), (artist_w, "歌手")] {
+                for (w, t) in [
+                    (34.0, "#"),
+                    (32.0, ""),
+                    (title_w, "曲名"),
+                    (artist_w, "歌手"),
+                ] {
                     text_cell(ui, w, t, muted);
                 }
                 if show_album {
@@ -167,6 +174,7 @@ pub fn tracks(
                             {
                                 play = Some(i);
                             }
+                            data.artwork.show(ui, svc, t.cover());
                             text_cell(ui, title_w, &t.title, text);
                             let artist = t.artists.join(" / ");
                             text_cell(

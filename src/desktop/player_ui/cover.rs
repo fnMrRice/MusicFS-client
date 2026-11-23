@@ -27,12 +27,7 @@ impl Cover {
             self.pending = id.map(|id| {
                 let session = session.clone();
                 let id = id.to_owned();
-                Task::spawn(runtime, ctx, async move {
-                    let bytes = session.cover_bytes(&id).await?;
-                    tokio::task::spawn_blocking(move || thumbnail(bytes))
-                        .await
-                        .map_err(|_| "Artwork decoding interrupted.")?
-                })
+                Task::spawn(runtime, ctx, read_thumbnail(session, id))
             });
         }
         if let Some(result) = self.pending.as_mut().and_then(Task::poll) {
@@ -43,6 +38,16 @@ impl Cover {
             }
         }
     }
+}
+
+pub(crate) async fn read_thumbnail(
+    session: ServerSession,
+    id: String,
+) -> Result<ColorImage, String> {
+    let bytes = session.cover_bytes(&id).await?;
+    tokio::task::spawn_blocking(move || thumbnail(bytes))
+        .await
+        .map_err(|_| "Artwork decoding interrupted.")?
 }
 
 fn thumbnail(bytes: Vec<u8>) -> Result<ColorImage, String> {

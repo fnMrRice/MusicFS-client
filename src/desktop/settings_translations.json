@@ -69,7 +69,7 @@
   "封面和歌词": ["Artwork and lyrics","封面和歌詞","アートワークと歌詞"],
   "尚未添加本地效果。添加效果即可实时试听。": ["No local effects yet. Add an effect to hear changes in real time.","尚未新增本機效果。新增效果即可即時試聽。","ローカルエフェクトは未追加です。追加するとリアルタイムで試聴できます。"],
   "已保存": ["Saved","已儲存","保存しました"],
-  "已保存，请校验登录状态": ["Saved. Verify your sign-in status.","已儲存，請驗證登入狀態。","保存しました。ログイン状態を確認してください。"],
+  "登录状态待校验": ["Sign-in status pending verification","登入狀態待驗證","ログイン状態の確認待ち"],
   "已加入处理链": ["In processing chain","已加入處理鏈","処理チェーンに追加済み"],
   "已加入队列": ["Added to queue","已加入佇列","キューに追加しました"],
   "已取消登录": ["Sign-in canceled","已取消登入","ログインをキャンセルしました"],

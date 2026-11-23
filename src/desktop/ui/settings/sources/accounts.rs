@@ -118,7 +118,7 @@ impl Account {
                     "waiting" => "等待授权",
                     "scanned" => "已扫码，请在手机确认",
                     "signedIn" => "已登录",
-                    "unverified" => "已保存，请校验登录状态",
+                    "unverified" => "登录状态待校验",
                     "expired" => "已过期，请重新登录",
                     "canceled" => "已取消登录",
                     other => other,

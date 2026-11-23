@@ -45,6 +45,10 @@ pub struct Track {
     pub title: String,
     pub artists: Vec<String>,
     pub album: Option<String>,
+    #[serde(default)]
+    pub artist_credits: Vec<TrackCredit>,
+    #[serde(default)]
+    pub album_credits: Vec<TrackCredit>,
     pub cover_object_id: Option<String>,
     pub sources: Option<SourceGroup>,
     pub forced_source_track_id: Option<String>,
@@ -71,17 +75,19 @@ impl Track {
     }
 }
 
-#[derive(Deserialize)]
-pub(super) struct Name {
-    name: String,
+#[derive(Clone, Deserialize, Serialize)]
+pub struct TrackCredit {
+    #[serde(default, alias = "artistId", alias = "albumId")]
+    pub id: String,
+    pub name: String,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(super) struct MusicTrack {
     pub track_id: String,
     title: String,
-    artists: Vec<Name>,
-    albums: Vec<Name>,
+    artists: Vec<TrackCredit>,
+    albums: Vec<TrackCredit>,
     cover_path: Option<String>,
     selected_source: Option<SourceGroup>,
 }
@@ -89,8 +95,8 @@ impl MusicTrack {
     pub(super) fn into_track(self, forced: Option<String>) -> Track {
         let album = self
             .albums
-            .into_iter()
-            .map(|a| a.name)
+            .iter()
+            .map(|a| a.name.as_str())
             .collect::<Vec<_>>()
             .join(" / ");
         let cover_object_id = self
@@ -102,7 +108,9 @@ impl MusicTrack {
         Track {
             id: self.track_id,
             title: self.title,
-            artists: self.artists.into_iter().map(|a| a.name).collect(),
+            artists: self.artists.iter().map(|a| a.name.clone()).collect(),
+            artist_credits: self.artists,
+            album_credits: self.albums,
             album: (!album.is_empty()).then_some(album),
             cover_object_id,
             sources: self.selected_source,
@@ -125,7 +133,8 @@ mod tests {
             version("alternate", "available"),
             version("gone", "missing")
         ]);
-        let raw = json!({"trackId":"song","title":"Title","albums":[],"artists":[],"coverPath":"/api/v1/media/art","selectedSource":selected});
+        let raw = json!({"trackId":"song","title":"Title","albums":[{"albumId":"record","name":"Record"}],
+            "artists":[{"artistId":"credit","name":"Artist"}],"coverPath":"/api/v1/media/art","selectedSource":selected});
         for (pin, playable) in [
             (None, Some("master")),
             (Some("alternate"), Some("alternate")),
@@ -136,6 +145,8 @@ mod tests {
                 .unwrap()
                 .into_track(pin.map(str::to_owned));
             assert_eq!(t.id, "song");
+            assert_eq!(t.artist_credits[0].id, "credit");
+            assert_eq!(t.album_credits[0].id, "record");
             assert_eq!(t.cover(), Some("art"));
             assert_eq!(t.playable_source_id(), playable);
             assert_eq!(t.sources.unwrap().choices().count(), 3);

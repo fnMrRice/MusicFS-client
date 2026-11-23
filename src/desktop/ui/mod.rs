@@ -65,6 +65,19 @@ enum HostAction {
 }
 
 impl DesktopUi {
+    pub fn system_state(&self) -> crate::system::SystemState {
+        self.signed
+            .as_ref()
+            .map(|ui| ui.player.system_state())
+            .unwrap_or_default()
+    }
+
+    pub fn refresh_player(&mut self) {
+        if let Some(ui) = &mut self.signed {
+            ui.player.refresh();
+        }
+    }
+
     pub fn show(&mut self, ctx: &egui::Context, state: &mut DesktopState) {
         crate::i18n::apply(&state.prefs.language);
         if !self.initialized {

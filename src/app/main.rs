@@ -12,6 +12,8 @@ mod i18n;
 mod model;
 #[path = "../desktop/player_ui/mod.rs"]
 mod player_ui;
+#[path = "../desktop/system/mod.rs"]
+mod system;
 #[path = "../desktop/task.rs"]
 mod task;
 #[path = "../desktop/ui/mod.rs"]
@@ -23,20 +25,35 @@ use std::time::Duration;
 struct MusicFs {
     state: model::DesktopState,
     ui: ui::DesktopUi,
+    system: system::DesktopSystem,
 }
 
 impl eframe::App for MusicFs {
     fn update(&mut self, ctx: &egui::Context, _: &mut eframe::Frame) {
         self.state.update(ctx);
         self.ui.show(ctx, &mut self.state);
+        let now = if self.state.connection.is_some() {
+            self.ui.system_state()
+        } else {
+            system::SystemState::default()
+        };
+        if self.system.update(ctx, &mut self.state, now) {
+            self.ui.refresh_player();
+            ctx.request_repaint();
+        }
     }
 
     fn on_exit(&mut self, _: Option<&eframe::glow::Context>) {
+        self.system.shutdown();
         self.state.shutdown();
     }
 }
 
 fn main() -> eframe::Result<()> {
+    #[cfg(windows)]
+    if system::handle_activation() {
+        return Ok(());
+    }
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -61,6 +78,7 @@ fn main() -> eframe::Result<()> {
             Ok(Box::new(MusicFs {
                 state: model::DesktopState::new(handle),
                 ui: ui::DesktopUi::default(),
+                system: system::DesktopSystem::new(creation),
             }))
         }),
     );

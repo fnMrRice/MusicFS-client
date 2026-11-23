@@ -30,6 +30,25 @@ pub struct PlayerUi {
 }
 
 impl PlayerUi {
+    pub fn system_state(&self) -> crate::system::SystemState {
+        let Some((instance, _)) = self.identity else {
+            return Default::default();
+        };
+        let cover = self
+            .current_track()
+            .and_then(|t| t.cover_object_id.as_deref());
+        crate::system::SystemState::from_snapshot(
+            instance,
+            &self.snapshot,
+            self.cover.png_for(instance, cover),
+        )
+    }
+
+    pub fn refresh(&mut self) {
+        self.last_full = None;
+        self.last_poll = None;
+    }
+
     pub fn current_track(&self) -> Option<&Track> {
         self.snapshot
             .index

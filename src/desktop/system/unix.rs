@@ -11,6 +11,15 @@ mod notifier;
 #[cfg(target_os = "linux")]
 pub(super) use linux::UnixDesktop;
 
+#[cfg(target_os = "macos")]
+mod mac_menu;
+#[cfg(target_os = "macos")]
+mod macos;
+#[cfg(target_os = "macos")]
+mod now_playing;
+#[cfg(target_os = "macos")]
+pub(super) use macos::UnixDesktop;
+
 #[derive(Clone, PartialEq)]
 struct Menu {
     locale: &'static str,

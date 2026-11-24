@@ -9,6 +9,7 @@
   "CD专辑": ["CD albums","CD專輯","CDアルバム"],
   "MusicFS · 桌面歌词": ["MusicFS · Desktop lyrics","MusicFS · 桌面歌詞","MusicFS · デスクトップ歌詞"],
   "MusicFS · 迷你播放器": ["MusicFS · Mini player","MusicFS · 迷你播放器","MusicFS · ミニプレーヤー"],
+  "1 个来源版本": ["1 source version","1 個來源版本","1 個のソース"],
   "{0} 个来源版本": ["{0} source versions","{0} 個來源版本","{0} 個のソース"],
   "{0} 个歌单": ["{0} playlists","{0} 個歌單","プレイリスト {0} 件"],
   "{0} 首": ["{0} tracks","{0} 首","{0} 曲"],

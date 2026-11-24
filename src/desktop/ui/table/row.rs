@@ -74,11 +74,6 @@ pub(super) fn show(
     let line = |y: f32| Rect::from_min_max(pos2(tx, y - 11.), pos2(title.right() - 3., y + 11.));
     let count = t.sources.as_ref().map_or(0, |g| g.choices().count());
     let artist_names = t.artists.join(" / ");
-    let title_y = if count > 1 || !playable || c.artist == 0. {
-        rect.center().y - 9.
-    } else {
-        rect.center().y
-    };
     let name = if t.title.is_empty() {
         t.source().map_or("—", |s| s.display_name.as_str())
     } else {
@@ -86,7 +81,7 @@ pub(super) fn show(
     };
     if title_control(
         ui,
-        line(title_y),
+        line(rect.center().y - 9.),
         "play",
         name,
         &tr("播放 {0}").replace("{0}", name),
@@ -98,8 +93,12 @@ pub(super) fn show(
         result = Some(RowEvent::Action(Action::Play, false));
     }
     let second = line(rect.center().y + 12.);
-    if count > 1 {
-        let description = tr("{0} 个来源版本").replace("{0}", &count.to_string());
+    if count > 0 {
+        let description = if count == 1 {
+            tr("1 个来源版本").to_owned()
+        } else {
+            tr("{0} 个来源版本").replace("{0}", &count.to_string())
+        };
         let open = data.versions.is_open(i);
         let toggle = tr(if open {
             "收起 {0} 的来源版本"
@@ -120,21 +119,12 @@ pub(super) fn show(
         {
             result = Some(RowEvent::Action(Action::Versions, false));
         }
-    } else if !playable {
+    } else {
         label(
             ui,
             second,
             "missing",
             tr("暂无可用音源"),
-            style::muted(dark),
-            11.,
-        );
-    } else if c.artist == 0. {
-        label(
-            ui,
-            second,
-            "artist-text",
-            &artist_names,
             style::muted(dark),
             11.,
         );

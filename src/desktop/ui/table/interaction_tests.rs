@@ -88,3 +88,104 @@ fn keyboard_accessible_row_controls_dispatch_only_their_own_action() {
         );
     }
 }
+
+#[test]
+#[ignore = "requires an isolated MusicFS server with a single-source track"]
+fn single_source_row_expands_and_collapses() {
+    use musicfs_player_core::Player;
+    use musicfs_server_adapter::ServerSession;
+
+    let endpoint = std::env::var("MUSICFS_TEST_ENDPOINT").unwrap();
+    assert!(endpoint.starts_with("http://127.0.0.1:"));
+    let rt = tokio::runtime::Runtime::new().unwrap();
+    let server = rt
+        .block_on(ServerSession::login(
+            &endpoint,
+            &std::env::var("MUSICFS_TEST_TOKEN").unwrap(),
+        ))
+        .unwrap();
+    let track = rt
+        .block_on(server.sourced_tracks(None, None))
+        .unwrap()
+        .items
+        .into_iter()
+        .find(|t| t.sources.as_ref().is_some_and(|g| g.choices().count() == 1))
+        .expect("Expected a single-source track");
+    let player = Player::new(|_| Err("No playback requested".into())).unwrap();
+    let activity = server.listen_activity(|| {});
+    let svc = Services {
+        runtime: rt.handle(),
+        activity: &activity,
+        server: &server,
+        player: &player,
+    };
+    let ctx = Context::default();
+    ctx.enable_accesskit();
+    let mut catalog = Catalog::default();
+    let mut actions = Actions::default();
+    let name = track.title.clone();
+    catalog.tracks.items.push(track);
+    let mut frame = |catalog: &mut Catalog, events: Vec<Event>| {
+        let tree = ctx
+            .run(
+                egui::RawInput {
+                    events,
+                    ..Default::default()
+                },
+                |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let (rect, _) =
+                            ui.allocate_exact_size(egui::vec2(960., HEIGHT), egui::Sense::hover());
+                        let cols = Columns::new(rect.width(), false);
+                        if let Some(event) = row::show(
+                            ui,
+                            rect,
+                            &cols,
+                            catalog,
+                            &actions,
+                            svc,
+                            0,
+                            false,
+                            true,
+                            None,
+                            Status::Idle,
+                        ) {
+                            apply(ui, svc, catalog, &mut actions, &[], 0, event, false);
+                        }
+                    });
+                },
+            )
+            .platform_output
+            .accesskit_update
+            .unwrap();
+        (tree, catalog.versions.expanded(&catalog.tracks.items))
+    };
+    for (label, expanded) in [
+        ("展开 {0} 的来源版本", true),
+        ("收起 {0} 的来源版本", false),
+    ] {
+        let (tree, _) = frame(&mut catalog, vec![]);
+        let label = tr(label).replace("{0}", &name);
+        let (target, _) = tree
+            .nodes
+            .iter()
+            .find(|(_, node)| node.role() == Role::Button && node.label() == Some(&label))
+            .expect("Expected the source disclosure button");
+        let (_, rows) = frame(
+            &mut catalog,
+            vec![Event::AccessKitActionRequest(ActionRequest {
+                action: Action::Click,
+                target: *target,
+                data: None,
+            })],
+        );
+        assert_eq!(rows, if expanded { vec![(0, 1)] } else { vec![] });
+    }
+    catalog.tracks.items[0].sources = None;
+    let (tree, _) = frame(&mut catalog, vec![]);
+    assert!(tree
+        .nodes
+        .iter()
+        .any(|(_, node)| node.label() == Some(tr("暂无可用音源"))
+            || node.value() == Some(tr("暂无可用音源"))));
+}

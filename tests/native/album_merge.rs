@@ -8,6 +8,17 @@ fn item(id: &str, title: &str, names: &[&str], aliases: Value, extra: Value) -> 
     }
     serde_json::from_value(v).unwrap()
 }
+
+#[test]
+fn album_membership_uses_full_ids_even_when_credits_are_folded() {
+    let track = |extra| item("track", "Song", &[], json!([]), extra);
+    let folded = track(json!({"albumIds": ["album", "other-source"]}));
+    assert!(folded.in_album("other-source"));
+    assert!(!folded.in_album("unrelated"));
+    assert!(!track(json!({"albumIds": []})).in_album("album"));
+    assert!(track(json!({})).in_album("album"));
+}
+
 #[test]
 fn merged_metadata_prefers_primary_and_preserves_titles_and_credits() {
     let items = vec![

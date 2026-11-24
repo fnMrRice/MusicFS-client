@@ -28,6 +28,7 @@ pub(super) struct Item {
     localized_titles: Vec<Alias>,
     artists: Vec<Name>,
     albums: Vec<Album>,
+    album_ids: Option<Vec<String>>,
     genre: Option<String>,
     year: Option<u16>,
     rating: Option<u8>,
@@ -36,7 +37,10 @@ pub(super) struct Item {
 }
 impl Item {
     pub fn in_album(&self, id: &str) -> bool {
-        self.albums.iter().any(|a| a.id == id)
+        match &self.album_ids {
+            Some(ids) => ids.iter().any(|album_id| album_id == id),
+            None => self.albums.iter().any(|a| a.id == id),
+        }
     }
     pub fn versions(&self) -> usize {
         self.selected_source.as_ref().map_or(0, |s| {

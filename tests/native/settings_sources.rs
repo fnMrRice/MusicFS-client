@@ -4,11 +4,10 @@ use std::time::Duration;
 
 #[test]
 fn additions_preserve_existing_root_bindings_and_import_defaults() {
-    let config: Config =
-        serde_json::from_value(json!({"revision":"r","rootImportDefaultsSupported":true,
+    let config: Config = serde_json::from_value(json!({"revision":"r",
         "roots":[{"id":"old","name":"Original","importDefaults":{"recursive":false,"maxDepth":0}}],
         "importOptions":{"importDefaults":{"excludePatterns":["temp/**"],"importArtwork":true}}}))
-        .unwrap();
+    .unwrap();
     let mut editor = Editor::new(config, Action::Add);
     editor
         .selected

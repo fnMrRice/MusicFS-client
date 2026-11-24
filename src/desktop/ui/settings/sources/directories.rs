@@ -56,8 +56,6 @@ pub(super) struct Config {
     pub watch: Option<super::watch::Policy>,
     pub roots: Vec<Root>,
     #[serde(default)]
-    root_import_defaults_supported: bool,
-    #[serde(default)]
     import_options: Option<ImportSettings>,
 }
 pub(super) enum Action {
@@ -137,8 +135,7 @@ impl Editor {
                     Action::Remove(_)=>{ui.label(format!("{} · {}",tr("删除本地目录"),self.name));ui.weak(tr("仅移除此音乐导入目录，磁盘文件和已有曲库记录会保留，允许访问的目录不受影响。"));}
                 }
                 if !matches!(self.action,Action::Remove(_)) {
-                    if self.config.root_import_defaults_supported {options_ui(ui,&mut self.options);}
-                    else {ui.weak(tr("此服务端暂不支持单独配置目录查找设置。"));}
+                    options_ui(ui,&mut self.options);
                 }
                 let can=match &self.action {
                     Action::Add=>!self.selected.is_empty(),
@@ -181,21 +178,14 @@ impl Editor {
             let edit = matches!(&self.action,Action::Edit(id) if id==&r.id);
             let mut v = json!({"id":r.id,"name":if edit{self.name.trim()}else{&r.name}});
             // 省略已有目录未修改的选项，由服务端保留继承或显式覆盖关系。
-            if edit
-                && self.config.root_import_defaults_supported
-                && self.options != self.original_options(r)
-            {
+            if edit && self.options != self.original_options(r) {
                 v["importDefaults"] = json!(self.options);
             }
             roots.push(v);
         }
         if matches!(self.action, Action::Add) {
             for (id, name, path) in &self.selected {
-                let mut v = json!({"id":id,"name":name,"path":path});
-                if self.config.root_import_defaults_supported {
-                    v["importDefaults"] = json!(self.options);
-                }
-                roots.push(v);
+                roots.push(json!({"id":id,"name":name,"path":path,"importDefaults":self.options}));
             }
         }
         json!({"musicRoots":roots,"importDefaults":self.config.import_options.clone().unwrap_or_default().import_defaults})

@@ -166,7 +166,6 @@
   "正在读取插件…": ["Loading plugins…","正在讀取外掛程式…","プラグインを読み込み中…"],
   "正在读取设置…": ["Loading settings…","正在讀取設定…","設定を読み込み中…"],
   "此 DSP 尚未加入处理链。": ["This DSP is not in the processing chain.","此 DSP 尚未加入處理鏈。","この DSP は処理チェーンに追加されていません。"],
-  "此服务端暂不支持单独配置目录查找设置。": ["This server does not support separate search settings for each folder yet.","此伺服器暫不支援單獨設定目錄查找設定。","このサーバーはフォルダーごとの検索設定にまだ対応していません。"],
   "此来源尚不支持曲目搜索。": ["This source does not support track search yet.","此來源尚不支援曲目搜尋。","このソースは曲検索に未対応です。"],
   "此目录没有可浏览的子目录。": ["This folder has no browsable subfolders.","此目錄沒有可瀏覽的子目錄。","このフォルダーに閲覧可能なサブフォルダーはありません。"],
   "此设置控件暂不支持，请更新桌面客户端。": ["Update the desktop app to use this setting.","請更新桌面用戶端以使用此設定。","この設定を使うにはデスクトップアプリを更新してください。"],

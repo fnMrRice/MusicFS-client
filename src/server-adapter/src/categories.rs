@@ -62,15 +62,10 @@ impl ServerSession {
         cursor: Option<&str>,
         unscraped_only: bool,
     ) -> Result<Page<Category>> {
-        let mut url = self.page_url(&format!("library/{}s", kind.key()), "after", cursor);
+        let mut url =
+            self.catalog_url(&format!("library/{}s", kind.key()), provider, query, cursor);
         if matches!(kind, CategoryKind::Album) && unscraped_only {
             url.query_pairs_mut().append_pair("unscrapedOnly", "true");
-        }
-        if !query.trim().is_empty() {
-            url.query_pairs_mut().append_pair("q", query.trim());
-        }
-        if let Some(id) = provider {
-            url.query_pairs_mut().append_pair("providerInstanceId", id);
         }
         let page: WirePage<Entry> = self.get(url).await?;
         let items = page
@@ -112,13 +107,7 @@ impl ServerSession {
         query: &str,
         cursor: Option<&str>,
     ) -> Result<Page<Track>> {
-        let mut url = self.page_url("library/tracks", "after", cursor);
-        if !query.trim().is_empty() {
-            url.query_pairs_mut().append_pair("q", query.trim());
-        }
-        if let Some(id) = provider {
-            url.query_pairs_mut().append_pair("providerInstanceId", id);
-        }
+        let mut url = self.catalog_url("library/tracks", provider, query, cursor);
         let key = match kind {
             CategoryKind::Artist => "artistId",
             CategoryKind::Album => "albumId",

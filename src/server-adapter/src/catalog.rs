@@ -98,12 +98,27 @@ impl ServerSession {
         decode(self.send(Method::GET, url, None).await?).await
     }
 
-    pub async fn tracks(&self, query: &str, cursor: Option<&str>) -> Result<Page<Track>> {
-        let mut url = self.page_url("library/tracks", "after", cursor);
-        if !query.trim().is_empty() {
-            url.query_pairs_mut().append_pair("q", query.trim());
+    fn catalog_url(
+        &self,
+        path: &str,
+        provider: Option<&str>,
+        query: &str,
+        cursor: Option<&str>,
+    ) -> Url {
+        let mut url = self.page_url(path, "after", cursor);
+        let query = query.trim();
+        if !query.is_empty() {
+            url.query_pairs_mut().append_pair("q", query);
         }
-        self.track_page(url).await
+        if let Some(id) = provider {
+            url.query_pairs_mut().append_pair("providerInstanceId", id);
+        }
+        url
+    }
+
+    pub async fn tracks(&self, query: &str, cursor: Option<&str>) -> Result<Page<Track>> {
+        self.track_page(self.catalog_url("library/tracks", None, query, cursor))
+            .await
     }
 
     pub async fn sourced_tracks(
@@ -120,14 +135,8 @@ impl ServerSession {
         query: &str,
         cursor: Option<&str>,
     ) -> Result<Page<Track>> {
-        let mut url = self.page_url("library/tracks", "after", cursor);
+        let mut url = self.catalog_url("library/tracks", provider, query, cursor);
         url.query_pairs_mut().append_pair("sourceOnly", "true");
-        if !query.trim().is_empty() {
-            url.query_pairs_mut().append_pair("q", query.trim());
-        }
-        if let Some(id) = provider {
-            url.query_pairs_mut().append_pair("providerInstanceId", id);
-        }
         self.track_page(url).await
     }
 

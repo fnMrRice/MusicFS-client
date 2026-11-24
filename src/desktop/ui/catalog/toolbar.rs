@@ -226,15 +226,10 @@ impl Catalog {
 
     fn actions_width(&self, ui: &egui::Ui) -> f32 {
         let font = egui::TextStyle::Button.resolve(ui.style());
-        let buttons = [
-            Some("新建曲目"),
-            self.matching.supports_bulk().then_some("一键合并重复音乐"),
-            Some("重复识别"),
-        ];
+        let buttons = ["新建曲目", "一键合并重复音乐", "重复识别"];
         let x = ui.spacing().button_padding.x * 2. + ui.spacing().item_spacing.x;
         buttons
             .iter()
-            .flatten()
             .map(|t| {
                 ui.painter()
                     .layout_no_wrap(tr(t).to_owned(), font.clone(), egui::Color32::WHITE)

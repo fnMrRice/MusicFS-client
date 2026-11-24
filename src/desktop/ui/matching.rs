@@ -11,21 +11,12 @@ use eframe::egui;
 use evidence::Evidence;
 use forms::{exclusion, merge, Dialog};
 use musicfs_server_adapter::{SourceVersion, Track};
-use serde::Deserialize;
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Revision {
-    revision: u64,
-    #[serde(default)]
-    bulk_merge_available: bool,
-}
 
 #[derive(Default)]
 pub(super) struct Matching {
     selected: Vec<Track>,
-    revision: Option<Revision>,
-    request: Option<Task<Revision>>,
+    revision: Option<u64>,
+    request: Option<Task<u64>>,
     error: Option<String>,
     preview_error: Option<String>,
     decisions: Decisions,
@@ -87,7 +78,7 @@ impl Matching {
             self.dialog = Some(Dialog::Review {
                 action: Decision::Unlink(src.source_track_id.clone()),
                 items: vec![Evidence::version(track, src)],
-                revision: self.revision.as_ref().map(|r| r.revision),
+                revision: self.revision,
                 from_candidates: false,
             });
         }
@@ -98,10 +89,7 @@ impl Matching {
         self.error = None;
         let server = svc.server.clone();
         self.request = Some(Task::spawn(svc.runtime, ctx, async move {
-            let value = server
-                .settings_json("GET", "/matching/revision", None, &[])
-                .await?;
-            serde_json::from_value(value).map_err(|_| "Invalid matching revision.".into())
+            server.matching_revision().await
         }));
     }
 
@@ -131,7 +119,7 @@ impl Matching {
         }
         if let Some(error) = &self.error {
             ui.colored_label(ui.visuals().error_fg_color, error);
-            if ui.button(tr("重新检查一键合并功能")).clicked() {
+            if ui.button(tr("重试")).clicked() {
                 self.revision(&ctx, svc);
             }
         }
@@ -139,12 +127,6 @@ impl Matching {
             refresh |= self.modal(&ctx, svc, lookup);
         }
         refresh
-    }
-
-    pub fn supports_bulk(&self) -> bool {
-        self.revision
-            .as_ref()
-            .is_some_and(|r| r.bulk_merge_available)
     }
 
     pub(super) fn queue_albums(
@@ -175,17 +157,18 @@ impl Matching {
         }
     }
     pub(super) fn buttons(&mut self, ui: &mut egui::Ui, svc: Services<'_>) {
-        if self.supports_bulk()
-            && ui
-                .add_enabled(!self.locked(), egui::Button::new(tr("一键合并重复音乐")))
-                .clicked()
+        if ui
+            .add_enabled(!self.locked(), egui::Button::new(tr("一键合并重复音乐")))
+            .clicked()
         {
             self.dialog = Some(Dialog::Bulk {
                 by_score: true,
                 minimum: "80".into(),
                 preview: false,
             });
-            self.revision(ui.ctx(), svc);
+            if self.request.is_none() {
+                self.revision(ui.ctx(), svc);
+            }
         }
         if ui.button(tr("重复识别")).clicked() {
             self.dialog = Some(Dialog::Candidates);
@@ -201,11 +184,7 @@ impl Matching {
                     .clicked()
             {
                 let items = evidence::selected(&self.selected);
-                self.dialog = Some(merge(
-                    items,
-                    self.revision.as_ref().map(|r| r.revision),
-                    false,
-                ));
+                self.dialog = Some(merge(items, self.revision, false));
             }
             if self.selected.len() == 2 && !self.decisions.locked() {
                 let left = self.selected[0].source();
@@ -220,7 +199,7 @@ impl Matching {
                                         Evidence::version(&self.selected[0], a),
                                         Evidence::version(&self.selected[1], b),
                                     ],
-                                    self.revision.as_ref().map(|r| r.revision),
+                                    self.revision,
                                     excluded,
                                     false,
                                 ));
@@ -288,7 +267,7 @@ impl Matching {
         let mut submit = None;
         let mut review_again = false;
         let locked = self.decisions.locked();
-        let revision = self.revision.as_ref().map(|r| r.revision);
+        let revision = self.revision;
         let modal = egui::Modal::new(egui::Id::new("matching-dialog")).show(ctx, |ui| {
             ui.set_width((ctx.screen_rect().width() - 70.0).clamp(180.0, 680.0));
             ui.heading(dialog.title());
@@ -336,11 +315,7 @@ impl Matching {
                             minimum,
                             preview,
                         } => {
-                            let enabled = ready
-                                && self
-                                    .revision
-                                    .as_ref()
-                                    .is_some_and(|r| r.bulk_merge_available);
+                            let enabled = ready && revision.is_some();
                             if let Some(action) =
                                 forms::bulk(ui, by_score, minimum, preview, enabled)
                             {

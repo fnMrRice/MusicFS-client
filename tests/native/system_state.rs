@@ -11,6 +11,7 @@ fn fixture() -> PlayerSnapshot {
         source_track_id: None,
         forced_source_track_id: None,
         cover_object_id: None,
+        online_cover_path: None,
         duration_ms: Some(9_000),
     };
     PlayerSnapshot {

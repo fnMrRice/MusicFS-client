@@ -106,6 +106,7 @@ fn group_queue(nodes: &[&AudioNode], selected: Option<&str>) -> Option<QueueSele
             forced_source_track_id: None,
             duration_ms: node.duration_ms,
             cover_object_id: node.cover_object_id.clone(),
+            online_cover_path: None,
         });
     }
     if tracks.is_empty() {

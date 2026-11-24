@@ -21,6 +21,7 @@ pub(super) struct Evidence {
     duration_ms: Option<u64>,
     availability: String,
     cover_object_id: Option<String>,
+    online_cover_path: Option<String>,
 }
 impl Evidence {
     pub fn version(track: &Track, source: &SourceVersion) -> Self {
@@ -37,6 +38,7 @@ impl Evidence {
             duration_ms: source.duration_ms,
             availability: source.availability.clone(),
             cover_object_id: source.cover_object_id.clone(),
+            online_cover_path: source.online_cover_path.clone(),
         }
     }
     pub fn show(
@@ -88,6 +90,7 @@ impl Evidence {
                     forced_source_track_id: None,
                     duration_ms: self.duration_ms,
                     cover_object_id: self.cover_object_id.clone(),
+                    online_cover_path: self.online_cover_path.clone(),
                 };
                 *error = svc.player.set_queue(vec![track], 0).err();
             }

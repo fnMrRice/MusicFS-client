@@ -329,8 +329,8 @@ impl ServerSession {
         checked(reply).await.map(|_| ())
     }
 
-    pub async fn cover_bytes(&self, id: &str) -> Result<Vec<u8>> {
-        let url = self.url(&format!("media/{}", check_id(id)?));
+    pub async fn cover_bytes(&self, cover: &str) -> Result<Vec<u8>> {
+        let url = self.url(&cover_endpoint(cover)?);
         let response = self.send(Method::GET, url, None).await?;
         let mime = response
             .headers()
@@ -350,4 +350,15 @@ impl ServerSession {
         }
         limited(response, 8 * 1024 * 1024).await
     }
+}
+
+// 在线封面和媒体对象都从当前登录的服务端读取。
+fn cover_endpoint(cover: &str) -> Result<String> {
+    if let Some(id) = cover
+        .strip_prefix("/api/v1/source-tracks/")
+        .and_then(|s| s.strip_suffix("/online-artwork"))
+    {
+        return Ok(format!("source-tracks/{}/online-artwork", check_id(id)?));
+    }
+    Ok(format!("media/{}", check_id(cover)?))
 }

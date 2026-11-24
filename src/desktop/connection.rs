@@ -1,4 +1,4 @@
-use musicfs_player_core::{Media, Player, PlayerCommand, Track, SUPPORTED_MIMES};
+use musicfs_player_core::{Media, PlaybackFormat, Player, PlayerCommand, Track, SUPPORTED_MIMES};
 use musicfs_server_adapter::ServerSession;
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -80,6 +80,11 @@ fn load(
     let closing = (runtime.clone(), server.clone());
     Ok(Media {
         source_track_id: lease.source_id.clone(),
+        format: PlaybackFormat {
+            codec: lease.codec.clone(),
+            sample_rate: lease.sample_rate,
+            bitrate_bps: lease.bitrate_bps,
+        },
         seek_range_ms: lease.seek_range_ms,
         seekable: reader.byte_seekable(),
         byte_length: reader.byte_length(),

@@ -62,9 +62,18 @@ impl FadeSettings {
 pub trait AudioReader: Read + Seek + Send + Sync + 'static {}
 impl<T: Read + Seek + Send + Sync + 'static> AudioReader for T {}
 
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlaybackFormat {
+    pub codec: Option<String>,
+    pub sample_rate: Option<u32>,
+    pub bitrate_bps: Option<u32>,
+}
+
 pub struct Media {
     pub reader: Box<dyn AudioReader>,
     pub source_track_id: String,
+    pub format: PlaybackFormat,
     pub seek_range_ms: Option<(u64, u64)>,
     pub byte_length: Option<u64>,
     pub seekable: bool,
@@ -84,7 +93,16 @@ pub struct Track {
     pub source_track_id: Option<String>,
     pub forced_source_track_id: Option<String>,
     pub cover_object_id: Option<String>,
+    pub online_cover_path: Option<String>,
     pub duration_ms: Option<u64>,
+}
+
+impl Track {
+    pub fn cover(&self) -> Option<&str> {
+        self.cover_object_id
+            .as_deref()
+            .or(self.online_cover_path.as_deref())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -110,6 +128,7 @@ pub struct PlayerSnapshot {
     pub seekable: bool,
     pub seek_range_ms: Option<(u64, u64)>,
     pub active_source_track_id: Option<String>,
+    pub active_format: Option<PlaybackFormat>,
     pub error: Option<String>,
     pub output: audio::OutputStatus,
 }
@@ -126,6 +145,7 @@ impl Default for PlayerSnapshot {
             seekable: false,
             seek_range_ms: None,
             active_source_track_id: None,
+            active_format: None,
             error: None,
             output: Default::default(),
         }

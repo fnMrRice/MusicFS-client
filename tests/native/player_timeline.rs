@@ -2,6 +2,27 @@ use super::*;
 use egui::{Event, Modifiers, PointerButton};
 
 #[test]
+fn playback_bar_uses_session_codec_bitrate_and_device_channels() {
+    let flac = PlaybackFormat {
+        codec: Some("flac".into()),
+        sample_rate: Some(44100),
+        bitrate_bps: Some(717577),
+    };
+    let channels = tr("{0} 声道").replace("{0}", "2");
+    assert_eq!(
+        format_label(Some(&flac), Some(2)),
+        format!("FLAC · 44.1 kHz · 717.6 kbps · {channels}")
+    );
+    let pcm = PlaybackFormat {
+        codec: Some("pcm_s16le".into()),
+        sample_rate: None,
+        bitrate_bps: None,
+    };
+    assert_eq!(format_label(Some(&pcm), None), "PCM");
+    assert_eq!(format_label(None, Some(2)), tr("暂无编码信息"));
+}
+
+#[test]
 fn playback_ticks_never_seek_but_a_pointer_drag_commits_the_draft_once() {
     let ctx = egui::Context::default();
     let mut player = PlayerUi::default();

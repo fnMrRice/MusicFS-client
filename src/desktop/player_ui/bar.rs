@@ -1,11 +1,45 @@
 use super::{lyrics::time, PlayerUi};
 use crate::{i18n::tr, icons, ui::style};
 use eframe::egui::{self, Align, Color32, Layout, Rect, RichText, Ui, UiBuilder};
-use musicfs_player_core::{Player, PlayerCommand, Status};
+use musicfs_player_core::{PlaybackFormat, Player, PlayerCommand, Status};
 
 #[cfg(test)]
 #[path = "../../../tests/native/player_timeline.rs"]
 mod tests;
+
+fn format_label(format: Option<&PlaybackFormat>, channels: Option<u16>) -> String {
+    let Some(format) = format else {
+        return tr("暂无编码信息").into();
+    };
+    let mut parts = Vec::new();
+    if let Some(codec) = format
+        .codec
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    {
+        let codec = codec.to_ascii_uppercase();
+        parts.push(if codec.starts_with("PCM_") {
+            "PCM".into()
+        } else {
+            codec
+        });
+    }
+    if let Some(rate) = format.sample_rate.filter(|&hz| hz > 0) {
+        parts.push(format!("{} kHz", f64::from(rate) / 1000.0));
+    }
+    if let Some(bitrate) = format.bitrate_bps.filter(|&bps| bps > 0) {
+        let kbps = (f64::from(bitrate) / 100.0).round() / 10.0;
+        parts.push(format!("{kbps} kbps"));
+    }
+    if let Some(n) = channels {
+        parts.push(tr("{0} 声道").replace("{0}", &n.to_string()));
+    }
+    if parts.is_empty() {
+        return tr("暂无编码信息").into();
+    }
+    parts.join(" · ")
+}
 
 impl PlayerUi {
     pub(super) fn bar(
@@ -183,12 +217,10 @@ impl PlayerUi {
         let label = track
             .map(|t| t.title.as_str())
             .unwrap_or_else(|| tr("暂无音频"));
-        let output = self
-            .snapshot
-            .output
-            .output_channels
-            .map(|n| tr("{0} 声道").replace("{0}", &n.to_string()))
-            .unwrap_or_else(|| tr("暂无编码信息").into());
+        let output = format_label(
+            self.snapshot.active_format.as_ref(),
+            self.snapshot.output.output_channels,
+        );
         let height = ui.text_style_height(&egui::TextStyle::Body) + 35.;
         let max = ui.available_rect_before_wrap();
         let bounds = Rect::from_center_size(max.center(), egui::vec2(max.width().max(0.), height));

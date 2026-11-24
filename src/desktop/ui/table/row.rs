@@ -68,7 +68,8 @@ pub(super) fn show(
     let mut result = None;
     let left = title.left() + if c.title > 150. { 14. } else { 4. };
     let cover = Rect::from_center_size(pos2(left + 21., rect.center().y), Vec2::splat(42.));
-    data.artwork.paint(ui, cover, svc, t.cover());
+    data.artwork
+        .paint(ui, cover, svc, t.cover().or_else(|| t.online_cover()));
     let tx = cover.right() + if c.title > 170. { 12. } else { 5. };
     let line = |y: f32| Rect::from_min_max(pos2(tx, y - 11.), pos2(title.right() - 3., y + 11.));
     let count = t.sources.as_ref().map_or(0, |g| g.choices().count());

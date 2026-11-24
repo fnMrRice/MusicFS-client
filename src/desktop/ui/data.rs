@@ -179,6 +179,7 @@ pub fn queue_track(track: &Track) -> Option<QueueTrack> {
         forced_source_track_id: track.forced_source_track_id.clone(),
         duration_ms: track.source().and_then(|s| s.duration_ms),
         cover_object_id: track.cover().map(str::to_owned),
+        online_cover_path: track.online_cover().map(str::to_owned),
     })
 }
 

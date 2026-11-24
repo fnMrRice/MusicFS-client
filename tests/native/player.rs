@@ -15,11 +15,12 @@ pub(crate) fn track(id: &str) -> Track {
         source_track_id: Some(id.into()),
         forced_source_track_id: None,
         cover_object_id: None,
+        online_cover_path: None,
         duration_ms: Some(100),
     }
 }
 
-fn test_audio(on_close: impl FnOnce() + Send + 'static) -> Media {
+pub(crate) fn test_audio(on_close: impl FnOnce() + Send + 'static) -> Media {
     let rate: u32 = 8000;
     let samples: u32 = rate / 10;
     let mut wav = Vec::new();
@@ -40,6 +41,11 @@ fn test_audio(on_close: impl FnOnce() + Send + 'static) -> Media {
     }
     Media {
         source_track_id: "test".into(),
+        format: PlaybackFormat {
+            codec: Some("pcm_s16le".into()),
+            sample_rate: Some(rate),
+            bitrate_bps: Some(rate * 16),
+        },
         seek_range_ms: Some((0, 100)),
         byte_length: Some(wav.len() as u64),
         reader: Box::new(Cursor::new(wav)),
@@ -72,6 +78,8 @@ fn decodes_and_seeks_wav_without_a_device() {
     let Event::Opened(lease) = receive() else {
         panic!("Missing lease")
     };
+    assert_eq!(lease.format.codec.as_deref(), Some("pcm_s16le"));
+    assert_eq!(lease.format.bitrate_bps, Some(128000));
     let Event::Ready {
         mut source,
         clock,

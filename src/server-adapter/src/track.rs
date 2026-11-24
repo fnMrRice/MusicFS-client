@@ -14,6 +14,7 @@ pub struct SourceVersion {
     pub sample_rate_hz: Option<u64>,
     pub duration_ms: Option<u64>,
     pub cover_object_id: Option<String>,
+    pub online_cover_path: Option<String>,
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -73,6 +74,17 @@ impl Track {
             .as_deref()
             .or_else(|| self.source()?.cover_object_id.as_deref())
     }
+
+    pub fn online_cover(&self) -> Option<&str> {
+        self.source()
+            .and_then(|s| s.online_cover_path.as_deref())
+            .or_else(|| {
+                self.sources
+                    .as_ref()?
+                    .choices()
+                    .find_map(|s| s.online_cover_path.as_deref())
+            })
+    }
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -124,6 +136,32 @@ impl MusicTrack {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn online_artwork_falls_back_to_another_version_and_uses_the_session_server() {
+        let mut selected = json!({"sourceTrackId":"local","displayName":"Song","providerInstanceId":"files","availability":"available"});
+        selected["versions"] = json!([{"sourceTrackId":"cloud","displayName":"Song","providerInstanceId":"netease","availability":"available","onlineCoverPath":"/api/v1/source-tracks/cloud/online-artwork"}]);
+        let raw = json!({"trackId":"song","title":"Song","artists":[], "albums":[], "selectedSource":selected});
+        let track = serde_json::from_value::<MusicTrack>(raw)
+            .unwrap()
+            .into_track(None);
+        let path = track.online_cover().unwrap();
+        assert_eq!(
+            super::super::cover_endpoint(path).unwrap(),
+            "source-tracks/cloud/online-artwork"
+        );
+        assert_eq!(
+            super::super::cover_endpoint("saved").unwrap(),
+            "media/saved"
+        );
+        for invalid in [
+            "https://outside.invalid/image",
+            "/api/v1/source-tracks/../online-artwork",
+            "/api/v1/source-tracks/cloud/online-artwork?source=other",
+        ] {
+            assert!(super::super::cover_endpoint(invalid).is_err());
+        }
+    }
     #[test]
     fn track_identity_and_cover_survive_a_missing_or_disabled_pinned_source() {
         let version = |id: &str, availability: &str| json!({"sourceTrackId":id,"displayName":id,"providerInstanceId":"local","availability":availability,"coverObjectId":id});

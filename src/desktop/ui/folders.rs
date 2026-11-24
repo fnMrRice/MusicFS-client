@@ -368,6 +368,7 @@ fn queue(t: &Recording) -> Track {
         artists: t.artists.clone().unwrap_or_default(),
         album: t.album.clone(),
         cover_object_id: t.cover_object_id.clone(),
+        online_cover_path: None,
         duration_ms: t.duration_ms,
     }
 }

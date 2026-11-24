@@ -15,6 +15,9 @@ use super::{check_id, Result, ServerSession, API_TIMEOUT};
 #[derive(Clone)]
 pub struct StreamLease {
     pub mime: String,
+    pub codec: Option<String>,
+    pub sample_rate: Option<u32>,
+    pub bitrate_bps: Option<u32>,
     pub source_id: String,
     pub seek_range_ms: Option<(u64, u64)>,
     pub(crate) url: Url,
@@ -26,9 +29,13 @@ pub struct StreamLease {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Profile {
     mime: String,
     transport: String,
+    codec: Option<String>,
+    sample_rate: Option<u32>,
+    bitrate_bps: Option<u32>,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -163,6 +170,9 @@ impl ServerSession {
                 attempt_id: d.attempt_id,
                 source_id: d.source_track_id,
                 mime: d.output_profile.mime,
+                codec: d.output_profile.codec,
+                sample_rate: d.output_profile.sample_rate,
+                bitrate_bps: d.output_profile.bitrate_bps,
                 url,
                 byte_range: d.seek_mode == "byteRange",
                 seek_range_ms: d.seekable_range.map(|r| (r.start_ms, r.end_ms)),
@@ -229,6 +239,22 @@ fn create_body(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn playback_profile_retains_negotiated_codec_and_optional_bitrate() {
+        let p: super::Profile = serde_json::from_value(serde_json::json!({
+            "mime": "audio/mpeg", "codec": "mp3", "transport": "nativeHttp", "sampleRate": 44100, "bitrateBps": 320000
+        }))
+        .unwrap();
+        assert_eq!(p.codec.as_deref(), Some("mp3"));
+        assert_eq!(p.sample_rate, Some(44100));
+        assert_eq!(p.bitrate_bps, Some(320000));
+        let p: super::Profile = serde_json::from_value(serde_json::json!({
+            "mime": "audio/flac", "transport": "nativeHttp", "codec": null
+        }))
+        .unwrap();
+        assert!(p.codec.is_none() && p.bitrate_bps.is_none());
+    }
+
     #[test]
     fn work_track_uses_only_its_source_identity() {
         let body = super::create_body("", "work-audio", None, &["audio/wav"], true);

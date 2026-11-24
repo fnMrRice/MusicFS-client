@@ -34,9 +34,7 @@ impl PlayerUi {
         let Some((instance, _)) = self.identity else {
             return Default::default();
         };
-        let cover = self
-            .current_track()
-            .and_then(|t| t.cover_object_id.as_deref());
+        let cover = self.current_track().and_then(Track::cover);
         crate::system::SystemState::from_snapshot(
             instance,
             &self.snapshot,
@@ -80,7 +78,10 @@ impl PlayerUi {
             self.poll(player);
             self.last_poll = Some(Instant::now());
         }
-        let cover = self.current_track().and_then(|t| t.cover_object_id.clone());
+        let cover = self
+            .current_track()
+            .and_then(Track::cover)
+            .map(str::to_owned);
         self.cover.update(
             ctx,
             runtime,

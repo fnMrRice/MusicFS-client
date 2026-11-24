@@ -12,6 +12,10 @@ use std::time::Duration;
 #[path = "../../tests/native/fades.rs"]
 mod fade_tests;
 
+#[cfg(test)]
+#[path = "../../tests/native/active_format.rs"]
+mod active_format_tests;
+
 pub fn run(receiver: Receiver<Request>, decoder: Worker) {
     let mut player = Actor::new(decoder);
     loop {
@@ -221,6 +225,7 @@ impl Actor {
         self.state.seekable = false;
         self.state.seek_range_ms = None;
         self.state.active_source_track_id = None;
+        self.state.active_format = None;
         self.paused = false;
     }
 
@@ -366,6 +371,7 @@ impl Actor {
             Event::Failed(error) => Err(error),
             Event::Opened(lifecycle) => {
                 self.state.active_source_track_id = Some(lifecycle.source_id.clone());
+                self.state.active_format = Some(lifecycle.format.clone());
                 self.lifecycle = Some(lifecycle);
                 Ok(())
             }

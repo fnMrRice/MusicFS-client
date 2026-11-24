@@ -1,5 +1,5 @@
 use crate::pcm::{Block, Clock, PcmSource};
-use crate::{AudioReader, Media, Track};
+use crate::{AudioReader, Media, PlaybackFormat, Track};
 use rodio::{Decoder, Source};
 use std::io::{self, BufReader, Read, Seek, SeekFrom};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -12,6 +12,7 @@ pub struct Lifecycle {
     pub started: Option<Box<dyn FnOnce() + Send>>,
     close: Option<Box<dyn FnOnce() + Send>>,
     pub source_id: String,
+    pub format: PlaybackFormat,
     pub seek_range_ms: Option<(u64, u64)>,
 }
 
@@ -135,6 +136,7 @@ fn decode(
         started: Some(media.on_started),
         close: Some(media.on_close),
         source_id: media.source_track_id,
+        format: media.format,
         seek_range_ms: media.seek_range_ms,
     };
     let current = || job.generation == active.load(Ordering::Acquire);

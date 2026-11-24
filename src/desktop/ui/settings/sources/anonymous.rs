@@ -219,6 +219,7 @@ impl Search {
                         forced_source_track_id: None,
                         duration_ms: v["durationMs"].as_u64().or(hit.duration_ms),
                         cover_object_id: v["coverObjectId"].as_str().map(str::to_owned),
+                        online_cover_path: v["onlineCoverPath"].as_str().map(str::to_owned),
                     },
                     play,
                 ))

@@ -23,6 +23,7 @@ struct View {
     account_id: Option<String>,
     display_name: Option<String>,
     avatar_url: Option<String>,
+    membership_tier: Option<String>,
     login_id: Option<String>,
     method: Option<String>,
     qr_url: Option<String>,
@@ -123,6 +124,17 @@ impl Account {
                     "canceled" => "已取消登录",
                     other => other,
                 }));
+                if view.state == "signedIn" && text(instance, "platform") == "netease" {
+                    let label = match view.membership_tier.as_deref() {
+                        Some("free") => Some(tr("非会员")),
+                        Some("vip") => Some("VIP"),
+                        Some("svip") => Some("SVIP"),
+                        _ => None,
+                    };
+                    if let Some(label) = label {
+                        ui.weak(label);
+                    }
+                }
             });
             let bound = view.account_id.as_ref().is_some_and(|s| !s.is_empty());
             let pending = view.login_id.as_ref().is_some_and(|s| !s.is_empty());

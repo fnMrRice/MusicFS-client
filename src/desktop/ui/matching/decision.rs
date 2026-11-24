@@ -22,6 +22,13 @@ pub(super) enum Decision {
     Bulk {
         score: Option<u8>,
     },
+    QueueBulk {
+        score: Option<u8>,
+    },
+    QueueAlbums {
+        provider: Option<String>,
+        query: String,
+    },
 }
 
 impl Decision {
@@ -43,14 +50,32 @@ impl Decision {
                 "exclusions",
                 json!({"expectedRevision":rev,"leftSourceTrackId":left,"rightSourceTrackId":right,"excluded":excluded}),
             ),
-            Self::Bulk { score: Some(score) } => (
+            Self::QueueAlbums { provider, query } => {
+                let mut body = json!({});
+                if let Some(provider) = provider {
+                    body["providerInstanceId"] = json!(provider);
+                }
+                if !query.is_empty() {
+                    body["q"] = json!(query);
+                }
+                ("album-scrape", body)
+            }
+            Self::Bulk { score: Some(score) } | Self::QueueBulk { score: Some(score) } => (
                 "bulk-merge",
                 json!({"expectedRevision":rev,"mode":"score","minimumScore":score}),
             ),
-            Self::Bulk { score: None } => (
+            Self::Bulk { score: None } | Self::QueueBulk { score: None } => (
                 "bulk-merge",
                 json!({"expectedRevision":rev,"mode":"title_artist"}),
             ),
+        }
+    }
+
+    fn queued_kind(&self) -> Option<&'static str> {
+        match self {
+            Self::QueueBulk { .. } => Some("bulkMerge"),
+            Self::QueueAlbums { .. } => Some("albumAutoScrape"),
+            _ => None,
         }
     }
 }
@@ -144,14 +169,19 @@ pub(super) struct Receipt {
     pub skipped_groups: Option<u64>,
 }
 
+enum Submission {
+    Queued,
+    Applied(Receipt),
+}
+
 #[derive(Default)]
 pub(super) struct Decisions {
     initialized: bool,
     pending: Option<Pending>,
-    task: Option<Task<Receipt>>,
+    task: Option<Task<Submission>>,
     pub error: Option<String>,
     pub conflict: bool,
-    pub receipt: Option<Receipt>,
+    receipt: Option<Submission>,
 }
 
 impl Decisions {
@@ -198,7 +228,23 @@ impl Decisions {
         self.error = None;
         let server = svc.server.clone();
         self.task = Some(Task::spawn(svc.runtime, ctx, async move {
-            submit(&server, &p).await
+            if let Some(expected) = p.request.queued_kind() {
+                let (route, body) = p.request.payload(p.revision);
+                let value = server
+                    .settings_json(
+                        "POST",
+                        &format!("/tasks/{route}"),
+                        Some(&body),
+                        &[("Idempotency-Key", &p.key.0.to_string())],
+                    )
+                    .await?;
+                if value["kind"] != expected || value["id"].as_str().is_none_or(str::is_empty) {
+                    return Err("Invalid task submission result.".into());
+                }
+                Ok(Submission::Queued)
+            } else {
+                submit(&server, &p).await.map(Submission::Applied)
+            }
         }));
     }
 
@@ -261,14 +307,24 @@ impl Decisions {
         }
         if let Some(p) = &self.pending {
             if self.busy() {
-                ui.weak(tr(if matches!(p.request, Decision::Bulk { .. }) {
+                ui.weak(tr(if p.request.queued_kind().is_some() {
+                    "正在加入任务队列…"
+                } else if matches!(p.request, Decision::Bulk { .. }) {
                     "正在合并重复音乐，可离开此页面。"
                 } else {
                     "正在保存歌曲关联，可离开此页面。"
                 }));
             } else {
-                ui.label(tr("上次歌曲关联操作的结果尚未确认，请继续确认。"));
-                if ui.button(tr("继续确认关联结果")).clicked() {
+                let (hint, label) = if p.request.queued_kind().is_some() {
+                    ("尚未确认入队结果，请重试原请求。", "继续确认入队结果")
+                } else {
+                    (
+                        "上次歌曲关联操作的结果尚未确认，请继续确认。",
+                        "继续确认关联结果",
+                    )
+                };
+                ui.label(tr(hint));
+                if ui.button(tr(label)).clicked() {
                     self.retry(ui.ctx(), svc);
                 }
             }
@@ -278,7 +334,10 @@ impl Decisions {
             self.error = None;
             return true;
         }
-        if let Some(r) = &self.receipt {
+        if let Some(Submission::Queued) = &self.receipt {
+            ui.label(tr("已加入任务队列"));
+        }
+        if let Some(Submission::Applied(r)) = &self.receipt {
             if let (Some(groups), Some(sources), Some(skipped)) =
                 (r.merged_groups, r.merged_sources, r.skipped_groups)
             {

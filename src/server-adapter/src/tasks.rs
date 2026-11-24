@@ -7,20 +7,69 @@ use uuid::Uuid;
 #[derive(Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TaskPage {
-    pub items: Vec<RefreshTask>,
+    pub items: Vec<LibraryTask>,
     pub active_count: usize,
     pub next_cursor: Option<String>,
 }
 
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RefreshTask {
+pub struct LibraryTask {
     pub id: String,
-    pub provider_name: String,
     pub owner_name: String,
-    pub roots: Vec<Root>,
     pub status: String,
     pub cancellable: bool,
+    pub error: Option<TaskError>,
+    #[serde(flatten)]
+    pub details: TaskDetails,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
+pub enum TaskDetails {
+    MetadataRefresh {
+        provider_name: String,
+        roots: Vec<Root>,
+    },
+    AlbumAutoScrape {
+        progress: Progress,
+        result: AlbumResult,
+    },
+    BulkMerge {
+        result: MergeResult,
+    },
+}
+
+#[derive(Clone, Deserialize)]
+pub struct Progress {
+    pub completed: usize,
+    pub total: usize,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AlbumResult {
+    pub updated: usize,
+    pub retained: usize,
+    pub not_found: usize,
+    pub failed: usize,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MergeResult {
+    pub merged_groups: usize,
+    pub merged_sources: usize,
+    pub skipped_groups: usize,
+}
+
+#[derive(Clone, Deserialize)]
+pub struct TaskError {
+    pub message: String,
 }
 
 #[derive(Clone, Deserialize)]
@@ -31,7 +80,7 @@ pub struct Root {
 #[derive(Clone, Deserialize)]
 pub struct TaskSnapshot {
     pub page: TaskPage,
-    pub changed: Vec<RefreshTask>,
+    pub changed: Vec<LibraryTask>,
     pub reset: bool,
 }
 
@@ -102,6 +151,37 @@ impl Subscription {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reads_library_task_results_without_refresh_roots() {
+        let common = json!({"id":"id","ownerName":"user","status":"succeeded","cancellable":false});
+        for (kind, result) in [
+            (
+                "albumAutoScrape",
+                json!({"updated":2,"retained":1,"notFound":1,"failed":0}),
+            ),
+            (
+                "bulkMerge",
+                json!({"mergedGroups":2,"mergedSources":4,"skippedGroups":1}),
+            ),
+        ] {
+            let mut row = common.clone();
+            row["kind"] = json!(kind);
+            row["result"] = result;
+            row["progress"] = json!({"total":4,"completed":4});
+            let task: LibraryTask = serde_json::from_value(row).unwrap();
+            match task.details {
+                TaskDetails::AlbumAutoScrape { progress, result } => {
+                    assert_eq!(
+                        (progress.total, result.updated, result.not_found),
+                        (4, 2, 1)
+                    );
+                }
+                TaskDetails::BulkMerge { result } => assert_eq!(result.merged_sources, 4),
+                TaskDetails::MetadataRefresh { .. } => panic!("expected a library task"),
+            }
+        }
+    }
 
     #[test]
     fn scopes_requests_and_recovers_missed_history_changes() {

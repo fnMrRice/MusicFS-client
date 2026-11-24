@@ -135,7 +135,11 @@ impl SignedUi {
         );
         right.spacing_mut().item_spacing.x = gap;
         self.shell.service_button(&mut right, svc);
-        self.shell.tasks.button(&mut right, svc);
+        if self.shell.tasks.button(&mut right, svc) {
+            self.catalog.categories = Default::default();
+            self.catalog.artwork = Default::default();
+            self.catalog.reset_tracks();
+        }
         if icons::button(&mut right, "settings", tr("设置"), 36., 22.).clicked() {
             self.navigate(Screen::Settings);
         }

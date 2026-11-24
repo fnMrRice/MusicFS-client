@@ -1,11 +1,14 @@
+#[path = "task_row.rs"]
+mod task_row;
 use super::{popup, Services};
 use crate::{i18n::tr, icons, task::Task};
 use eframe::egui::{self, Ui};
 use musicfs_server_adapter::{
-    tasks::{RefreshTask, TaskPage, TaskSnapshot, TaskUpdates},
+    tasks::{LibraryTask, TaskDetails, TaskPage, TaskSnapshot, TaskUpdates},
     ServerSession,
 };
 use std::collections::{HashMap, HashSet};
+use task_row::task_details;
 
 #[derive(Default)]
 pub(super) struct Queue {
@@ -13,11 +16,11 @@ pub(super) struct Queue {
     all: bool,
     updates: Option<TaskUpdates>,
     waiting: bool,
-    history: Vec<RefreshTask>,
+    history: Vec<LibraryTask>,
     history_pages: usize,
     history_cursor: Option<String>,
     pending: Option<Task<TaskPage>>,
-    changed_during_read: HashMap<String, RefreshTask>,
+    changed_during_read: HashMap<String, LibraryTask>,
     cancel: Option<Task<()>>,
     error: Option<String>,
     subscription_error: Option<String>,
@@ -97,7 +100,8 @@ impl Queue {
         self.history_cursor = page.next_cursor;
     }
 
-    pub(super) fn button(&mut self, ui: &mut Ui, svc: Services<'_>) {
+    pub(super) fn button(&mut self, ui: &mut Ui, svc: Services<'_>) -> bool {
+        let mut catalog_changed = false;
         if let Some(result) = self.pending.as_mut().and_then(Task::poll) {
             self.pending = None;
             match result {
@@ -117,6 +121,32 @@ impl Queue {
         if let Some(update) = self.updates.as_mut().and_then(TaskUpdates::take) {
             match update {
                 Ok(snapshot) => {
+                    catalog_changed =
+                        snapshot
+                            .page
+                            .items
+                            .iter()
+                            .chain(&snapshot.changed)
+                            .any(|task| {
+                                let updated = match &task.details {
+                                    TaskDetails::AlbumAutoScrape { result, .. } => {
+                                        result.updated > 0
+                                    }
+                                    TaskDetails::BulkMerge { result } => result.merged_groups > 0,
+                                    _ => false,
+                                };
+                                updated
+                                    && matches!(
+                                        task.status.as_str(),
+                                        "succeeded" | "failed" | "cancelled"
+                                    )
+                                    && !self
+                                        .page
+                                        .items
+                                        .iter()
+                                        .chain(&self.history)
+                                        .any(|old| old.id == task.id && old.status == task.status)
+                            });
                     if self.apply(snapshot) {
                         if let Some(cursor) = self.page.next_cursor.clone() {
                             self.load_history(ui, svc, cursor, self.history_pages);
@@ -167,7 +197,7 @@ impl Queue {
                 ui.weak(tr(if self.waiting {
                     "正在读取任务…"
                 } else {
-                    "暂无刷新任务"
+                    "暂无任务"
                 }));
             }
             let mut cancel = None;
@@ -176,20 +206,13 @@ impl Queue {
                 .show(ui, |ui| {
                     for task in self.page.items.iter().chain(&self.history) {
                         ui.separator();
-                        ui.strong(&task.provider_name);
-                        ui.label(
-                            task.roots
-                                .iter()
-                                .map(|r| r.name.as_str())
-                                .collect::<Vec<_>>()
-                                .join(" / "),
-                        );
+                        task_details(ui, task);
                         ui.horizontal(|ui| {
                             ui.weak(tr(match task.status.as_str() {
-                                "queued" => "等待刷新",
-                                "running" => "正在刷新",
-                                "succeeded" => "刷新完成",
-                                "failed" => "刷新未完成",
+                                "queued" => "等待执行",
+                                "running" => "任务正在执行",
+                                "succeeded" => "任务已完成",
+                                "failed" => "失败",
                                 "cancelled" => "已取消",
                                 "cancelling" => "正在中断…",
                                 other => other,
@@ -201,7 +224,11 @@ impl Queue {
                                 && ui
                                     .add_enabled(
                                         self.cancel.is_none(),
-                                        egui::Button::new(tr("中断")),
+                                        egui::Button::new(tr(if task.status == "queued" {
+                                            "取消"
+                                        } else {
+                                            "中断"
+                                        })),
                                     )
                                     .clicked()
                             {
@@ -238,6 +265,7 @@ impl Queue {
                 }
             }
         });
+        catalog_changed
     }
 }
 
@@ -281,14 +309,17 @@ async fn read_history(
 mod tests {
     use super::*;
 
-    fn task(id: &str, status: &str) -> RefreshTask {
-        RefreshTask {
+    fn task(id: &str, status: &str) -> LibraryTask {
+        LibraryTask {
             id: id.into(),
             status: status.into(),
-            provider_name: String::new(),
             owner_name: String::new(),
-            roots: vec![],
             cancellable: false,
+            error: None,
+            details: TaskDetails::MetadataRefresh {
+                provider_name: String::new(),
+                roots: vec![],
+            },
         }
     }
 

@@ -146,6 +146,34 @@ impl Matching {
             .as_ref()
             .is_some_and(|r| r.bulk_merge_available)
     }
+
+    pub(super) fn queue_albums(
+        &mut self,
+        ui: &mut egui::Ui,
+        svc: Services<'_>,
+        provider: Option<&str>,
+        query: &str,
+    ) {
+        let updated = self.decisions.update(svc);
+        if self.decisions.feedback(ui, svc) || updated {
+            self.changed(ui.ctx(), svc);
+        }
+        if ui
+            .add_enabled(!self.locked(), egui::Button::new(tr("一键自动刮削")))
+            .on_hover_text(tr("自动刮削当前来源和搜索条件下的所有未刮削专辑"))
+            .clicked()
+        {
+            self.decisions.start(
+                ui.ctx(),
+                svc,
+                0,
+                Decision::QueueAlbums {
+                    provider: provider.map(str::to_owned),
+                    query: query.to_owned(),
+                },
+            );
+        }
+    }
     pub(super) fn buttons(&mut self, ui: &mut egui::Ui, svc: Services<'_>) {
         if self.supports_bulk()
             && ui

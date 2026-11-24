@@ -96,7 +96,8 @@ pub(super) fn bulk(
             tr("最低分数必须是 0 到 100 的整数。"),
         );
     }
-    let label = tr(if *preview {
+    let was_preview = *preview;
+    let label = tr(if was_preview {
         "开始合并"
     } else {
         "预览合并规则"
@@ -111,6 +112,15 @@ pub(super) fn bulk(
             });
         }
         *preview = true;
+    }
+    if was_preview
+        && ui
+            .add_enabled(enabled && valid, egui::Button::new(tr("加入任务队列")))
+            .clicked()
+    {
+        return Some(Decision::QueueBulk {
+            score: if *by_score { score } else { None },
+        });
     }
     if *preview && enabled && ui.button(tr("更改规则")).clicked() {
         *preview = false;
@@ -224,6 +234,7 @@ mod tests {
             });
             (request, node)
         };
+        assert!(render(None, "加入任务队列").1.is_none());
         let (_, button) = render(None, "预览合并规则");
         assert!(render(Some(button.expect("Preview button")), "开始合并")
             .0
@@ -232,6 +243,11 @@ mod tests {
         assert!(matches!(
             render(Some(confirm.expect("Confirm button")), "").0,
             Some(Decision::Bulk { score: Some(90) })
+        ));
+        let (_, queue) = render(None, "加入任务队列");
+        assert!(matches!(
+            render(Some(queue.expect("Queue button")), "").0,
+            Some(Decision::QueueBulk { score: Some(90) })
         ));
     }
 }

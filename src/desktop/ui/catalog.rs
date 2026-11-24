@@ -107,6 +107,14 @@ impl Catalog {
             if self.tabs != CategoryTab::Folder {
                 self.list_search(ui);
             }
+            if self.tabs == CategoryTab::Album && self.category.is_none() {
+                self.matching.queue_albums(
+                    ui,
+                    svc,
+                    self.providers.selected.as_deref(),
+                    &self.list_query,
+                );
+            }
         });
         self.providers.status(ui);
         if self.tabs == CategoryTab::Folder {

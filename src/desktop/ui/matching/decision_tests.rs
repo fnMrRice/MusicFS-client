@@ -16,6 +16,39 @@ fn scopes_bulk_rules_and_idempotency_keys() {
     assert!(serde_json::from_value::<UuidKey>(json!("../settings")).is_err());
 }
 
+#[test]
+fn queued_catalog_operations_keep_the_confirmed_scope_and_rules() {
+    let album = Decision::QueueAlbums {
+        provider: Some("source".into()),
+        query: "Album".into(),
+    };
+    assert_eq!(album.queued_kind(), Some("albumAutoScrape"));
+    assert_eq!(
+        album.payload(0),
+        (
+            "album-scrape",
+            json!({"providerInstanceId":"source","q":"Album"})
+        )
+    );
+    assert_eq!(
+        Decision::QueueAlbums {
+            provider: None,
+            query: String::new()
+        }
+        .payload(0)
+        .1,
+        json!({})
+    );
+    for score in [None, Some(85)] {
+        let queued = Decision::QueueBulk { score };
+        assert_eq!(queued.queued_kind(), Some("bulkMerge"));
+        assert_eq!(queued.payload(17), Decision::Bulk { score }.payload(17));
+        let restored: Decision =
+            serde_json::from_value(serde_json::to_value(queued).unwrap()).unwrap();
+        assert_eq!(restored.queued_kind(), Some("bulkMerge"));
+    }
+}
+
 // 使用隔离曲库中的相同 WAV 副本，覆盖真实候选、批量处理、排除、手动关联与幂等重放。
 #[test]
 #[ignore]

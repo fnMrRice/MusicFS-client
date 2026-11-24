@@ -8,6 +8,7 @@ mod playlist_edit;
 mod reader;
 mod recommendations;
 mod settings;
+pub mod tasks;
 mod track;
 mod track_actions;
 pub use track::{SourceGroup, SourceVersion, TrackCredit};

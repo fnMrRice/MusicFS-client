@@ -1,4 +1,8 @@
-use super::{control::ControlSocket, ServerSession, API_TIMEOUT};
+use super::{
+    control::ControlSocket,
+    tasks::{Subscription, TaskUpdates},
+    ServerSession, API_TIMEOUT,
+};
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value;
 use std::time::Duration;
@@ -14,6 +18,7 @@ pub struct ActivityRevisions {
 
 pub struct ActivityStream {
     revisions: watch::Receiver<ActivityRevisions>,
+    tasks: watch::Sender<Option<Subscription>>,
     worker: JoinHandle<()>,
 }
 
@@ -24,6 +29,12 @@ impl ActivityStream {
 
     pub fn subscribe(&self) -> watch::Receiver<ActivityRevisions> {
         self.revisions.clone()
+    }
+
+    pub fn subscribe_tasks(&self, all: bool) -> TaskUpdates {
+        let (subscription, updates) = Subscription::new(all);
+        self.tasks.send_replace(Some(subscription));
+        updates
     }
 }
 
@@ -37,6 +48,7 @@ impl ServerSession {
     /// 每个已登录界面共享一条通知连接。重连后重新读取当前可见状态。
     pub fn listen_activity(&self, repaint: impl Fn() + Send + Sync + 'static) -> ActivityStream {
         let (tx, revisions) = watch::channel(ActivityRevisions::default());
+        let (tasks, mut requested) = watch::channel(None);
         let session = self.clone();
         let worker = self.runtime.spawn(async move {
             let mut backoff = Duration::from_secs(1);
@@ -52,7 +64,7 @@ impl ServerSession {
                             r.plugin_jobs += 1;
                         });
                         repaint();
-                        listen(socket, interval, timeout, &tx, &repaint).await;
+                        listen(socket, interval, timeout, &tx, &mut requested, &repaint).await;
                     }
                 }
                 if session.expired() {
@@ -63,7 +75,11 @@ impl ServerSession {
                 backoff = (backoff * 2).min(Duration::from_secs(30));
             }
         });
-        ActivityStream { revisions, worker }
+        ActivityStream {
+            revisions,
+            tasks,
+            worker,
+        }
     }
 }
 
@@ -84,13 +100,26 @@ async fn listen(
     interval: Duration,
     timeout: Duration,
     tx: &watch::Sender<ActivityRevisions>,
+    requested: &mut watch::Receiver<Option<Subscription>>,
     repaint: &impl Fn(),
 ) {
     let mut tick = time::interval_at(time::Instant::now() + interval, interval);
     tick.set_missed_tick_behavior(time::MissedTickBehavior::Skip);
     let mut last_pong = time::Instant::now();
+    let mut task_subscription: Option<(String, Subscription)> = None;
+    // 新连接的首个快照必须来自本次订阅，即使任务范围与断线前相同。
+    requested.mark_changed();
     loop {
         tokio::select! {
+            request = requested.changed() => {
+                if request.is_err() { return; }
+                let next = requested.borrow_and_update().clone();
+                if let Some(subscription) = next {
+                    let (id, frame) = subscription.request();
+                    if !matches!(time::timeout(interval, socket.send(frame)).await, Ok(Ok(()))) { return; }
+                    task_subscription = Some((id, subscription));
+                }
+            }
             _ = tick.tick() => {
                 if last_pong.elapsed() >= timeout { return; }
                 let ping = socket.send(Message::text(r#"{"type":"ping"}"#));
@@ -103,7 +132,9 @@ async fn listen(
                     Message::Text(text) => {
                         let Ok(frame) = serde_json::from_str::<Value>(&text) else { return; };
                         if frame["type"] == "pong" { last_pong = time::Instant::now(); }
-                        if tx.send_if_modified(|r| update(r, &frame)) { repaint(); }
+                        let tasks_changed = task_subscription.as_ref()
+                            .is_some_and(|(id, subscription)| subscription.receive(id, &frame));
+                        if tx.send_if_modified(|r| update(r, &frame)) || tasks_changed { repaint(); }
                     }
                     _ => {}
                 }
@@ -170,6 +201,7 @@ mod tests {
         };
 
         let peer = tokio::spawn(async move {
+            let mut previous_id = String::new();
             for connection in 0..2 {
                 let (tcp, _) = listener.accept().await.unwrap();
                 let mut ws =
@@ -196,10 +228,27 @@ mod tests {
                 ))
                 .await
                 .unwrap();
+                let request = ws.next().await.unwrap().unwrap();
+                let request: Value = serde_json::from_str(request.to_text().unwrap()).unwrap();
+                assert_eq!(request["type"], "request");
+                assert_eq!(request["method"], "POST");
+                assert_eq!(request["path"], "/tasks/subscription");
+                assert_eq!(request["body"]["scope"], "mine");
+                let id = request["body"]["subscriptionId"].as_str().unwrap();
+                assert_ne!(id, previous_id);
+                previous_id = id.into();
+                ws.send(Message::text(
+                    json!({"type":"response","id":request["id"],"status":204}).to_string(),
+                ))
+                .await
+                .unwrap();
+                ws.send(Message::text(json!({"type":"event","event":"tasks.snapshot","data":{
+                    "subscriptionId":id,"page":{"items":[],"activeCount":connection+1,"nextCursor":null},
+                    "changed":[],"reset":true}}).to_string())).await.unwrap();
                 if connection == 0 {
                     ws.send(Message::text(
                         json!({"type":"event","event":"activity.changed",
-                        "data":{"resources":["tasks","scans","scans"]}})
+                        "data":{"resources":["scans","scans"]}})
                         .to_string(),
                     ))
                     .await
@@ -220,7 +269,11 @@ mod tests {
                 }
             }
         });
-        let stream = session.listen_activity(|| {});
+        let (wake, mut repaints) = tokio::sync::mpsc::unbounded_channel();
+        let stream = session.listen_activity(move || {
+            let _ = wake.send(());
+        });
+        let mut tasks = stream.subscribe_tasks(false);
         let mut changes = stream.subscribe();
         time::timeout(
             Duration::from_secs(6),
@@ -228,6 +281,18 @@ mod tests {
         )
         .await
         .unwrap()
+        .unwrap();
+        time::timeout(Duration::from_secs(2), async {
+            loop {
+                if let Some(result) = tasks.take() {
+                    if result.unwrap().page.active_count == 2 {
+                        break;
+                    }
+                }
+                repaints.recv().await.unwrap();
+            }
+        })
+        .await
         .unwrap();
         drop(stream);
         time::timeout(Duration::from_secs(2), peer)

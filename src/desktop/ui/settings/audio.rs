@@ -1,25 +1,25 @@
+mod devices;
 mod effects;
 use super::{HostAction, Services};
 use crate::{
     i18n::tr,
     model::{audio::AudioAction, Preferences},
-    task::Task,
     ui::style,
 };
 use eframe::egui::{self, Ui};
 use musicfs_player_core::{
-    audio::{EffectKind, Layout, LocalDsp, OutputStatus, Processing, Routing},
-    PlayerCommand,
+    audio::{EffectKind, Layout, LocalDsp, OutputStatus, Processing, Routing, DSP_BUFFER_FRAMES},
+    Player, PlayerCommand,
 };
 use std::time::{Duration, Instant};
+use tokio::runtime::Handle;
 
 #[derive(Default)]
 pub(super) struct AudioSettingsUi {
     dsp: Option<LocalDsp>,
     routing: Option<Routing>,
     kind: Option<EffectKind>,
-    device: Option<Result<u16, String>>,
-    probe: Option<Task<u16>>,
+    devices: devices::DeviceSelector,
     status: OutputStatus,
     inspected: Option<Instant>,
     error: Option<String>,
@@ -75,7 +75,8 @@ impl AudioSettingsUi {
     pub(super) fn local_dsp(
         &mut self,
         ui: &mut Ui,
-        svc: Services<'_>,
+        player: &Player,
+        runtime: &Handle,
         prefs: &Preferences,
         action: &mut Option<HostAction>,
     ) {
@@ -87,6 +88,15 @@ impl AudioSettingsUi {
         if !dsp.enabled {
             ui.weak(tr("本地音效已旁路，保留当前效果和参数。"));
         }
+        egui::ComboBox::from_label(tr("DSP 缓冲区大小"))
+            .selected_text(frames(dsp.buffer_frames))
+            .show_ui(ui, |ui| {
+                for size in DSP_BUFFER_FRAMES {
+                    changed |= ui
+                        .selectable_value(&mut dsp.buffer_frames, size, frames(size))
+                        .changed();
+                }
+            });
         changed |= effects::edit(ui, dsp, kind);
         if changed {
             self.saved_dsp = false;
@@ -112,14 +122,20 @@ impl AudioSettingsUi {
         });
         ui.add_space(14.);
         ui.separator();
-        self.inspect(ui, svc, false);
+        self.inspect(player);
         let routing = self.routing.get_or_insert(saved.routing);
         ui.heading(tr("输出设置"));
+        let selected_max =
+            self.devices
+                .show(ui, runtime, prefs.audio.output_device.as_deref(), action);
+        if matches!(
+            action,
+            Some(HostAction::Audio(AudioAction::OutputDevice(_)))
+        ) {
+            self.inspected = None;
+        }
         let before = *routing;
-        let max = self
-            .status
-            .max_channels
-            .or_else(|| self.device.as_ref().and_then(|r| r.as_ref().ok().copied()));
+        let max = self.status.max_channels.or(selected_max);
         egui::ComboBox::from_label(tr("输出声道"))
             .selected_text(tr(routing.layout.name()))
             .show_ui(ui, |ui| {
@@ -174,7 +190,7 @@ impl AudioSettingsUi {
                 routing: *routing,
                 auto_volume: saved.auto_volume,
             };
-            match svc.player.command(PlayerCommand::Processing { settings }) {
+            match player.command(PlayerCommand::Processing { settings }) {
                 Ok(snapshot) => {
                     self.status = snapshot.output;
                     self.error = None;
@@ -207,43 +223,25 @@ impl AudioSettingsUi {
                     ui.end_row();
                 }
             });
-        if let Some(error) = self
-            .error
-            .as_ref()
-            .or_else(|| self.device.as_ref().and_then(|v| v.as_ref().err()))
-        {
+        if let Some(error) = &self.error {
             ui.colored_label(ui.visuals().error_fg_color, error);
         }
-        if ui
-            .add_enabled(self.probe.is_none(), egui::Button::new(tr("重新检测")))
-            .clicked()
-        {
-            self.inspect(ui, svc, true);
-        }
     }
-    fn inspect(&mut self, ui: &Ui, svc: Services<'_>, refresh: bool) {
-        if let Some(result) = self.probe.as_mut().and_then(Task::poll) {
-            self.probe = None;
-            self.device = Some(result);
-        }
-        if self.probe.is_none() && (refresh || self.device.is_none()) {
-            self.probe = Some(Task::spawn(svc.runtime, ui.ctx(), async {
-                tokio::task::spawn_blocking(musicfs_player_core::device_channels)
-                    .await
-                    .map_err(|e| e.to_string())?
-            }));
-        }
-        if refresh
-            || self
-                .inspected
-                .is_none_or(|t| t.elapsed() > Duration::from_millis(500))
+    fn inspect(&mut self, player: &Player) {
+        if self
+            .inspected
+            .is_none_or(|t| t.elapsed() > Duration::from_millis(500))
         {
-            if let Ok(snapshot) = svc.player.snapshot() {
+            if let Ok(snapshot) = player.snapshot() {
                 self.status = snapshot.output;
             }
             self.inspected = Some(Instant::now());
         }
     }
+}
+
+fn frames(count: usize) -> String {
+    tr("{0} 帧").replace("{0}", &count.to_string())
 }
 
 fn volume_control(ui: &mut Ui, volume: &mut f32) -> bool {

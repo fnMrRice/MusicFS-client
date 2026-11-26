@@ -177,6 +177,11 @@ fn decode(
         if channels == 0 || rate == 0 {
             return Err("Unsupported audio format.".into());
         }
+        if usize::from(channels) > crate::processing::MAX_CHANNELS {
+            return Err("Audio output supports up to 32 channels.".into());
+        }
+        let frame_samples = usize::from(channels);
+        let block_samples = Block::aligned_samples(channels);
         let (producer, source, clock) = PcmSource::pipe(channels, rate, origin_ms);
         let mut ready = Some(Event::Ready {
             revision,
@@ -207,11 +212,12 @@ fn decode(
             };
             let block = pending.take().unwrap_or_else(|| {
                 let mut block = Block::empty();
-                for sample in &mut block.data {
+                for sample in &mut block.data[..block_samples] {
                     let Some(value) = decoder.next() else { break };
                     *sample = value;
                     block.len += 1;
                 }
+                block.len -= block.len % frame_samples;
                 block
             });
             if block.len == 0 {

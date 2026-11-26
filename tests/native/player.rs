@@ -5,6 +5,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc, Condvar, Mutex};
 use std::time::Duration;
 
+#[path = "output_switch.rs"]
+mod output_device_tests;
+
 pub(crate) fn track(id: &str) -> Track {
     Track {
         id: id.into(),
@@ -21,8 +24,11 @@ pub(crate) fn track(id: &str) -> Track {
 }
 
 pub(crate) fn test_audio(on_close: impl FnOnce() + Send + 'static) -> Media {
+    test_audio_frames(800, on_close)
+}
+
+fn test_audio_frames(samples: u32, on_close: impl FnOnce() + Send + 'static) -> Media {
     let rate: u32 = 8000;
-    let samples: u32 = rate / 10;
     let mut wav = Vec::new();
     wav.extend_from_slice(b"RIFF");
     wav.extend_from_slice(&(36 + samples * 2).to_le_bytes());
@@ -46,7 +52,7 @@ pub(crate) fn test_audio(on_close: impl FnOnce() + Send + 'static) -> Media {
             sample_rate: Some(rate),
             bitrate_bps: Some(rate * 16),
         },
-        seek_range_ms: Some((0, 100)),
+        seek_range_ms: Some((0, u64::from(samples) * 1000 / u64::from(rate))),
         byte_length: Some(wav.len() as u64),
         reader: Box::new(Cursor::new(wav)),
         seekable: true,
@@ -81,7 +87,7 @@ fn decodes_and_seeks_wav_without_a_device() {
     assert_eq!(lease.format.codec.as_deref(), Some("pcm_s16le"));
     assert_eq!(lease.format.bitrate_bps, Some(128000));
     let Event::Ready {
-        mut source,
+        source,
         clock,
         seekable,
         ..
@@ -90,6 +96,8 @@ fn decodes_and_seeks_wav_without_a_device() {
         panic!("Missing PCM")
     };
     assert!(seekable);
+    let (mut source, _) =
+        crate::processing::RenderSource::new(*source, 1, &Default::default(), false);
     assert_eq!(clock.position_ms(), 0);
     for _ in 0..400 {
         assert!(source.next().unwrap() > 0.0);
@@ -99,7 +107,7 @@ fn decodes_and_seeks_wav_without_a_device() {
     seek.send((1, 70)).unwrap();
     let Event::Ready {
         revision,
-        mut source,
+        source,
         clock,
         ..
     } = receive()
@@ -107,6 +115,8 @@ fn decodes_and_seeks_wav_without_a_device() {
         panic!("Seek failed")
     };
     assert_eq!(revision, 1);
+    let (mut source, _) =
+        crate::processing::RenderSource::new(*source, 1, &Default::default(), false);
     assert_eq!(clock.position_ms(), 70);
     assert!(source.next().unwrap() > 0.0);
     worker.cancel();

@@ -1,6 +1,7 @@
 mod actor;
 pub mod audio;
 mod decode;
+mod devices;
 mod fade;
 mod filters;
 mod level;
@@ -9,7 +10,7 @@ mod pause;
 mod pcm;
 mod processing;
 mod routing;
-pub use output::device_channels;
+pub use devices::{device_channels, output_devices, OutputDeviceInfo};
 
 #[cfg(test)]
 #[path = "../../tests/native/player.rs"]
@@ -168,6 +169,7 @@ pub enum PlayerCommand {
     Clear,
     Seek { position_ms: u64 },
     Volume { volume: f32 },
+    OutputDevice { device: Option<String> },
     SetFades { settings: FadeSettings },
     AutoVolume { enabled: bool },
     Processing { settings: audio::Processing },

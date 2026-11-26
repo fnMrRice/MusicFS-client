@@ -12,7 +12,7 @@ package "Rust 桌面进程" {
   component "Server Adapter\nCookie、CSRF、HTTP、WS" as Adapter
   component "授权流读取 / rodio 解码" as Decode
   component "本机 PCM 处理\n效果、声道与转场" as DSP
-  component "默认设备输出" as Output
+  component "音频输出设备" as Output
   component "系统凭据库" as Credentials
   Main --> Model
   Mini --> Model

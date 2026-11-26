@@ -1,53 +1,152 @@
 use crate::pcm::{Clock, PcmSource};
 use crate::{
     audio::{OutputStatus, Processing},
+    devices::{resolve, stream_config},
     processing::{GraphControl, RenderSource, MAX_CHANNELS},
     routing::target,
     Status,
 };
-use rodio::{
-    cpal::{
-        self,
-        traits::{DeviceTrait, HostTrait},
-    },
-    OutputStream, OutputStreamBuilder, Sink, Source,
-};
+use rodio::{cpal::Device, OutputStream, OutputStreamBuilder, Sink, Source};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::Arc;
+use std::time::Duration;
+
+#[cfg(test)]
+#[path = "../../tests/native/output_devices.rs"]
+mod tests;
+
+// 流释放时归还解码队列和 DSP 缓冲，实时采样路径无需加锁，也无需重新定位媒体。
+struct StreamSource {
+    source: Option<Box<RenderSource>>,
+    release: Sender<Box<RenderSource>>,
+}
+
+impl StreamSource {
+    fn append(sink: &Sink, source: Box<RenderSource>) -> Receiver<Box<RenderSource>> {
+        let (release, receiver) = channel();
+        sink.append(Self {
+            source: Some(source),
+            release,
+        });
+        receiver
+    }
+}
+
+impl Iterator for StreamSource {
+    type Item = f32;
+
+    fn next(&mut self) -> Option<f32> {
+        self.source.as_mut()?.next()
+    }
+}
+
+impl Source for StreamSource {
+    fn channels(&self) -> u16 {
+        self.source.as_ref().unwrap().channels()
+    }
+    fn sample_rate(&self) -> u32 {
+        self.source.as_ref().unwrap().sample_rate()
+    }
+    fn current_span_len(&self) -> Option<usize> {
+        self.source.as_ref().unwrap().current_span_len()
+    }
+    fn total_duration(&self) -> Option<Duration> {
+        self.source.as_ref().unwrap().total_duration()
+    }
+}
+
+impl Drop for StreamSource {
+    fn drop(&mut self) {
+        if let Some(source) = self.source.take() {
+            let _ = self.release.send(source);
+        }
+    }
+}
 
 #[derive(Default)]
 pub struct Output {
-    device: Option<OutputStream>,
-    lost: Arc<AtomicBool>,
+    device: Option<DeviceStream>,
     sink: Option<Sink>,
+    source_return: Option<Receiver<Box<RenderSource>>>,
     retiring: Option<(Sink, Arc<crate::pause::PauseControl>)>,
     pub clock: Option<Clock>,
     control: Option<GraphControl>,
 }
-fn device_config() -> Result<(cpal::Device, cpal::SupportedStreamConfig), String> {
-    let device = cpal::default_host()
-        .default_output_device()
-        .ok_or("Audio output device is unavailable.")?;
-    let default = device.default_output_config().map_err(|e| e.to_string())?;
-    let mut best = default.clone();
-    if let Ok(configs) = device.supported_output_configs() {
-        for config in configs {
-            let n = config.channels();
-            if usize::from(n) <= MAX_CHANNELS && n > best.channels() {
-                let rate = default
-                    .sample_rate()
-                    .clamp(config.min_sample_rate(), config.max_sample_rate());
-                best = config.with_sample_rate(rate);
-            }
-        }
-    }
-    Ok((device, best))
+struct DeviceStream {
+    stream: OutputStream,
+    lost: Arc<AtomicBool>,
+    #[cfg(any(windows, target_os = "macos"))]
+    hardware: Device,
+    #[cfg(not(any(windows, target_os = "macos")))]
+    selection: Option<String>,
 }
-pub fn device_channels() -> Result<u16, String> {
-    device_config().map(|(_, c)| c.channels())
+impl DeviceStream {
+    fn open(hardware: Device, _device_id: Option<&str>) -> Result<Self, String> {
+        let config = stream_config(&hardware)?;
+        let lost = Arc::new(AtomicBool::new(false));
+        let flag = lost.clone();
+        let mut stream = OutputStreamBuilder::from_device(hardware.clone())
+            .map_err(|e| format!("Audio output device is unavailable: {e}"))?
+            .with_supported_config(&config)
+            .with_error_callback(move |_| flag.store(true, Ordering::Release))
+            .open_stream_or_fallback()
+            .map_err(|e| format!("Audio output failed: {e}"))?;
+        stream.log_on_drop(false);
+        if usize::from(stream.config().channel_count()) > MAX_CHANNELS {
+            return Err("Audio output supports up to 32 channels.".into());
+        }
+        Ok(Self {
+            stream,
+            lost,
+            #[cfg(any(windows, target_os = "macos"))]
+            hardware,
+            #[cfg(not(any(windows, target_os = "macos")))]
+            selection: _device_id.map(str::to_owned),
+        })
+    }
+    fn matches(&self, _hardware: &Device, _device_id: Option<&str>) -> bool {
+        #[cfg(any(windows, target_os = "macos"))]
+        return crate::devices::same_stream_device(&self.hardware, _hardware);
+        #[cfg(not(any(windows, target_os = "macos")))]
+        return self.selection.as_deref() == _device_id;
+    }
 }
 
 impl Output {
+    pub fn switch_device(
+        &mut self,
+        device_id: Option<&str>,
+        volume: f32,
+        paused: bool,
+        settings: &Processing,
+    ) -> Result<(), String> {
+        let Some(current) = &self.device else {
+            return Ok(());
+        };
+        let hardware = resolve(device_id)?;
+        if current.matches(&hardware, device_id) {
+            return Ok(());
+        }
+        // 先打开目标设备。打开失败时，旧设备上的音源继续播放。
+        let replacement = DeviceStream::open(hardware, device_id)?;
+        let channels = replacement.stream.config().channel_count();
+        let receiver = self.source_return.take();
+        let clock = self.clock.take();
+        *self = Self {
+            device: Some(replacement),
+            ..Self::default()
+        };
+        if let (Some(receiver), Some(clock)) = (receiver, clock) {
+            let mut source = receiver
+                .recv_timeout(Duration::from_secs(1))
+                .map_err(|_| "Audio source was not released.".to_owned())?;
+            let control = source.change_device(channels, settings, paused);
+            self.connect(source, control, clock, volume, paused);
+        }
+        Ok(())
+    }
+
     pub fn attach(
         &mut self,
         source: PcmSource,
@@ -55,40 +154,53 @@ impl Output {
         volume: f32,
         paused: bool,
         settings: &Processing,
+        device_id: Option<&str>,
     ) -> Result<(), String> {
-        if self.device.is_none() {
-            self.lost = Arc::new(AtomicBool::new(false));
-            let lost = self.lost.clone();
-            let (hardware, config) = device_config()?;
-            let builder = OutputStreamBuilder::from_device(hardware)
-                .map_err(|e| format!("Audio output device is unavailable: {e}"))?;
-            let mut device = builder
-                .with_supported_config(&config)
-                .with_error_callback(move |_| lost.store(true, Ordering::Release))
-                .open_stream_or_fallback()
-                .map_err(|e| format!("Audio output failed: {e}"))?;
-            device.log_on_drop(false);
-            self.device = Some(device);
+        if self.device.is_none() || device_id.is_none() {
+            let hardware = resolve(device_id)?;
+            if self
+                .device
+                .as_ref()
+                .is_none_or(|d| !d.matches(&hardware, device_id))
+            {
+                let device = DeviceStream::open(hardware, device_id)?;
+                *self = Self {
+                    device: Some(device),
+                    ..Self::default()
+                };
+            }
         }
         let device = self.device.as_ref().unwrap();
-        let channels = device.config().channel_count();
-        if usize::from(channels) > MAX_CHANNELS || usize::from(source.channels()) > MAX_CHANNELS {
+        let channels = device.stream.config().channel_count();
+        if usize::from(source.channels()) > MAX_CHANNELS {
             return Err("Audio output supports up to 32 channels.".into());
         }
         let (source, control) = RenderSource::new(source, channels, settings, paused);
+        self.connect(Box::new(source), control, clock, volume, paused);
+        Ok(())
+    }
+
+    fn connect(
+        &mut self,
+        source: Box<RenderSource>,
+        control: GraphControl,
+        clock: Clock,
+        volume: f32,
+        paused: bool,
+    ) {
         self.control = Some(control);
-        let sink = Sink::connect_new(device.mixer());
+        let sink = Sink::connect_new(self.device.as_ref().unwrap().stream.mixer());
         sink.set_volume(volume);
         if paused || self.retiring.is_some() {
             sink.pause();
         }
-        sink.append(source);
+        self.source_return = Some(StreamSource::append(&sink, source));
         self.clock = Some(clock);
         self.sink = Some(sink);
-        Ok(())
     }
 
     pub fn detach(&mut self, duration_ms: u64) {
+        self.source_return = None;
         if duration_ms == 0 {
             self.retiring = None;
         }
@@ -136,7 +248,10 @@ impl Output {
         }
     }
     pub fn capabilities(&self, config: &Processing) -> OutputStatus {
-        let max_channels = self.device.as_ref().map(|d| d.config().channel_count());
+        let max_channels = self
+            .device
+            .as_ref()
+            .map(|d| d.stream.config().channel_count());
         if let Some(control) = &self.control {
             let logical = target(config.routing, control.source, control.device);
             OutputStatus {
@@ -154,7 +269,11 @@ impl Output {
     }
 
     pub fn poll(&mut self, paused: bool) -> Result<(), String> {
-        if self.lost.swap(false, Ordering::AcqRel) {
+        if self
+            .device
+            .as_ref()
+            .is_some_and(|d| d.lost.swap(false, Ordering::AcqRel))
+        {
             return Err("Audio output device disconnected.".into());
         }
         if self

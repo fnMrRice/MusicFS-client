@@ -17,6 +17,7 @@ pub const EFFECTS: [EffectKind; 5] = [
     EffectKind::Reverb,
 ];
 pub const MAX_EFFECTS: usize = 16;
+pub const DSP_BUFFER_FRAMES: [usize; 6] = [64, 128, 256, 512, 1024, 2048];
 
 pub struct Parameter {
     pub name: &'static str,
@@ -156,17 +157,28 @@ impl Effect {
 pub struct LocalDsp {
     pub enabled: bool,
     pub chain: Vec<Effect>,
+    pub buffer_frames: usize,
 }
 impl Default for LocalDsp {
     fn default() -> Self {
         Self {
             enabled: true,
             chain: vec![],
+            buffer_frames: DSP_BUFFER_FRAMES[0],
         }
     }
 }
 impl LocalDsp {
+    pub(crate) fn block_frames(&self) -> usize {
+        if DSP_BUFFER_FRAMES.contains(&self.buffer_frames) {
+            self.buffer_frames
+        } else {
+            DSP_BUFFER_FRAMES[0]
+        }
+    }
+
     pub fn normalize(&mut self) {
+        self.buffer_frames = self.block_frames();
         self.chain.truncate(MAX_EFFECTS);
         for effect in &mut self.chain {
             effect.normalize();

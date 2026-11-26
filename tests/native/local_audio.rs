@@ -10,6 +10,7 @@ fn samples(kind: EffectKind, values: &[f32], hz: f32) -> Vec<f32> {
         dsp: LocalDsp {
             enabled: true,
             chain: vec![effect],
+            ..Default::default()
         },
         ..Default::default()
     };
@@ -155,6 +156,7 @@ fn processing_updates_during_playback_and_seek_fade_obeys_requested_length() {
         dsp: LocalDsp {
             enabled: true,
             chain: vec![gain],
+            ..Default::default()
         },
         ..Default::default()
     };
@@ -165,4 +167,114 @@ fn processing_updates_during_playback_and_seek_fade_obeys_requested_length() {
     let quiet = take(180);
     assert_eq!(quiet[179], 0.1);
     assert_eq!(clock.position_ms(), 280);
+}
+
+#[test]
+fn dsp_refills_in_selected_frame_counts_without_skipping_audio_or_advancing_the_clock() {
+    let (mut writer, input, clock) = PcmSource::pipe(2, 1000, 0);
+    // 让解码块边界落在 DSP 块中间，最后一块不足请求的帧数。
+    let mut sample = 0;
+    for frames in [100, 500, 300] {
+        let mut block = Block::empty();
+        block.len = frames * 2;
+        for value in &mut block.data[..block.len] {
+            *value = sample as f32 / 2048.;
+            sample += 1;
+        }
+        writer.try_send(block).unwrap();
+    }
+    drop(writer);
+    let mut settings = Processing::default();
+    settings.dsp.buffer_frames = 128;
+    let (mut stream, control) = RenderSource::new(input, 2, &settings, false);
+    for i in 0..1800 {
+        assert_eq!(stream.next(), Some(i as f32 / 2048.));
+        if i == 0 {
+            assert_eq!(stream.block.len, 128);
+            assert_eq!(clock.position_ms(), 1);
+            settings.dsp.buffer_frames = 512;
+            control.update(&settings);
+        }
+        if i == 256 {
+            assert_eq!(stream.block.len, 512);
+            assert_eq!(clock.position_ms(), 129);
+        }
+    }
+    assert_eq!(stream.block.len, 260);
+    assert_eq!(stream.next(), None);
+    assert_eq!(clock.position_ms(), 900);
+}
+
+#[test]
+fn device_change_reroutes_unplayed_frames_and_retains_position_while_paused() {
+    let (mut writer, input, clock) = PcmSource::pipe(2, 1000, 1200);
+    let mut block = Block::empty();
+    block.len = 80;
+    for (i, frame) in block.data[..block.len].chunks_exact_mut(2).enumerate() {
+        frame[0] = i as f32 / 64.;
+        frame[1] = -frame[0];
+    }
+    writer.try_send(block).unwrap();
+    drop(writer);
+    let settings = Processing::default();
+    let (mut stream, _) = RenderSource::new(input, 1, &settings, false);
+    assert_eq!(stream.next(), Some(0.));
+    let control = stream.change_device(2, &settings, true);
+    assert_eq!(stream.channels(), 2);
+    assert!(stream.by_ref().take(8).all(|v| v == 0.));
+    assert_eq!(clock.position_ms(), 1201);
+    control.pause.resume(0, true);
+    for i in 1..40 {
+        let sample = i as f32 / 64.;
+        assert_eq!(stream.next(), Some(sample));
+        assert_eq!(stream.next(), Some(-sample));
+    }
+    assert_eq!(stream.next(), None);
+    assert_eq!(clock.position_ms(), 1240);
+}
+
+#[test]
+fn invalid_buffer_sizes_fall_back_to_default() {
+    for &frames in &DSP_BUFFER_FRAMES {
+        let mut dsp = LocalDsp {
+            buffer_frames: frames,
+            ..Default::default()
+        };
+        dsp.normalize();
+        assert_eq!(dsp.buffer_frames, frames);
+    }
+    let mut dsp = LocalDsp {
+        buffer_frames: usize::MAX,
+        ..Default::default()
+    };
+    dsp.normalize();
+    assert_eq!(dsp.buffer_frames, LocalDsp::default().buffer_frames);
+}
+
+#[test]
+fn resizing_keeps_reverb_history() {
+    let mut dsp = LocalDsp::default();
+    let mut reverb = Effect::new(EffectKind::Reverb);
+    reverb.values[0] = 1.;
+    dsp.chain.push(reverb);
+    let mut settings = Processing {
+        dsp,
+        ..Default::default()
+    };
+    let impulse = || {
+        let (mut writer, input, _) = PcmSource::pipe(1, 48000, 0);
+        let mut block = Block::empty();
+        block.len = block.data.len();
+        block.data[0] = 1.;
+        writer.try_send(block).unwrap();
+        input
+    };
+    let (reference, _) = RenderSource::new(impulse(), 1, &settings, false);
+    let (mut resized, control) = RenderSource::new(impulse(), 1, &settings, false);
+    let mut output: Vec<_> = resized.by_ref().take(100).collect();
+    settings.dsp.buffer_frames = 1024;
+    control.update(&settings);
+    output.extend(resized);
+    assert!(peak(&output[1400..]) > 0.005);
+    assert_eq!(output, reference.collect::<Vec<_>>());
 }

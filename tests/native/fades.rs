@@ -1,5 +1,6 @@
 use super::*;
 use crate::pcm::{Block, PcmSource};
+use crate::processing::RenderSource;
 use crate::tests::track;
 
 #[test]
@@ -52,7 +53,7 @@ fn samples(frames: usize) -> Block {
     block
 }
 
-fn read_frame(source: &mut PcmSource) -> f32 {
+fn read_frame(source: &mut RenderSource) -> f32 {
     let left = source.next().unwrap();
     assert_eq!(source.next(), Some(left));
     left
@@ -60,7 +61,8 @@ fn read_frame(source: &mut PcmSource) -> f32 {
 
 #[test]
 fn buffering_does_not_consume_fade_in_and_retiring_fades_from_current_gain() {
-    let (mut writer, mut source, clock) = PcmSource::pipe(2, 100, 5000);
+    let (mut writer, input, clock) = PcmSource::pipe(2, 100, 5000);
+    let (mut source, _) = RenderSource::new(input, 2, &Default::default(), false);
     clock.fades.incoming_ms.store(300, Ordering::Relaxed);
     for _ in 0..50 {
         assert_eq!(read_frame(&mut source), 0.0);
@@ -87,7 +89,8 @@ fn buffering_does_not_consume_fade_in_and_retiring_fades_from_current_gain() {
 #[test]
 fn natural_change_fades_only_the_last_frames_of_a_track_with_a_successor() {
     for track_tail in [true, false] {
-        let (mut writer, mut source, clock) = PcmSource::pipe(2, 100, 0);
+        let (mut writer, input, clock) = PcmSource::pipe(2, 100, 0);
+        let (mut source, _) = RenderSource::new(input, 2, &Default::default(), false);
         clock
             .fades
             .track_tail_ms

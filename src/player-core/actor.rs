@@ -1,3 +1,5 @@
+mod commands;
+
 use crate::decode::{Event, Lifecycle, Worker};
 use crate::output::Output;
 use crate::{
@@ -44,6 +46,7 @@ struct Actor {
     seeks: Option<Sender<(u64, u64)>>,
     lifecycle: Option<Lifecycle>,
     output: Output,
+    output_device: Option<String>,
     fades: FadeSettings,
     fade_in_ms: u64,
     paused: bool,
@@ -62,6 +65,7 @@ impl Actor {
             seeks: None,
             lifecycle: None,
             output: Output::default(),
+            output_device: None,
             fades: FadeSettings::default(),
             fade_in_ms: 0,
             paused: false,
@@ -136,75 +140,6 @@ impl Actor {
                 self.select(start)
             }
             Operation::Command(command) => self.command(command),
-        }
-    }
-
-    fn command(&mut self, command: PlayerCommand) -> Result<(), String> {
-        match command {
-            PlayerCommand::Select { index } => self.select(index),
-            PlayerCommand::Play => self.play(),
-            PlayerCommand::Pause => {
-                self.pause();
-                Ok(())
-            }
-            PlayerCommand::Toggle => {
-                if matches!(self.state.status, Status::Playing | Status::Loading) && !self.paused {
-                    self.pause();
-                    Ok(())
-                } else {
-                    self.play()
-                }
-            }
-            PlayerCommand::Next => self.advance(false),
-            PlayerCommand::Previous => {
-                let index = self.state.index.ok_or("Queue is empty.")?;
-                self.select(index.saturating_sub(1))
-            }
-            PlayerCommand::Clear | PlayerCommand::Stop => {
-                self.stop_output();
-                self.state.status = Status::Idle;
-                self.state.position_ms = 0;
-                self.state.error = None;
-                if matches!(command, PlayerCommand::Clear) {
-                    self.state.index = None;
-                    self.state.duration_ms = None;
-                    self.state.queue = Arc::default();
-                }
-                Ok(())
-            }
-            PlayerCommand::Volume { volume } => {
-                if !volume.is_finite() || !(0.0..=1.0).contains(&volume) {
-                    return Err("Volume must be between 0 and 1.".into());
-                }
-                self.state.volume = volume;
-                self.output.set_volume(volume);
-                Ok(())
-            }
-            PlayerCommand::SetFades { mut settings } => {
-                settings.normalize();
-                self.fades = settings;
-                self.output
-                    .update_fades(settings, self.track_tail_ms(), self.paused);
-                if !settings.enabled {
-                    self.fade_in_ms = 0;
-                }
-                Ok(())
-            }
-            PlayerCommand::AutoVolume { enabled } => {
-                let mut settings = self.processing.clone();
-                settings.auto_volume = enabled;
-                self.command(PlayerCommand::Processing { settings })
-            }
-            PlayerCommand::Processing { mut settings } => {
-                settings.dsp.normalize();
-                if self.processing != settings {
-                    self.output.configure(&settings);
-                    self.processing = settings;
-                }
-                self.state.output = self.output.capabilities(&self.processing);
-                Ok(())
-            }
-            PlayerCommand::Seek { position_ms } => self.seek(position_ms),
         }
     }
 
@@ -399,6 +334,7 @@ impl Actor {
                     self.state.volume,
                     self.paused,
                     &self.processing,
+                    self.output_device.as_deref(),
                 )?;
                 self.state.output = self.output.capabilities(&self.processing);
                 self.state.seek_range_ms = self

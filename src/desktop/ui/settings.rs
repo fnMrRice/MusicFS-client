@@ -87,7 +87,9 @@ impl Settings {
                         ui.weak(tr("插件管理仅对管理员开放。"));
                     }
                     2 => self.audio.playback(ui, svc, prefs, action),
-                    3 => self.audio.local_dsp(ui, svc, prefs, action),
+                    3 => self
+                        .audio
+                        .local_dsp(ui, svc.player, svc.runtime, prefs, action),
                     4 => {
                         ui.horizontal_wrapped(|ui| {
                             for (value, label) in themes() {

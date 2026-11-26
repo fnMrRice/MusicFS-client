@@ -1,3 +1,4 @@
+mod album_cover;
 mod collection;
 mod new_track;
 mod queue;
@@ -29,6 +30,7 @@ pub struct Catalog {
     folders: super::folders::Folders,
     pub versions: versions::Versions,
     pub artwork: Artwork,
+    album_cover: album_cover::AlbumCover,
     pub tabs: CategoryTab,
     album_list: bool,
     unscraped_only: bool,
@@ -36,6 +38,7 @@ pub struct Catalog {
     pub category: Option<(String, String)>,
     pub categories: Pages<Category>,
     pub tracks: Pages<Track>,
+    pub(super) playlist: super::playlist_tracks::LocalTracks,
     query: Option<TrackQuery>,
     complete: Option<(bool, Task<Vec<QueueTrack>>)>,
     creation: Option<new_track::NewTrack>,
@@ -51,6 +54,7 @@ impl Catalog {
         self.matching.clear_selection();
         self.versions = Default::default();
         self.tracks = Pages::default();
+        self.playlist.reset_pages();
         self.query = None;
         self.complete = None;
     }
@@ -68,6 +72,8 @@ impl Catalog {
     }
 
     pub fn library(&mut self, ui: &mut egui::Ui, svc: Services<'_>) -> Option<TrackQuery> {
+        self.album_cover.poll(&mut self.artwork);
+        self.artwork.poll(ui.ctx());
         self.category_tabs(ui);
         self.providers.sync(ui, svc);
         if self.tabs == CategoryTab::All {
@@ -91,6 +97,10 @@ impl Catalog {
                 } else {
                     name
                 });
+                if self.tabs == CategoryTab::Album {
+                    let known = self.categories.items.iter().find(|album| album.id == id);
+                    self.album_cover.show(ui, svc, &mut self.artwork, &id, known);
+                }
             });
             if back {
                 self.list_draft.clear();
@@ -132,7 +142,6 @@ impl Catalog {
         {
             ui.weak(tr("音乐库中暂无{0}。").replace("{0}", self.tabs.label()));
         }
-        self.artwork.poll(ui.ctx());
         egui::ScrollArea::vertical()
             .id_salt("category-list")
             .show(ui, |ui| {
@@ -168,8 +177,19 @@ impl Catalog {
             self.reset_tracks();
             self.query = Some(query.clone());
         }
-        self.tracks.poll();
-        if !self.tracks.started {
+        if query.is_playlist() {
+            if let Some(page) = self.tracks.take_page() {
+                self.playlist.append(page, &mut self.tracks.items);
+                if self.playlist.tools.sorted() {
+                    self.versions.clear_expanded();
+                }
+            }
+        } else {
+            self.tracks.poll();
+        }
+        if !self.tracks.started
+            || (query.is_playlist() && self.playlist.tools.active() && self.tracks.can_load_more())
+        {
             self.more(ui, svc);
         }
     }

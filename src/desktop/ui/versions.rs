@@ -32,6 +32,10 @@ pub struct Versions {
     retry: Option<(String, Option<String>, u64, String)>,
 }
 impl Versions {
+    pub fn clear_expanded(&mut self) {
+        self.expanded.clear();
+    }
+
     pub fn expanded(&self, rows: &[Track]) -> Vec<(usize, usize)> {
         self.expanded
             .iter()

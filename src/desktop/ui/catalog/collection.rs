@@ -65,11 +65,17 @@ impl Catalog {
     ) -> Option<(String, String)> {
         let albums = tab == CategoryTab::Album;
         let list = albums && list_view;
+        let album_cards = albums && !list;
         let width = ui.available_width();
+        if album_cards {
+            ui.spacing_mut().item_spacing = egui::vec2(12., 12.);
+        }
+        let gap = ui.spacing().item_spacing.x;
+        let min_width = if album_cards { 292. } else { 200. };
         let cols = if list {
             1
         } else {
-            (width / 200.).max(1.) as usize
+            ((width + gap) / (min_width + gap)).max(1.) as usize
         };
         let card = (width - (cols - 1) as f32 * ui.spacing().item_spacing.x) / cols as f32;
         let mut selected = None;
@@ -83,7 +89,14 @@ impl Catalog {
             }
             field(ui, r, card * 0.89, card * 0.11, tr("曲目数"), fg);
         }
-        let card_size = egui::vec2(card, if list { 55. } else { 68. });
+        let height = if list {
+            55.
+        } else if album_cards {
+            114.
+        } else {
+            68.
+        };
+        let card_size = egui::vec2(card, height);
         category_cards(
             ui,
             items.len(),
@@ -128,12 +141,16 @@ impl Catalog {
                         egui::StrokeKind::Inside,
                     );
                 }
-                let cover = Rect::from_center_size(
-                    egui::pos2(r.left() + 32., r.center().y),
-                    egui::Vec2::splat(42.),
-                );
+                let cover = if album_cards {
+                    Rect::from_min_size(r.min + egui::vec2(13., 13.), egui::Vec2::splat(88.))
+                } else {
+                    Rect::from_center_size(
+                        egui::pos2(r.left() + 32., r.center().y),
+                        egui::Vec2::splat(42.),
+                    )
+                };
                 if albums {
-                    artwork.paint(ui, cover, svc, item.cover_object_id.as_deref());
+                    artwork.paint(ui, cover, svc, item.cover_path.as_deref());
                 } else {
                     crate::icons::paint(
                         ui,
@@ -185,6 +202,12 @@ impl Catalog {
                         &item.track_count.to_string(),
                         secondary,
                     );
+                } else if album_cards {
+                    let text = Rect::from_min_max(
+                        egui::pos2(cover.right() + 14., cover.top()),
+                        egui::pos2(r.right() - 14., cover.bottom()),
+                    );
+                    album_caption(ui, text, &name, item.track_count);
                 } else {
                     field(
                         ui,
@@ -203,11 +226,35 @@ impl Catalog {
                         secondary,
                     );
                 }
-                response.on_hover_text(name);
+                response
+                    .on_hover_cursor(egui::CursorIcon::PointingHand)
+                    .on_hover_text(name);
             },
         );
         selected
     }
+}
+
+fn album_caption(ui: &egui::Ui, rect: Rect, name: &str, tracks: u64) {
+    let dark = ui.visuals().dark_mode;
+    let fg = style::text(dark);
+    let mut job = egui::text::LayoutJob::simple(
+        name.to_owned(),
+        style::bold(ui, 15.),
+        fg,
+        rect.width().max(1.),
+    );
+    job.wrap.max_rows = 2;
+    let title = ui.fonts(|fonts| fonts.layout_job(job));
+    let count = tr("{0} 首").replace("{0}", &tracks.to_string());
+    let painter = ui.painter_at(rect);
+    let muted = style::muted(dark);
+    let detail = painter.layout_no_wrap(count, FontId::proportional(13.), muted);
+    let height = title.size().y + 7. + detail.size().y;
+    let top = egui::pos2(rect.left(), rect.center().y - height / 2.);
+    let below = top + egui::vec2(0., title.size().y + 7.);
+    painter.galley(top, title, fg);
+    painter.galley(below, detail, muted);
 }
 
 pub(crate) fn category_cards(

@@ -3,13 +3,13 @@ use crate::{
     browse::{playlist_cards, OnlinePlaylistDetail, QueueSelection},
     i18n::{language_tags, tr},
     icons,
-    ui::{data::Pages, style, Artwork, Services},
+    ui::{data::Pages, navigation::SourcePlaylist, style, Artwork, Services},
 };
 use eframe::egui;
 use musicfs_server_adapter::{online_playlists::OnlineSource, Playlist};
 
 #[derive(Default)]
-pub(super) struct Outcome {
+pub(in crate::ui) struct Outcome {
     pub play: Option<QueueSelection>,
     pub settings: bool,
     pub more_local: bool,
@@ -72,10 +72,8 @@ impl Management {
         });
         ui.add_space(8.);
         if refresh {
-            self.refresh_account = true;
-            self.sources = Default::default();
-            self.clear_selection();
-            self.account = Pages::default();
+            self.invalidate_sources();
+            self.refresh_source = Some(current.instance_id.clone());
             ui.ctx().request_repaint();
             return outcome;
         }
@@ -87,11 +85,9 @@ impl Management {
         if self.identity.as_ref() != Some(&identity) {
             self.identity = Some(identity);
             self.clear_selection();
-            self.account = Pages::default();
         }
         if previous != self.selected {
             self.clear_selection();
-            self.account = Pages::default();
             ui.ctx().request_repaint();
             return outcome;
         }
@@ -106,45 +102,7 @@ impl Management {
                 self.back();
                 return outcome;
             }
-            let detail = self.detail.as_mut().unwrap();
-            let external = detail.key().1.to_owned();
-            let known = self
-                .account
-                .items
-                .iter()
-                .find(|p| p.external_id == external);
-            let writable =
-                known.is_some_and(|p| p.writable) || detail.playlist().is_some_and(|p| p.writable);
-            ui.horizontal(|ui| {
-                if current.available("playlist.observe")
-                    && current.import_account().is_some()
-                    && style::primary(
-                        ui,
-                        tr("导入歌单"),
-                        !self.operations.busy() && detail.playlist().is_some(),
-                    )
-                    .clicked()
-                {
-                    self.operations
-                        .import(ui, svc, current.clone(), external.clone());
-                }
-                if current.available("playlist.addTracks")
-                    && current.account_id.is_some()
-                    && detail.playlist().is_some()
-                    && ui.button(tr("本地歌单关联")).clicked()
-                {
-                    self.operations
-                        .open_link(current.clone(), external.clone(), writable);
-                }
-            });
-            outcome.more_local = self.operations.link_dialog(ui.ctx(), svc, local);
-            ui.add_space(8.);
-            outcome.play = egui::ScrollArea::vertical()
-                .id_salt(("playlist-tracks", &external))
-                .auto_shrink([false, false])
-                .show(ui, |ui| detail.show(ui, svc, art))
-                .inner;
-            return outcome;
+            return self.detail_page(ui, svc, art, local, &current);
         }
         if current.available("playlist.observe") {
             self.resolved.poll();
@@ -190,20 +148,20 @@ impl Management {
             ui.add_space(10.);
         }
         if current.available("playlist.list") {
-            self.account.poll();
-            let mut load = !self.account.started;
+            let account = self.accounts.get_mut(&current.instance_id).unwrap();
+            let mut load = false;
             egui::ScrollArea::vertical()
                 .id_salt(("account-playlists", &current.instance_id))
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
                     let picked = playlist_cards(
                         ui,
-                        self.account.items.len(),
-                        |i| (&self.account.items[i], ""),
+                        account.items.len(),
+                        |i| (&account.items[i], ""),
                         |ui, r, c| art.paint(ui, r, svc, c),
                     );
                     if let Some(i) = picked {
-                        let p = &self.account.items[i];
+                        let p = &account.items[i];
                         self.detail = Some(OnlinePlaylistDetail::new(
                             &current.instance_id,
                             &p.external_id,
@@ -212,19 +170,18 @@ impl Management {
                         ));
                         ui.ctx().request_repaint();
                     }
-                    if self.account.items.is_empty()
-                        && self.account.next.is_none()
-                        && self.account.started
-                        && self.account.error.is_none()
-                        && !self.account.busy()
+                    if account.items.is_empty()
+                        && account.next.is_none()
+                        && account.started
+                        && account.error.is_none()
+                        && !account.busy()
                     {
                         ui.weak(tr("此账号暂无平台歌单。"));
                     }
-                    load |= more(ui, &self.account);
+                    load |= more(ui, account);
                 });
             if load {
-                let refresh = std::mem::take(&mut self.refresh_account);
-                self.load_account(ui, svc, &current, refresh);
+                Self::load_account(ui.ctx(), svc, &current, account, false);
             }
         } else if !current.available("playlist.observe") {
             ui.weak(tr("此来源暂不提供歌单浏览。"));
@@ -232,20 +189,86 @@ impl Management {
         }
         outcome
     }
-    fn load_account(
+
+    pub(in crate::ui) fn source_detail(
         &mut self,
-        ui: &egui::Ui,
+        ui: &mut egui::Ui,
         svc: Services<'_>,
-        source: &OnlineSource,
-        refresh: bool,
-    ) {
-        let source = source.clone();
-        let server = svc.server.clone();
-        let next = self.account.next.clone();
-        self.account.load(ui.ctx(), svc.runtime, async move {
-            server
-                .account_playlists(&source, next.as_deref(), refresh)
-                .await
+        art: &mut Artwork,
+        local: &Pages<Playlist>,
+        key: &SourcePlaylist,
+    ) -> Outcome {
+        self.directory(ui, svc);
+        if self.sources.value.is_none() {
+            return Outcome::default();
+        }
+        let Some(source) = self.source(key).cloned() else {
+            ui.weak(tr("此歌单已删除或无法访问。"));
+            return Outcome::default();
+        };
+        if !self
+            .detail
+            .as_ref()
+            .is_some_and(|p| p.key() == (&key.instance, &key.external))
+        {
+            self.clear_selection();
+            self.detail = Some(OnlinePlaylistDetail::new(
+                &key.instance,
+                &key.external,
+                self.known(key).and_then(|p| p.cover_url.clone()),
+                source.available("stream.resolve"),
+            ));
+        }
+        art.poll(ui.ctx());
+        self.detail_page(ui, svc, art, local, &source)
+    }
+
+    fn detail_page(
+        &mut self,
+        ui: &mut egui::Ui,
+        svc: Services<'_>,
+        art: &mut Artwork,
+        local: &Pages<Playlist>,
+        current: &OnlineSource,
+    ) -> Outcome {
+        let mut outcome = Outcome::default();
+        let detail = self.detail.as_mut().unwrap();
+        let external = detail.key().1.to_owned();
+        let known = self
+            .accounts
+            .get(&current.instance_id)
+            .and_then(|page| page.items.iter().find(|p| p.external_id == external));
+        let writable =
+            known.is_some_and(|p| p.writable) || detail.playlist().is_some_and(|p| p.writable);
+        ui.horizontal(|ui| {
+            if current.available("playlist.observe")
+                && current.import_account().is_some()
+                && style::primary(
+                    ui,
+                    tr("导入歌单"),
+                    !self.operations.busy() && detail.playlist().is_some(),
+                )
+                .clicked()
+            {
+                self.operations
+                    .import(ui, svc, current.clone(), external.clone());
+            }
+            if current.available("playlist.addTracks")
+                && current.account_id.is_some()
+                && detail.playlist().is_some()
+                && ui.button(tr("本地歌单关联")).clicked()
+            {
+                self.operations
+                    .open_link(current.clone(), external.clone(), writable);
+            }
         });
+        outcome.more_local = self.operations.link_dialog(ui.ctx(), svc, local);
+        ui.add_space(8.);
+        outcome.play = egui::ScrollArea::vertical()
+            .id_salt(("playlist-tracks", &external))
+            .auto_shrink([false, false])
+            .show(ui, |ui| detail.show(ui, svc, art))
+            .inner;
+        outcome
     }
 }

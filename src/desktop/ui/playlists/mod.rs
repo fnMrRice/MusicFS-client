@@ -1,6 +1,7 @@
 mod account;
 pub(super) mod local;
 mod operations;
+mod sidebar;
 
 use super::{
     data::{Pages, Services},
@@ -32,8 +33,8 @@ pub(super) struct Management {
     revision: Option<u64>,
     selected: String,
     identity: Option<(String, Option<String>, Option<String>)>,
-    refresh_account: bool,
-    account: Pages<OnlinePlaylist>,
+    accounts: std::collections::HashMap<String, Pages<OnlinePlaylist>>,
+    refresh_source: Option<String>,
     imports: Pages<ImportedPlaylist>,
     detail: Option<OnlinePlaylistDetail>,
     reference: String,
@@ -51,10 +52,7 @@ impl Management {
     }
 
     pub(super) fn leave(&mut self) {
-        self.sources = Resource::default();
         self.identity = None;
-        self.refresh_account = false;
-        self.account = Pages::default();
         self.imports = Pages::default();
         self.clear_selection();
     }
@@ -95,16 +93,9 @@ impl Management {
     }
 
     fn directory(&mut self, ui: &mut egui::Ui, svc: Services<'_>) {
-        let revision = svc.activity.revisions().capabilities;
-        if self.revision.replace(revision) != Some(revision) {
-            self.leave();
-        }
-        self.sources.poll();
-        if !self.sources.started || self.sources.status(ui, tr("正在读取音乐来源…")) {
-            let server = svc.server.clone();
-            self.sources.start(ui.ctx(), svc.runtime, async move {
-                server.playlist_sources().await
-            });
+        if self.sources.status(ui, tr("正在读取音乐来源…")) {
+            self.invalidate_sources();
+            self.sync_sources(ui.ctx(), svc);
         }
     }
 
@@ -235,13 +226,17 @@ fn more<T: Send + 'static>(ui: &mut egui::Ui, pages: &Pages<T>) -> bool {
 }
 
 impl SignedUi {
-    pub(super) fn playlists(&mut self, ui: &mut egui::Ui, svc: Services<'_>) {
-        self.playlists.tabs(ui);
+    pub(super) fn playlist_operations(&mut self, ui: &mut egui::Ui, svc: Services<'_>) {
         if self.playlists.operations.status(ui, svc) {
             self.playlists.imports = Pages::default();
             self.lists = Pages::default();
             ui.ctx().request_repaint();
         }
+    }
+
+    pub(super) fn playlists(&mut self, ui: &mut egui::Ui, svc: Services<'_>) {
+        self.playlists.tabs(ui);
+        self.playlist_operations(ui, svc);
         match self.playlists.tab {
             Tab::Local => match self.local_playlists.list(ui, &self.lists) {
                 Some(LocalAction::Open(id)) => self.navigate(Screen::Playlist(id)),

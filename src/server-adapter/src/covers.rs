@@ -15,6 +15,12 @@ pub(super) fn image_client() -> Result<Client> {
 
 pub(super) fn cover_endpoint(cover: &str) -> Result<String> {
     if let Some(id) = cover
+        .strip_prefix("/api/v1/library/albums/")
+        .and_then(|s| s.strip_suffix("/artwork"))
+    {
+        return Ok(format!("library/albums/{}/artwork", check_id(id)?));
+    }
+    if let Some(id) = cover
         .strip_prefix("/api/v1/source-tracks/")
         .and_then(|s| s.strip_suffix("/online-artwork"))
     {

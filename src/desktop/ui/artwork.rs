@@ -20,6 +20,11 @@ pub struct Artwork {
 }
 
 impl Artwork {
+    pub fn invalidate(&mut self, id: &str) {
+        self.items.remove(id);
+        self.pending.retain(|item| item.id != id);
+    }
+
     pub fn poll(&mut self, ctx: &egui::Context) {
         self.pending.retain_mut(|pending| {
             let Some(result) = pending.task.poll() else {

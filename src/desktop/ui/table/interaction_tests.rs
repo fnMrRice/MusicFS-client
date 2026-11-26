@@ -8,6 +8,34 @@ use eframe::egui::{
 };
 use musicfs_server_adapter::TrackCredit;
 
+#[test]
+fn favorited_heart_uses_the_theme_color_without_a_permanent_tile() {
+    for theme in ["dark", "light"] {
+        for saved in [false, true] {
+            let ctx = Context::default();
+            style::apply(&ctx, theme, "miku");
+            let mut target = Rect::NOTHING;
+            let mut ink = egui::Color32::TRANSPARENT;
+            let output = ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    target = widgets::favorite_button(ui, saved, "Favorite").rect;
+                    ink = if saved {
+                        style::accent_fill(ui)
+                    } else {
+                        style::text(ui.visuals().dark_mode)
+                    };
+                });
+            });
+            assert!(output.shapes.iter().any(|s| matches!(&s.shape,
+                egui::Shape::Mesh(m) if !m.vertices.is_empty() && m.vertices.iter().all(|v| v.color == ink && target.contains(v.pos))
+            )));
+            assert!(!output.shapes.iter().any(|s| matches!(&s.shape,
+                egui::Shape::Rect(r) if r.rect == target && r.fill != egui::Color32::TRANSPARENT
+            )));
+        }
+    }
+}
+
 #[derive(Default)]
 struct Clicks {
     play: bool,

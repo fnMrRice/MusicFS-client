@@ -23,6 +23,7 @@ impl Catalog {
         actions: &mut Actions,
     ) {
         let ready = self.complete.is_none()
+            && (!self.playlist.tools.active() || self.tracks.next.is_none())
             && !self.tracks.busy()
             && self.tracks.error.is_none()
             && (self.tracks.next.is_some()

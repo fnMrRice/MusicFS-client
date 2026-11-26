@@ -1,6 +1,10 @@
 use super::{Page, Result, ServerSession, Track, WirePage};
 use serde::{Deserialize, Serialize};
 
+fn local_album_cover(path: Option<String>) -> Option<String> {
+    path.filter(|p| p.starts_with("/api/v1/") && crate::covers::cover_endpoint(p).is_ok())
+}
+
 #[derive(Copy, Clone, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum CategoryKind {
@@ -37,7 +41,7 @@ pub struct Category {
     pub id: String,
     pub name: String,
     pub track_count: u64,
-    pub cover_object_id: Option<String>,
+    pub cover_path: Option<String>,
     pub publisher: Option<String>,
     pub release_date: Option<String>,
 }
@@ -82,12 +86,7 @@ impl ServerSession {
                     id,
                     name: item.name,
                     track_count: item.track_count,
-                    cover_object_id: item
-                        .cover_path
-                        .as_deref()
-                        .and_then(|p| p.strip_prefix("/api/v1/media/"))
-                        .and_then(|id| super::check_id(id).ok())
-                        .map(str::to_owned),
+                    cover_path: local_album_cover(item.cover_path),
                     publisher: item.publisher,
                     release_date: item.release_date,
                 })
@@ -97,6 +96,30 @@ impl ServerSession {
             items,
             next_cursor: page.next_cursor,
         })
+    }
+
+    pub async fn album_cover_path(&self, id: &str) -> Result<Option<String>> {
+        #[derive(Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct AlbumCover {
+            cover_path: Option<String>,
+        }
+        let id = super::check_id(id)?;
+        let album: AlbumCover = self.get(self.url(&format!("library/albums/{id}"))).await?;
+        Ok(local_album_cover(album.cover_path))
+    }
+
+    pub async fn refresh_album_cover(&self, id: &str) -> Result<()> {
+        let id = super::check_id(id)?;
+        let key = uuid::Uuid::new_v4().to_string();
+        self.send_with_headers(
+            reqwest::Method::POST,
+            self.url(&format!("library/albums/{id}/artwork/refresh")),
+            None,
+            &[("Idempotency-Key", &key)],
+        )
+        .await?;
+        Ok(())
     }
 
     pub async fn category_tracks(

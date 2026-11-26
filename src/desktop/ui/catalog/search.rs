@@ -244,6 +244,7 @@ impl Catalog {
         search.results.poll();
         let mut load = !search.results.started;
         let mut selected = None;
+        self.album_cover.poll(&mut self.artwork);
         self.artwork.poll(ui.ctx());
         egui::ScrollArea::vertical()
             .id_salt(("search-categories", search.section.label(), &search.query))

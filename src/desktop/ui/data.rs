@@ -71,9 +71,13 @@ impl<T: Send + 'static> Pages<T> {
     }
 
     pub fn poll(&mut self) {
-        let Some(result) = self.pending.as_mut().and_then(Task::poll) else {
-            return;
-        };
+        if let Some(items) = self.take_page() {
+            self.items.extend(items);
+        }
+    }
+
+    pub(super) fn take_page(&mut self) -> Option<Vec<T>> {
+        let result = self.pending.as_mut()?.poll()?;
         self.pending = None;
         match result {
             Ok(page) => {
@@ -83,12 +87,15 @@ impl<T: Send + 'static> Pages<T> {
                     .is_some_and(|c| c.is_empty() || !self.seen.insert(c.clone()))
                 {
                     self.error = Some(tr("服务器分页未向前推进，请刷新列表。").into());
-                    return;
+                    return None;
                 }
-                self.items.extend(page.items);
                 self.next = page.next_cursor;
+                Some(page.items)
             }
-            Err(err) => self.error = Some(err),
+            Err(err) => {
+                self.error = Some(err);
+                None
+            }
         }
     }
 }
@@ -143,6 +150,10 @@ pub enum TrackQuery {
 }
 
 impl TrackQuery {
+    pub fn is_playlist(&self) -> bool {
+        matches!(self, Self::Favorites | Self::Playlist { .. } | Self::History)
+    }
+
     pub async fn fetch(
         &self,
         server: &ServerSession,

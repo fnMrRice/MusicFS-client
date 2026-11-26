@@ -18,14 +18,15 @@ impl Catalog {
     pub(super) fn category_tabs(&mut self, ui: &mut egui::Ui) {
         let span = ui.max_rect().intersect(ui.clip_rect());
         let mut underline = None;
-        let width = ui.available_width();
         let mut selected = None;
         let row = egui::ScrollArea::horizontal()
             .id_salt("catalog-tabs")
             .auto_shrink([false, true])
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = if width < 460.0 { 14. } else { 28. };
+                    ui.spacing_mut().item_spacing.x = 6.;
+                    ui.spacing_mut().button_padding = egui::vec2(18., 10.);
+                    ui.spacing_mut().interact_size.y = 46.;
                     for tab in [
                         CategoryTab::All,
                         CategoryTab::Artist,
@@ -41,20 +42,7 @@ impl Catalog {
                         } else {
                             text.color(style::muted(ui.visuals().dark_mode))
                         };
-                        ui.spacing_mut().button_padding = egui::vec2(4., 10.);
-                        let r = ui.add(
-                            egui::Button::new(text)
-                                .frame(false)
-                                .min_size(egui::vec2(0., 46.)),
-                        );
-                        r.widget_info(|| {
-                            egui::WidgetInfo::selected(
-                                egui::WidgetType::SelectableLabel,
-                                ui.is_enabled(),
-                                active,
-                                tab.label(),
-                            )
-                        });
+                        let r = ui.selectable_label(active, text);
                         if r.clicked() && !active {
                             selected = Some(tab);
                         }
@@ -195,7 +183,6 @@ impl Catalog {
             } => Some(id),
             _ => None,
         };
-        let width = available_width(ui);
         let row = |ui: &mut egui::Ui| {
             ui.spacing_mut().interact_size.y = 38.;
             if all {
@@ -271,11 +258,15 @@ impl Catalog {
             }
             if all {
                 self.all_track_actions(ui, svc);
-            } else if !library {
-                let remain = available_width(ui);
-                if width >= 520. && remain > 116. {
-                    ui.add_space(remain - 116.);
+            } else if query.is_playlist() {
+                if self.playlist.tools.show(ui) {
+                    self.playlist.rebuild(&mut self.tracks.items);
+                    self.matching.clear_selection();
+                    self.versions.clear_expanded();
+                    self.complete = None;
+                    ui.ctx().request_repaint();
                 }
+                return;
             }
             providers::disabled_select(
                 ui,

@@ -67,6 +67,7 @@ pub fn tracks(
                 return;
             }
             let label = match &query {
+                _ if query.is_playlist() && data.playlist.tools.searching() => tr("没有找到相关曲目"),
                 TrackQuery::Library(q)
                 | TrackQuery::AvailableSources { query: q }
                 | TrackQuery::Category { query: q, .. }

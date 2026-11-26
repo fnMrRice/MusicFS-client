@@ -4,6 +4,48 @@ use egui::{
     Context, Event, Key, Modifiers,
 };
 
+#[test]
+fn category_tabs_leave_space_on_both_sides_of_the_text() {
+    let ctx = Context::default();
+    ctx.enable_accesskit();
+    let mut catalog = Catalog::default();
+    let mut bounds = Vec::new();
+    let output = ctx.run(Default::default(), |ctx| {
+        egui::CentralPanel::default().show(ctx, |ui| {
+            catalog.category_tabs(ui);
+            for tab in [CategoryTab::Artist, CategoryTab::Album, CategoryTab::Genre] {
+                let text = tab.label();
+                let width = ui
+                    .painter()
+                    .layout_no_wrap(
+                        text.into(),
+                        egui::FontId::proportional(16.),
+                        egui::Color32::WHITE,
+                    )
+                    .size()
+                    .x;
+                bounds.push((text, width));
+            }
+        });
+    });
+    let tree = output.platform_output.accesskit_update.unwrap();
+    for (text, width) in bounds {
+        let rect = tree
+            .nodes
+            .iter()
+            .find_map(|(_, node)| {
+                (node.label() == Some(text))
+                    .then(|| node.bounds())
+                    .flatten()
+            })
+            .unwrap();
+        assert!(
+            rect.width() as f32 >= width + 34.,
+            "Tab missing horizontal padding: {text}"
+        );
+    }
+}
+
 fn frame(
     ctx: &Context,
     catalog: &mut Catalog,

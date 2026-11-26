@@ -10,6 +10,7 @@ mod login;
 mod matching;
 mod navigation;
 mod pages;
+pub(crate) mod playlist_tracks;
 mod playlists;
 mod settings;
 mod shell;
@@ -23,6 +24,18 @@ mod playlist_pages;
 #[cfg(test)]
 #[path = "../../../tests/native/library_autoload.rs"]
 mod library_autoload;
+
+#[cfg(test)]
+#[path = "../../../tests/native/http_fixture.rs"]
+mod http_fixture;
+
+#[cfg(test)]
+#[path = "../../../tests/native/sidebar_playlists.rs"]
+mod sidebar_playlists;
+
+#[cfg(test)]
+#[path = "../../../tests/native/playlist_track_search.rs"]
+mod playlist_track_search;
 
 use crate::{
     browse::BrowseUi,
@@ -208,9 +221,13 @@ impl SignedUi {
     }
     fn set_screen(&mut self, screen: Screen) {
         if self.screen != screen {
+            self.catalog.playlist = Default::default();
             self.catalog.reset_tracks();
-            if self.screen == Screen::Playlists {
+            if matches!(self.screen, Screen::Playlists | Screen::SourcePlaylist(_)) {
                 self.playlists.leave();
+            }
+            if self.screen == Screen::Settings {
+                self.playlists.invalidate_sources();
             }
             self.actions.notice = None;
             if self.screen == Screen::Recommendations {
@@ -239,6 +256,10 @@ impl SignedUi {
                 .find(|t| t.id == *id)
                 .map(|t| tr(&t.name).to_owned())
                 .unwrap_or_else(|| tr("作品库").into()),
+            Screen::SourcePlaylist(key) => self
+                .playlists
+                .source_title(key)
+                .unwrap_or_else(|| tr("歌单详情").into()),
             screen => screen.label().into(),
         }
     }
@@ -260,6 +281,7 @@ impl SignedUi {
             self.catalog.reset_tracks();
         }
         self.lists.poll();
+        self.playlists.sync_sources(ctx, svc);
         if !self.lists.started {
             self.load_lists(ctx, svc);
         }

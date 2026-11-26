@@ -192,20 +192,8 @@ pub(super) fn show(
     };
     if buttons.width() >= 85. {
         let r = bar
-            .scope(|ui| {
-                if saved {
-                    let accent = style::accent(ui);
-                    let w = &mut ui.visuals_mut().widgets;
-                    w.inactive.fg_stroke.color = accent;
-                    w.hovered.fg_stroke.color = accent;
-                    w.active.fg_stroke.color = accent;
-                }
-                control(
-                    ui,
-                    if saved { "heart-filled" } else { "heart" },
-                    favorite_label,
-                    favorite_enabled,
-                )
+            .add_enabled_ui(favorite_enabled, |ui| {
+                favorite_button(ui, saved, favorite_label)
             })
             .inner;
         if r.clicked() {

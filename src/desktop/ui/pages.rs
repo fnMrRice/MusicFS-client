@@ -54,6 +54,17 @@ impl SignedUi {
                 self.playlists(ui, svc);
                 return;
             }
+            Screen::SourcePlaylist(key) => {
+                self.playlist_operations(ui, svc);
+                let outcome = self.playlists.source_detail(
+                    ui, svc, &mut self.catalog.artwork, &self.lists, &key,
+                );
+                if outcome.more_local {
+                    self.load_lists(ui.ctx(), svc);
+                }
+                self.play_request(svc, outcome.play);
+                return;
+            }
             Screen::Playlist(id) => {
                 let Some(p) = self.lists.items.iter().find(|p| p.id == id) else {
                     if self.lists.busy() {

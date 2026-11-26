@@ -53,6 +53,12 @@ struct Reference {
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct SourceDisplay {
+    source: Reference,
+    remote_track: Option<super::TrackInfo>,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Entry {
     entry_id: String,
     source: Reference,
@@ -190,15 +196,57 @@ impl ServerSession {
         &self,
         entries: Vec<serde_json::Value>,
     ) -> Result<Vec<Track>> {
-        let entries = entries.into_iter().map(serde_json::from_value::<Entry>);
-        stream::iter(entries)
-            .map(|entry| async move {
-                self.entry(entry.map_err(|_| "Invalid playlist entry.")?)
-                    .await
+        let entries = entries
+            .into_iter()
+            .map(serde_json::from_value)
+            .collect::<std::result::Result<_, _>>()
+            .map_err(|_| "Invalid playlist entry.")?;
+        self.playlist_rows(entries).await
+    }
+
+    async fn playlist_rows(&self, entries: Vec<Entry>) -> Result<Vec<Track>> {
+        let remote: Vec<_> = entries
+            .iter()
+            .enumerate()
+            .filter_map(|(i, entry)| {
+                let source = &entry.source;
+                if source.track_id.is_some() || source.source_track_id.is_some() {
+                    return None;
+                }
+                source.remote_source_id.clone().map(|id| (i, id))
             })
+            .collect();
+        let mut rows: Vec<_> = stream::iter(entries)
+            .map(|entry| self.entry(entry))
             .buffered(4)
             .try_collect()
-            .await
+            .await?;
+        // 导入歌单的未关联条目仅保存远程引用。用同一批资料显示和搜索，保留快照中的重复和顺序。
+        for batch in remote.chunks(50) {
+            let sources: Vec<_> = batch
+                .iter()
+                .map(|(_, id)| serde_json::json!({"sourceTrackId":null,"remoteSourceId":id}))
+                .collect();
+            let body = serde_json::json!({"sources": sources});
+            let reply = self
+                .send(Method::POST, self.url("source-refs/lookup"), Some(&body))
+                .await?;
+            let page: WirePage<SourceDisplay> = decode(reply).await?;
+            if page.items.len() != batch.len() {
+                return Err("Invalid playlist source lookup count.".into());
+            }
+            for ((index, id), item) in batch.iter().zip(page.items) {
+                if item.source.remote_source_id.as_ref() != Some(id) {
+                    return Err("Invalid playlist source lookup order.".into());
+                }
+                if let Some(track) = item.remote_track {
+                    rows[*index].title = track.title;
+                    rows[*index].artists = track.artists;
+                    rows[*index].album = track.album;
+                }
+            }
+        }
+        Ok(rows)
     }
 
     async fn entry(&self, entry: Entry) -> Result<Track> {
@@ -272,11 +320,7 @@ impl ServerSession {
         {
             return Err("Invalid playlist snapshot.".into());
         }
-        let items = stream::iter(snapshot.items)
-            .map(|entry| self.entry(entry))
-            .buffered(4)
-            .try_collect()
-            .await?;
+        let items = self.playlist_rows(snapshot.items).await?;
         Ok(Page {
             items,
             next_cursor: snapshot.next_offset.map(|n| n.to_string()),

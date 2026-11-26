@@ -10,74 +10,35 @@ use std::{
     sync::mpsc::{channel, Receiver},
     time::{Duration, Instant},
 };
-use tokio::{
-    io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
-    net::TcpListener,
-};
 
 async fn fixture() -> (ServerSession, Receiver<(String, Option<String>)>) {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let endpoint = format!("http://{}", listener.local_addr().unwrap());
     let (requests, received) = channel();
-    tokio::spawn(async move {
-        loop {
-            let (connection, _) = listener.accept().await.unwrap();
-            let mut reader = BufReader::new(connection);
-            let mut line = String::new();
-            reader.read_line(&mut line).await.unwrap();
-            let Some(path) = line.split_whitespace().nth(1) else {
-                continue;
-            };
-            let url = url::Url::parse(&format!("http://localhost{path}")).unwrap();
-            loop {
-                line.clear();
-                if reader.read_line(&mut line).await.unwrap() == 0 || line == "\r\n" {
-                    break;
-                }
-            }
-            let body = match url.path() {
-                "/api/v1/health/ready" => {
-                    json!({"ready":true,"product":"MusicFS","apiVersion":"1","instanceId":"test","serverVersion":"1"})
-                }
-                "/api/v1/auth/session" => {
-                    json!({"user":{"id":"test","role":"user"},"csrfToken":"test"})
-                }
-                "/api/v1/library/tracks" | "/api/v1/library/albums" => {
-                    let list = url.path().rsplit('/').next().unwrap();
-                    let after = url
-                        .query_pairs()
-                        .find(|(k, _)| k == "after")
-                        .map(|(_, v)| v.into_owned());
-                    let first = after.is_none();
-                    requests.send((list.to_owned(), after)).unwrap();
-                    let rows = if first { 0..50 } else { 50..51 };
-                    let items: Vec<_> = rows
-                        .map(|i| {
-                            let id = format!("{list}-{i}");
-                            if list == "tracks" {
-                                json!({"trackId":id,"title":id,"artists":[],"albums":[]})
-                            } else {
-                                json!({"albumId":id,"name":id,"trackCount":1})
-                            }
-                        })
-                        .collect();
-                    json!({"items":items,"nextCursor":first.then_some("page-two")})
-                }
-                _ => json!({"items":[]}),
-            };
-            let body = body.to_string();
-            let response = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nSet-Cookie: musicfs_session=test; Path=/api/v1\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len());
-            reader
-                .get_mut()
-                .write_all(response.as_bytes())
-                .await
-                .unwrap();
+    let session = super::http_fixture::session(move |url| match url.path() {
+        "/api/v1/library/tracks" | "/api/v1/library/albums" => {
+            let list = url.path().rsplit('/').next().unwrap();
+            let after = url
+                .query_pairs()
+                .find(|(k, _)| k == "after")
+                .map(|(_, v)| v.into_owned());
+            let first = after.is_none();
+            requests.send((list.to_owned(), after)).unwrap();
+            let rows = if first { 0..50 } else { 50..51 };
+            let items: Vec<_> = rows
+                .map(|i| {
+                    let id = format!("{list}-{i}");
+                    if list == "tracks" {
+                        json!({"trackId":id,"title":id,"artists":[],"albums":[]})
+                    } else {
+                        json!({"albumId":id,"name":id,"trackCount":1})
+                    }
+                })
+                .collect();
+            json!({"items":items,"nextCursor":first.then_some("page-two")})
         }
-    });
-    (
-        ServerSession::login(&endpoint, "test").await.unwrap(),
-        received,
-    )
+        _ => json!({"items":[]}),
+    })
+    .await;
+    (session, received)
 }
 
 fn frame(ui: &mut SignedUi, ctx: &egui::Context, svc: Services<'_>, events: Vec<Event>) -> NodeId {

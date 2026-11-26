@@ -2,6 +2,13 @@ use super::{data::Services, style, SignedUi};
 use crate::i18n::tr;
 use eframe::egui::{self, Vec2};
 
+#[derive(Clone, PartialEq, Eq)]
+pub struct SourcePlaylist {
+    pub instance: String,
+    pub account: Option<String>,
+    pub external: String,
+}
+
 #[derive(Clone, Default, PartialEq, Eq)]
 pub enum Screen {
     #[default]
@@ -10,6 +17,7 @@ pub enum Screen {
     Recommendations,
     Playlists,
     Playlist(String),
+    SourcePlaylist(SourcePlaylist),
     Favorites,
     History,
     Works(String),
@@ -22,7 +30,7 @@ impl Screen {
             Self::Search => tr("搜索"),
             Self::Recommendations => tr("推荐"),
             Self::Playlists => tr("歌单管理"),
-            Self::Playlist(_) => tr("歌单详情"),
+            Self::Playlist(_) | Self::SourcePlaylist(_) => tr("歌单详情"),
             Self::Favorites => tr("我的收藏"),
             Self::History => tr("最近播放"),
             Self::Works(_) => tr("作品库"),
@@ -31,13 +39,20 @@ impl Screen {
     }
 }
 
-fn entry(ui: &mut egui::Ui, title: &str, symbol: &str, active: bool, nested: bool) -> bool {
+pub(super) fn entry(
+    ui: &mut egui::Ui,
+    title: &str,
+    symbol: &str,
+    active: bool,
+    nested: bool,
+) -> bool {
     let (rect, response) = ui.allocate_exact_size(
         Vec2::new(ui.available_width(), if nested { 39. } else { 46. }),
         egui::Sense::click(),
     );
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, title));
-    let within = nested || symbol == "▾";
+    let parent = matches!(symbol, "▸" | "▾");
+    let within = nested || parent;
     let color = if active {
         if within {
             style::accent(ui)
@@ -63,6 +78,13 @@ fn entry(ui: &mut egui::Ui, title: &str, symbol: &str, active: bool, nested: boo
             },
         );
     }
+    if active && !parent {
+        let marker = egui::Rect::from_center_size(
+            egui::pos2(rect.left() + 2., rect.center().y),
+            egui::vec2(3., 18.),
+        );
+        p.rect_filled(marker, 2., style::accent_fill(ui));
+    }
     let center = egui::pos2(rect.left() + 25., rect.center().y);
     let icon = match symbol {
         "⌕" => "search",
@@ -83,7 +105,6 @@ fn entry(ui: &mut egui::Ui, title: &str, symbol: &str, active: bool, nested: boo
         egui::Rect::from_center_size(center, Vec2::splat(20.)),
         color,
     );
-    let parent = matches!(symbol, "▸" | "▾");
     let text_clip = egui::Rect::from_min_max(
         rect.min,
         egui::pos2(rect.right() - if parent { 26. } else { 7. }, rect.bottom()),
@@ -243,13 +264,6 @@ impl SignedUi {
                                         go = Some(Screen::Playlist(list.id.clone()));
                                     }
                                 }
-                                if self.lists.items.is_empty()
-                                    && self.lists.next.is_none()
-                                    && !self.lists.busy()
-                                    && self.lists.error.is_none()
-                                {
-                                    ui.weak(tr("歌单列表为空"));
-                                }
                                 if let Some(error) = &self.lists.error {
                                     more = ui
                                         .button(tr("重试读取歌单"))
@@ -257,6 +271,15 @@ impl SignedUi {
                                         .clicked();
                                 } else if self.lists.can_load_more() {
                                     more = super::page_end_visible(ui);
+                                }
+                                let empty = self.playlists.sidebar(ui, svc, &self.screen, &mut go);
+                                if empty
+                                    && self.lists.items.is_empty()
+                                    && self.lists.next.is_none()
+                                    && !self.lists.busy()
+                                    && self.lists.error.is_none()
+                                {
+                                    ui.weak(tr("歌单列表为空"));
                                 }
                             }
                         }
@@ -268,6 +291,27 @@ impl SignedUi {
                     self.load_lists(ctx, svc);
                 }
             });
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn selection_marker_belongs_to_the_destination() {
+    let ctx = egui::Context::default();
+    style::apply(&ctx, "dark", "miku");
+    for (symbol, nested, expected) in [("▾", false, false), ("▸", false, false), ("♫", true, true)]
+    {
+        let output = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                entry(ui, "Library", symbol, true, nested);
+            });
+        });
+        let marker = output.shapes.iter().any(|s| {
+            matches!(&s.shape,
+                egui::Shape::Rect(r) if r.rect.width() == 3. && r.rect.height() == 18.
+            )
+        });
+        assert_eq!(marker, expected, "Unexpected selection marker for {symbol}");
     }
 }
 

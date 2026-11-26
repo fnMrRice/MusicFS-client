@@ -1,3 +1,4 @@
+pub(super) mod caption;
 mod tasks;
 
 use super::{data::Services, navigation::Screen, style, themes, HostAction, SignedUi};
@@ -103,15 +104,25 @@ impl SignedUi {
         prefs: &Preferences,
         action: &mut Option<HostAction>,
     ) {
-        let (rect, _) =
-            ui.allocate_exact_size(egui::vec2(ui.available_width(), 88.), egui::Sense::hover());
-        let gap = if rect.width() >= 650. { 14. } else { 5. };
-        let split = rect.right() - 5. * 36. - 4. * gap;
+        let custom = crate::system::has_custom_titlebar(ui.ctx());
+        let height = if custom { 64. } else { 88. };
+        let (mut rect, _) = ui.allocate_exact_size(
+            egui::vec2(ui.available_width(), height),
+            egui::Sense::hover(),
+        );
+        if custom {
+            rect.max.x = ui.ctx().screen_rect().right();
+        }
+        let gap = if rect.width() < 520. { 3. } else { 7. };
+        let controls_left = rect.right() - if custom { caption::WIDTH } else { 0. };
+        // 六个工具按钮与两条分隔线，最后一个按钮紧邻窗口控件。
+        let split = controls_left - (6. * 36. + 2. + 7. * gap);
         let mut left = ui.new_child(
             UiBuilder::new()
                 .max_rect(rect.with_max_x(split - 8.))
                 .layout(Layout::left_to_right(Align::Center)),
         );
+        left.set_clip_rect(left.clip_rect().intersect(rect.with_max_x(split - 4.)));
         let wide = ui.ctx().screen_rect().width() > 850.;
         left.spacing_mut().item_spacing.x = if wide { 18. } else { 8. };
         if icons::button(&mut left, "back", tr("返回"), 36., 22.).clicked() {
@@ -120,6 +131,7 @@ impl SignedUi {
         if !wide && icons::button(&mut left, "grid", tr("主导航"), 36., 20.).clicked() {
             self.shell.navigation = Some(!self.shell.navigation.unwrap_or(false));
         }
+        let drag_left = left.min_rect().right();
         left.add(
             egui::Label::new(
                 RichText::new(self.title())
@@ -130,7 +142,7 @@ impl SignedUi {
         );
         let mut right = ui.new_child(
             UiBuilder::new()
-                .max_rect(rect.with_min_x(split))
+                .max_rect(rect.with_min_x(split).with_max_x(controls_left))
                 .layout(Layout::left_to_right(Align::Center)),
         );
         right.spacing_mut().item_spacing.x = gap;
@@ -143,6 +155,7 @@ impl SignedUi {
         if icons::button(&mut right, "settings", tr("设置"), 36., 22.).clicked() {
             self.navigate(Screen::Settings);
         }
+        caption::separator(&mut right);
         let theme = icons::button(&mut right, "theme", tr("换肤"), 36., 22.);
         popup(&right, "theme-menu", &theme, 160., |ui| {
             for (key, label) in themes() {
@@ -192,6 +205,29 @@ impl SignedUi {
                 ui.memory_mut(|m| m.close_popup());
             }
         });
+        caption::separator(&mut right);
+        let active = self
+            .player
+            .mini_open()
+            .then(|| right.painter().add(egui::Shape::Noop));
+        let mini = icons::button(&mut right, "mini", tr("迷你播放器"), 36., 21.);
+        if let Some(shape) = active {
+            right.painter().set(
+                shape,
+                egui::Shape::rect_filled(mini.rect, 7., style::accent_soft(&right)),
+            );
+        }
+        if mini.clicked() {
+            self.player.open_mini(right.ctx());
+        }
+        if custom {
+            let title = rect.with_min_x(drag_left).with_max_x(split);
+            let top = egui::Rect::from_min_max(
+                ui.ctx().screen_rect().min,
+                egui::pos2(controls_left, rect.center().y - 18.),
+            );
+            caption::controls(ui, rect, &[title, top]);
+        }
     }
 }
 
@@ -217,5 +253,67 @@ mod tests {
         app.back(false);
         app.back(false);
         assert_eq!(app.shell.navigation, Some(true));
+    }
+
+    #[test]
+    fn mini_player_opens_from_the_header_after_the_account_menu() {
+        use egui::accesskit::{Action, ActionRequest, Role};
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let server = runtime.block_on(crate::ui::http_fixture::session(|_| serde_json::json!({})));
+        let activity = server.listen_activity(|| {});
+        let player =
+            musicfs_player_core::Player::new(|_| Err("No media in fixture".into())).unwrap();
+        let svc = Services {
+            runtime: runtime.handle(),
+            server: &server,
+            activity: &activity,
+            player: &player,
+        };
+        let ctx = egui::Context::default();
+        ctx.enable_accesskit();
+        let mut app = SignedUi::default();
+        let mut frame = |events| {
+            ctx.run(
+                egui::RawInput {
+                    events,
+                    screen_rect: Some(egui::Rect::from_min_size(
+                        egui::Pos2::ZERO,
+                        egui::vec2(1232., 800.),
+                    )),
+                    ..Default::default()
+                },
+                |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        app.header(ui, svc, &Preferences::default(), &mut None)
+                    });
+                },
+            )
+        };
+        let tree = frame(vec![]).platform_output.accesskit_update.unwrap();
+        let button = |label| {
+            tree.nodes
+                .iter()
+                .find(|(_, n)| n.role() == Role::Button && n.label() == Some(tr(label)))
+                .unwrap()
+        };
+        let (_, settings) = button("设置");
+        let (_, skin) = button("换肤");
+        let (_, user) = button("账号菜单");
+        let (mini_id, mini) = button("迷你播放器");
+        let (settings, skin, user, mini) = (
+            settings.bounds().unwrap(),
+            skin.bounds().unwrap(),
+            user.bounds().unwrap(),
+            mini.bounds().unwrap(),
+        );
+        let usual_gap = user.x0 - skin.x1;
+        assert!(usual_gap > 0. && skin.x0 - settings.x1 > usual_gap);
+        assert!(mini.x0 - user.x1 > usual_gap);
+        frame(vec![egui::Event::AccessKitActionRequest(ActionRequest {
+            target: *mini_id,
+            action: Action::Click,
+            data: None,
+        })]);
+        assert!(app.player.mini_open());
     }
 }

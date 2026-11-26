@@ -232,7 +232,7 @@ fn apply(
         }
         Action::Favorite => {
             if let Some(on) = actions.favorites.contains(&track.id, favorites) {
-                actions.toggle(ui, svc, track, !on);
+                actions.toggle(ui, svc, track.id.clone(), !on);
             }
             Ok(())
         }

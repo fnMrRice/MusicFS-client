@@ -21,6 +21,10 @@ pub struct Windows {
 }
 
 impl Windows {
+    pub fn mini_open(&self) -> bool {
+        self.mini.load(Ordering::Relaxed)
+    }
+
     pub fn open_mini(&self, ctx: &Context) {
         open(ctx, &self.mini, "musicfs-mini");
     }

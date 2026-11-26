@@ -30,6 +30,10 @@ mod library_autoload;
 mod http_fixture;
 
 #[cfg(test)]
+#[path = "../../../tests/native/player_bar.rs"]
+mod player_bar;
+
+#[cfg(test)]
 #[path = "../../../tests/native/sidebar_playlists.rs"]
 mod sidebar_playlists;
 
@@ -298,6 +302,7 @@ impl SignedUi {
             svc.runtime,
             prefs.audio.volume,
             prefs.audio.last_volume,
+            |ui, track| self.actions.player_favorite(ui, svc, track),
         );
         if self
             .shell

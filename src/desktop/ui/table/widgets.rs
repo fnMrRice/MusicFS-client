@@ -5,43 +5,7 @@ use musicfs_player_core::Status;
 use musicfs_server_adapter::TrackCredit;
 
 pub(super) fn favorite_button(ui: &mut egui::Ui, saved: bool, label: &str) -> Response {
-    let (rect, response) = ui.allocate_exact_size(Vec2::splat(38.), Sense::click());
-    response.widget_info(|| {
-        egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), saved, label)
-    });
-    let hover = ui.ctx().animate_bool_with_time(
-        response.id.with("hover"),
-        response.hovered() || response.has_focus(),
-        0.14,
-    );
-    let press = ui.ctx().animate_bool_with_time(
-        response.id.with("press"),
-        response.is_pointer_button_down_on(),
-        0.08,
-    );
-    if hover > 0. {
-        let fill = ui
-            .visuals()
-            .widgets
-            .hovered
-            .weak_bg_fill
-            .gamma_multiply(hover);
-        ui.painter().rect_filled(rect.shrink(press), 7, fill);
-    }
-    let (icon, ink) = if saved {
-        ("heart-filled", style::accent_fill(ui))
-    } else {
-        ("heart", style::text(ui.visuals().dark_mode))
-    };
-    icons::paint(
-        ui,
-        icon,
-        Rect::from_center_size(rect.center(), Vec2::splat(18. - press)),
-        ink,
-    );
-    response
-        .on_hover_cursor(egui::CursorIcon::PointingHand)
-        .on_hover_text(label)
+    crate::ui::favorites::favorite_button(ui, saved, label, 38.)
 }
 
 pub(super) fn contents(ui: &mut egui::Ui, rect: Rect, id: &str) -> egui::Ui {

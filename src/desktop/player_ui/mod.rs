@@ -40,6 +40,14 @@ pub struct PlayerUi {
 }
 
 impl PlayerUi {
+    pub fn open_mini(&self, ctx: &Context) {
+        self.windows.open_mini(ctx);
+    }
+
+    pub fn mini_open(&self) -> bool {
+        self.windows.mini_open()
+    }
+
     pub fn system_state(&self) -> crate::system::SystemState {
         let Some((instance, _)) = self.identity else {
             return Default::default();
@@ -82,6 +90,7 @@ impl PlayerUi {
         runtime: &Handle,
         volume: f32,
         last_volume: f32,
+        favorite: impl FnOnce(&mut egui::Ui, &Track),
     ) -> Option<BarChange> {
         let mut change = None;
         if self.last_poll.is_none_or(|t| t.elapsed() >= TICK) {
@@ -109,7 +118,7 @@ impl PlayerUi {
             .show_separator_line(false)
             .frame(egui::Frame::new().fill(style::sidebar(ctx.style().visuals.dark_mode)))
             .show(ctx, |ui| {
-                let queue_button = self.bar(ui, player, volume, last_volume, &mut change);
+                let queue_button = self.bar(ui, player, volume, last_volume, &mut change, favorite);
                 if let Some(error) = error {
                     ui.horizontal(|ui| {
                         ui.colored_label(ui.visuals().error_fg_color, error);

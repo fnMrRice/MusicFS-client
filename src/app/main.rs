@@ -66,6 +66,7 @@ fn main() -> eframe::Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
             .with_app_id("io.github.fnMrRice.musicfs.desktop")
+            .with_decorations(!cfg!(windows))
             .with_inner_size([1232.0, 800.0])
             .with_min_inner_size([660.0, 500.0])
             .with_icon(icon),

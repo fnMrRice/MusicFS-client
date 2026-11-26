@@ -73,6 +73,13 @@ struct Snapshot {
 }
 
 impl ServerSession {
+    pub async fn track_id_for_source(&self, source: &str) -> Result<String> {
+        let url = self.url(&format!("library/sources/{}/track", check_id(source)?));
+        let track: MusicTrack = self.get(url).await?;
+        check_id(&track.track_id)?;
+        Ok(track.track_id)
+    }
+
     pub(crate) async fn playback_source(
         &self,
         track_id: &str,

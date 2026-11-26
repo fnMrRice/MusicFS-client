@@ -1,6 +1,8 @@
 use crate::i18n::tr;
 use crate::task::Task;
+use crate::{icons, ui::style};
 use eframe::egui;
+use egui::{Rect, Response, Sense, Vec2};
 use musicfs_server_adapter::{Page, ServerSession, Track};
 use std::collections::{HashMap, HashSet};
 use std::future::Future;
@@ -9,6 +11,46 @@ use tokio::runtime::Handle;
 #[cfg(test)]
 #[path = "../../../tests/native/favorites.rs"]
 mod tests;
+
+pub(super) fn favorite_button(ui: &mut egui::Ui, saved: bool, label: &str, size: f32) -> Response {
+    let (rect, response) = ui.allocate_exact_size(Vec2::splat(size), Sense::click());
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::Button, ui.is_enabled(), saved, label)
+    });
+    let hover = ui.ctx().animate_bool_with_time(
+        response.id.with("hover"),
+        response.hovered() || response.has_focus(),
+        0.14,
+    );
+    let press = ui.ctx().animate_bool_with_time(
+        response.id.with("press"),
+        response.is_pointer_button_down_on(),
+        0.08,
+    );
+    if hover > 0. {
+        let fill = ui
+            .visuals()
+            .widgets
+            .hovered
+            .weak_bg_fill
+            .gamma_multiply(hover);
+        ui.painter().rect_filled(rect.shrink(press), 7, fill);
+    }
+    let (icon, ink) = if saved {
+        ("heart-filled", style::accent_fill(ui))
+    } else {
+        ("heart", style::text(ui.visuals().dark_mode))
+    };
+    icons::paint(
+        ui,
+        icon,
+        Rect::from_center_size(rect.center(), Vec2::splat(18. - press)),
+        ink,
+    );
+    response
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .on_hover_text(label)
+}
 
 #[derive(Default)]
 pub struct Favorites {

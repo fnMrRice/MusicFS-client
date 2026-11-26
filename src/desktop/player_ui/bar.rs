@@ -1,7 +1,7 @@
 use super::{lyrics::time, BarChange, PlayerUi};
 use crate::{i18n::tr, icons, ui::style};
 use eframe::egui::{self, Align, Color32, Layout, Rect, RichText, Ui, UiBuilder};
-use musicfs_player_core::{PlaybackFormat, Player, PlayerCommand, Status};
+use musicfs_player_core::{PlaybackFormat, Player, PlayerCommand, Status, Track};
 
 #[cfg(test)]
 #[path = "../../../tests/native/player_timeline.rs"]
@@ -49,6 +49,7 @@ impl PlayerUi {
         volume: f32,
         last_volume: f32,
         change: &mut Option<BarChange>,
+        favorite: impl FnOnce(&mut Ui, &Track),
     ) -> egui::Response {
         let width = ui.available_width();
         let (bar, _) = ui.allocate_exact_size(egui::vec2(width, 105.), egui::Sense::hover());
@@ -68,20 +69,26 @@ impl PlayerUi {
         } else {
             18.
         };
-        let middle_width = 36. * 2. + 52. + 2. * gap + if narrow { 0. } else { 93. + gap };
-        let middle = Rect::from_center_size(row.center(), egui::vec2(middle_width, row.height()));
+        let middle = row
+            .with_min_x(row.center().x - 26. - 2. * (36. + gap))
+            .with_max_x(row.center().x + 26. + 36. + gap + if narrow { 0. } else { 93. + gap });
         let mut info = ui.new_child(
             UiBuilder::new()
                 .max_rect(row.with_max_x(middle.left() - 8.))
                 .layout(Layout::left_to_right(Align::Center)),
         );
-        self.track_info(&mut info, narrow);
+        self.track_info(&mut info, narrow, favorite);
         let mut transport = ui.new_child(
             UiBuilder::new()
                 .max_rect(middle)
                 .layout(Layout::left_to_right(Align::Center)),
         );
         transport.spacing_mut().item_spacing.x = gap;
+        if let Some(mode) =
+            super::controls::playback_mode_menu(&mut transport, self.snapshot.playback_mode)
+        {
+            *change = Some(BarChange::PlaybackMode(mode));
+        }
         self.transport(&mut transport, player, narrow);
         let mut extras = ui.new_child(
             UiBuilder::new()
@@ -186,7 +193,7 @@ impl PlayerUi {
         }
     }
 
-    fn track_info(&self, ui: &mut Ui, narrow: bool) {
+    fn track_info(&self, ui: &mut Ui, narrow: bool, favorite: impl FnOnce(&mut Ui, &Track)) {
         ui.spacing_mut().item_spacing.x = 13.;
         let side = if narrow { 44. } else { 56. };
         let (art, _) = ui.allocate_exact_size(egui::Vec2::splat(side), egui::Sense::hover());
@@ -221,7 +228,7 @@ impl PlayerUi {
             self.snapshot.active_format.as_ref(),
             self.snapshot.output.output_channels,
         );
-        let height = ui.text_style_height(&egui::TextStyle::Body) + 35.;
+        let height = 56.;
         let max = ui.available_rect_before_wrap();
         let bounds = Rect::from_center_size(max.center(), egui::vec2(max.width().max(0.), height));
         let mut text = ui.new_child(
@@ -230,8 +237,24 @@ impl PlayerUi {
                 .layout(Layout::top_down(Align::Min)),
         );
         text.spacing_mut().item_spacing.y = 2.;
+        let title = RichText::new(label).font(style::bold(&text, 14.)).strong();
+        text.horizontal(|ui| {
+            ui.spacing_mut().item_spacing.x = 4.;
+            if let Some(track) = track {
+                let mut bounds = ui.available_rect_before_wrap();
+                bounds.max.x = (bounds.right() - 28.).max(bounds.left());
+                ui.scope_builder(UiBuilder::new().max_rect(bounds), |ui| {
+                    ui.add(egui::Label::new(title).truncate())
+                        .on_hover_text(label);
+                });
+                ui.push_id(("playing-favorite", track.source_only, &track.id), |ui| {
+                    favorite(ui, track);
+                });
+            } else {
+                ui.add(egui::Label::new(title).truncate());
+            }
+        });
         for line in [
-            RichText::new(label).font(style::bold(&text, 14.)).strong(),
             RichText::new(artist).size(12.).weak(),
             RichText::new(output).size(10.).weak(),
         ] {
@@ -340,13 +363,6 @@ impl PlayerUi {
         if icons::button(ui, "lyrics", tr("桌面歌词"), 36., 21.).clicked() {
             self.windows.open_lyrics(ui.ctx());
         }
-        let queue_button = icons::button(ui, "queue", tr("播放队列"), 36., 21.);
-        if icons::button(ui, "mini", tr("迷你播放器"), 36., 21.).clicked() {
-            self.windows.open_mini(ui.ctx());
-        }
-        if let Some(mode) = super::controls::playback_mode_menu(ui, self.snapshot.playback_mode) {
-            *change = Some(BarChange::PlaybackMode(mode));
-        }
-        queue_button
+        icons::button(ui, "queue", tr("播放队列"), 36., 21.)
     }
 }

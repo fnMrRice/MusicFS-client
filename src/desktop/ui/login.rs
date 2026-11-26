@@ -12,6 +12,7 @@ pub struct Login {
 
 impl Login {
     pub fn show(&mut self, ctx: &egui::Context, state: &mut DesktopState) {
+        super::shell::caption::login_title_bar(ctx);
         egui::CentralPanel::default()
             .frame(egui::Frame::NONE.fill(style::background(ctx.style().visuals.dark_mode)))
             .show(ctx, |ui| {

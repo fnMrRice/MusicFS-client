@@ -7,6 +7,8 @@ use eframe::egui;
 use musicfs_server_adapter::{Playlist, Track};
 use uuid::Uuid;
 
+mod player_favorite;
+
 #[derive(Clone, PartialEq)]
 enum Target {
     Existing(String, u64),
@@ -30,6 +32,7 @@ struct Editor {
 
 #[derive(Default)]
 pub struct Actions {
+    playing_source: player_favorite::PlayingSource,
     pending: Option<Task<Change>>,
     editor: Option<Editor>,
     rebuild_key: Option<(String, u64, String)>,
@@ -104,12 +107,11 @@ impl Actions {
             Ok(Change::Favorites(written, None))
         }));
     }
-    pub fn toggle(&mut self, ui: &egui::Ui, svc: Services<'_>, track: &Track, value: bool) {
+    pub fn toggle(&mut self, ui: &egui::Ui, svc: Services<'_>, id: String, value: bool) {
         if self.busy() {
             return;
         }
         let server = svc.server.clone();
-        let id = track.id.clone();
         self.notice = None;
         self.pending = Some(Task::spawn(svc.runtime, ui.ctx(), async move {
             server.set_favorite(&id, value).await?;

@@ -1,7 +1,11 @@
 mod state;
+mod titlebar;
 pub(crate) use state::{MediaTrack, SystemAction, SystemState};
+pub(crate) use titlebar::{has_custom_titlebar, maximize_hovered, publish_titlebar};
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod unix;
+#[cfg(windows)]
+mod windows_frame;
 #[cfg(windows)]
 mod windows_media;
 #[cfg(windows)]
@@ -41,6 +45,8 @@ pub(crate) struct DesktopSystem {
     last: Option<SystemState>,
     last_update: Instant,
     #[cfg(windows)]
+    frame: Option<windows_frame::Frame>,
+    #[cfg(windows)]
     thumbnail: Option<windows_shell::Thumbnail>,
     #[cfg(windows)]
     shell: Option<windows_shell::WindowsShell>,
@@ -76,11 +82,22 @@ impl DesktopSystem {
                     _ => None,
                 })
         };
+        #[cfg(windows)]
+        let frame =
+            hwnd.and_then(|hwnd| available(windows_frame::Frame::new(hwnd, &creation.egui_ctx)));
+        #[cfg(windows)]
+        if frame.is_none() {
+            creation
+                .egui_ctx
+                .send_viewport_cmd(ViewportCommand::Decorations(true));
+        }
         Self {
             rx,
             epoch,
             last: None,
             last_update: Instant::now(),
+            #[cfg(windows)]
+            frame,
             #[cfg(windows)]
             thumbnail: hwnd
                 .and_then(|hwnd| available(windows_shell::Thumbnail::new(hwnd, sender.clone()))),
@@ -100,6 +117,10 @@ impl DesktopSystem {
         desktop: &mut DesktopState,
         current: SystemState,
     ) -> bool {
+        #[cfg(windows)]
+        if let Some(frame) = &self.frame {
+            frame.update(ctx);
+        }
         if self.last.as_ref() != Some(&current)
             || self.last_update.elapsed() >= Duration::from_secs(2)
         {
@@ -177,6 +198,7 @@ impl DesktopSystem {
         #[cfg(windows)]
         {
             self.thumbnail.take();
+            self.frame.take();
             self.media.take();
             self.shell.take();
         }

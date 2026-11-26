@@ -3,16 +3,16 @@ use crate::i18n::tr;
 use eframe::egui::{
     self,
     accesskit::{Action, ActionRequest, Role},
-    Context, Event, FullOutput, Modifiers, Rect, ViewportEvent, ViewportId,
+    Context, Event, FullOutput, Modifiers, Rect, ViewportId,
 };
 use musicfs_player_core::PlayerSnapshot;
-use std::{cell::Cell, rc::Rc};
 
 struct Harness {
     ctx: Context,
     view: QueueView,
     size: egui::Vec2,
     bar: Rect,
+    focused: bool,
 }
 
 impl Harness {
@@ -25,6 +25,7 @@ impl Harness {
             view: QueueView::default(),
             size: egui::vec2(900., 650.),
             bar: Rect::NOTHING,
+            focused: true,
         }
     }
 
@@ -32,13 +33,12 @@ impl Harness {
         let mut input = egui::RawInput {
             screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, self.size)),
             events,
+            focused: self.focused,
             ..Default::default()
         };
-        input
-            .viewports
-            .entry(ViewportId::ROOT)
-            .or_default()
-            .inner_rect = Some(Rect::from_min_size(egui::pos2(140., 70.), self.size));
+        let host = input.viewports.entry(ViewportId::ROOT).or_default();
+        host.inner_rect = Some(Rect::from_min_size(egui::pos2(140., 70.), self.size));
+        host.focused = Some(self.focused);
         self.ctx.run(input, |ctx| {
             let bar = egui::TopBottomPanel::bottom("player")
                 .exact_height(60.)
@@ -51,20 +51,35 @@ impl Harness {
         })
     }
 
-    fn click(&mut self, label: &str) {
+    fn click(&mut self, label: &str) -> FullOutput {
         // 新弹层的首帧用于测量，下一帧才可交互。
         self.frame(vec![]);
-        let tree = self.frame(vec![]).platform_output.accesskit_update.unwrap();
-        let (target, _) = tree
-            .nodes
-            .iter()
-            .find(|(_, node)| node.role() == Role::Button && node.label() == Some(tr(label)))
-            .unwrap_or_else(|| panic!("Missing queue button: {label}"));
-        self.frame(vec![Event::AccessKitActionRequest(ActionRequest {
-            action: Action::Click,
-            target: *target,
-            data: None,
-        })]);
+        let click = click_event(&self.frame(vec![]), label);
+        self.frame(vec![click])
+    }
+}
+
+fn click_event(output: &FullOutput, label: &str) -> Event {
+    let tree = output.platform_output.accesskit_update.as_ref().unwrap();
+    let (target, _) = tree
+        .nodes
+        .iter()
+        .find(|(_, node)| node.role() == Role::Button && node.label() == Some(tr(label)))
+        .unwrap_or_else(|| panic!("Missing queue button: {label}"));
+    Event::AccessKitActionRequest(ActionRequest {
+        action: Action::Click,
+        target: *target,
+        data: None,
+    })
+}
+
+fn escape() -> Event {
+    Event::Key {
+        key: egui::Key::Escape,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Modifiers::NONE,
     }
 }
 
@@ -100,67 +115,11 @@ fn popup_tracks_the_bottom_right_corner_and_dismisses() {
     }
     assert!(matches!(ui.view, QueueView::Hidden));
     ui.click("播放队列");
-    ui.frame(vec![Event::Key {
-        key: egui::Key::Escape,
-        physical_key: None,
-        pressed: true,
-        repeat: false,
-        modifiers: Modifiers::NONE,
-    }]);
+    ui.frame(vec![escape()]);
     assert!(matches!(ui.view, QueueView::Hidden));
     ui.click("播放队列");
     ui.click("关闭");
     assert!(matches!(ui.view, QueueView::Hidden));
-}
-
-#[test]
-fn pin_opens_a_child_viewport_and_native_close_resets_the_next_open() {
-    let mut ui = Harness::new();
-    ui.ctx.set_embed_viewports(false);
-    let queue_id = ViewportId::from_hash_of("musicfs-queue-window");
-    let close = Rc::new(Cell::new(false));
-    let native_close = Rc::clone(&close);
-    Context::set_immediate_viewport_renderer(move |ctx, viewport| {
-        assert_eq!(viewport.ids.this, queue_id);
-        assert_eq!(viewport.ids.parent, ViewportId::ROOT);
-        assert_eq!(viewport.builder.decorations, Some(false));
-        let size = viewport.builder.inner_size.unwrap();
-        assert_eq!(size, super::SIZE);
-        let snapped = egui::pos2(140. + 900. - 8. - size.x, 70. + 650. - 60. - 8. - size.y);
-        let position = viewport
-            .builder
-            .position
-            .expect("Pinning must preserve the popup position");
-        assert!(
-            position.distance(snapped) <= 1.,
-            "{position:?} != {snapped:?}"
-        );
-        let mut input = egui::RawInput {
-            viewport_id: queue_id,
-            screen_rect: Some(Rect::from_min_size(
-                egui::Pos2::ZERO,
-                egui::vec2(400., 300.),
-            )),
-            ..Default::default()
-        };
-        let info = input.viewports.entry(queue_id).or_default();
-        info.parent = Some(ViewportId::ROOT);
-        if native_close.replace(false) {
-            info.events.push(ViewportEvent::Close);
-        }
-        let _ = ctx.run(input, viewport.viewport_ui_cb);
-    });
-    ui.click("播放队列");
-    assert!(!ui.frame(vec![]).viewport_output.contains_key(&queue_id));
-    ui.click("固定播放队列");
-    assert!(matches!(ui.view, QueueView::Pinned(_)));
-    assert!(ui.frame(vec![]).viewport_output.contains_key(&queue_id));
-    close.set(true);
-    ui.frame(vec![]);
-    assert!(matches!(ui.view, QueueView::Hidden));
-    ui.click("播放队列");
-    assert!(matches!(ui.view, QueueView::Popup));
-    assert!(!ui.frame(vec![]).viewport_output.contains_key(&queue_id));
 }
 
 #[test]
@@ -175,4 +134,181 @@ fn unpin_returns_to_popup_and_the_player_toggle_hides_a_pinned_queue() {
     assert!(matches!(ui.view, QueueView::Hidden));
     ui.click("播放队列");
     assert!(matches!(ui.view, QueueView::Popup));
+}
+
+mod native {
+    use super::super::{queue_id, SIZE};
+    use super::*;
+    use egui::{ViewportBuilder, ViewportCommand, ViewportEvent};
+    use std::{cell::RefCell, rc::Rc};
+
+    #[derive(Default)]
+    struct ChildFrame {
+        events: Vec<Event>,
+        close_requested: bool,
+        focused: bool,
+        output: Option<FullOutput>,
+        builder: Option<ViewportBuilder>,
+    }
+
+    fn attach_renderer(ui: &Harness) -> Rc<RefCell<ChildFrame>> {
+        ui.ctx.set_embed_viewports(false);
+        let child = Rc::new(RefCell::new(ChildFrame {
+            focused: true,
+            ..Default::default()
+        }));
+        let render = Rc::clone(&child);
+        Context::set_immediate_viewport_renderer(move |ctx, viewport| {
+            assert_eq!(viewport.ids.this, queue_id());
+            assert_eq!(viewport.ids.parent, ViewportId::ROOT);
+            let builder = viewport.builder;
+            let initial_flag = cfg!(windows).then_some(false);
+            assert_eq!(builder.visible, initial_flag);
+            assert_eq!(builder.active, initial_flag);
+            assert_eq!(builder.decorations, Some(false));
+            let size = SIZE;
+            let position = egui::pos2(140. + 900. - 8. - size.x, 70. + 650. - 60. - 8. - size.y);
+
+            let mut child = render.borrow_mut();
+            if let Some(previous) = &mut child.builder {
+                // eframe 用这个返回值决定是否销毁并重建原生窗口。
+                let (changes, recreate) = previous.patch(builder);
+                assert!(!recreate);
+                assert!(!changes
+                    .iter()
+                    .any(|cmd| matches!(cmd, ViewportCommand::Visible(_))));
+            } else {
+                assert_eq!(builder.inner_size, Some(size));
+                assert!(builder.position.unwrap().distance(position) <= 1.);
+                child.builder = Some(builder);
+            }
+            let mut input = egui::RawInput {
+                viewport_id: queue_id(),
+                screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, size)),
+                events: std::mem::take(&mut child.events),
+                focused: child.focused,
+                ..Default::default()
+            };
+            let info = input.viewports.entry(queue_id()).or_default();
+            info.parent = Some(ViewportId::ROOT);
+            info.outer_rect = Some(Rect::from_min_size(position, size));
+            info.inner_rect = info.outer_rect;
+            info.focused = Some(child.focused);
+            if std::mem::take(&mut child.close_requested) {
+                info.events.push(ViewportEvent::Close);
+            }
+            child.output = Some(ctx.run(input, viewport.viewport_ui_cb));
+        });
+        child
+    }
+
+    fn click_child(child: &RefCell<ChildFrame>, label: &str) {
+        let mut child = child.borrow_mut();
+        let click = click_event(child.output.as_ref().unwrap(), label);
+        child.events.push(click);
+    }
+
+    fn assert_visible_frame(root: &FullOutput, first: bool) {
+        assert_eq!(root.viewport_output.len(), 2);
+        let output = &root.viewport_output[&queue_id()];
+        assert_eq!(output.parent, ViewportId::ROOT);
+        let visibility: Vec<_> = output
+            .commands
+            .iter()
+            .filter_map(|command| match command {
+                ViewportCommand::Visible(value) => Some(*value),
+                ViewportCommand::Close => panic!("Queue closed while switching mode"),
+                _ => None,
+            })
+            .collect();
+        let reveal = first && cfg!(windows);
+        assert_eq!(
+            visibility.as_slice(),
+            if reveal { &[true][..] } else { &[] }
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn native_popup_pins_and_unpins_in_place_after_a_single_reveal() {
+        let mut ui = Harness::new();
+        let child = attach_renderer(&ui);
+        assert_visible_frame(&ui.click("播放队列"), true);
+        for label in ["固定播放队列", "取消固定播放队列", "固定播放队列"] {
+            assert_visible_frame(&ui.frame(vec![]), false);
+            click_child(&child, label);
+            assert_visible_frame(&ui.frame(vec![]), false);
+        }
+        // 从已固定状态原生关闭，再打开时回到弹出模式。
+        child.borrow_mut().close_requested = true;
+        ui.frame(vec![]);
+        assert!(matches!(ui.view, QueueView::Hidden));
+        child.borrow_mut().builder = None;
+        assert_visible_frame(&ui.click("播放队列"), true);
+        assert_visible_frame(&ui.frame(vec![]), false);
+        click_child(&child, "固定播放队列");
+        assert_visible_frame(&ui.frame(vec![]), false);
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn unpinned_window_dismisses_with_escape_and_reopened_popup_with_header_close() {
+        let mut ui = Harness::new();
+        let child = attach_renderer(&ui);
+        assert_visible_frame(&ui.click("播放队列"), true);
+        for label in ["固定播放队列", "取消固定播放队列"] {
+            assert_visible_frame(&ui.frame(vec![]), false);
+            click_child(&child, label);
+            assert_visible_frame(&ui.frame(vec![]), false);
+        }
+        child.borrow_mut().events.push(escape());
+        ui.frame(vec![]);
+        assert!(matches!(ui.view, QueueView::Hidden));
+        child.borrow_mut().builder = None;
+        assert_visible_frame(&ui.click("播放队列"), true);
+        ui.frame(vec![]);
+        click_child(&child, "关闭");
+        ui.frame(vec![]);
+        assert!(matches!(ui.view, QueueView::Hidden));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn native_popup_survives_the_focus_handoff_from_player_to_queue() {
+        let mut ui = Harness::new();
+        let child = attach_renderer(&ui);
+        child.borrow_mut().focused = false;
+        assert_visible_frame(&ui.click("播放队列"), true);
+        // Windows 可以先上报主窗失焦，随后才把焦点交给队列。
+        ui.focused = false;
+        assert_visible_frame(&ui.frame(vec![]), false);
+        child.borrow_mut().focused = true;
+        assert_visible_frame(&ui.frame(vec![]), false);
+        click_child(&child, "固定播放队列");
+        assert_visible_frame(&ui.frame(vec![]), false);
+        assert_visible_frame(&ui.frame(vec![]), false);
+        click_child(&child, "取消固定播放队列");
+        assert_visible_frame(&ui.frame(vec![]), false);
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn native_queue_opens_only_when_pinned_and_close_restores_embedded_popup() {
+        let mut ui = Harness::new();
+        let child = attach_renderer(&ui);
+        assert_eq!(ui.click("播放队列").viewport_output.len(), 1);
+        ui.click("固定播放队列");
+        assert_visible_frame(&ui.frame(vec![]), true);
+        assert_visible_frame(&ui.frame(vec![]), false);
+        click_child(&child, "取消固定播放队列");
+        ui.frame(vec![]);
+        assert!(matches!(ui.view, QueueView::Popup));
+        child.borrow_mut().builder = None;
+        ui.click("固定播放队列");
+        assert_visible_frame(&ui.frame(vec![]), true);
+        child.borrow_mut().close_requested = true;
+        ui.frame(vec![]);
+        assert!(matches!(ui.view, QueueView::Hidden));
+        assert_eq!(ui.click("播放队列").viewport_output.len(), 1);
+    }
 }

@@ -4,6 +4,7 @@ use crate::{
     i18n::tr,
     model::{audio::AudioAction, Preferences},
     task::Task,
+    ui::style,
 };
 use eframe::egui::{self, Ui};
 use musicfs_player_core::{
@@ -37,24 +38,9 @@ impl AudioSettingsUi {
         ui.heading(tr("播放"));
         ui.add_space(10.);
         let mut volume = (audio.volume * 100.).round();
-        if ui
-            .add(
-                egui::Slider::new(&mut volume, 0.0..=100.)
-                    .suffix("%")
-                    .text(tr("音量")),
-            )
-            .changed()
-        {
+        if volume_control(ui, &mut volume) {
             *action = Some(HostAction::Audio(AudioAction::Volume(volume / 100.)));
         }
-        ui.separator();
-        let mut force = audio.force_processing;
-        ui.horizontal_wrapped(|ui| {
-            if ui.checkbox(&mut force, tr("强制服务端转码")).changed() {
-                *action = Some(HostAction::Audio(AudioAction::Force(force)));
-            }
-            ui.weak(tr("下一首生效"));
-        });
         ui.separator();
         let mut fades = prefs.fades;
         ui.horizontal_wrapped(|ui| {
@@ -259,6 +245,34 @@ impl AudioSettingsUi {
         }
     }
 }
+
+fn volume_control(ui: &mut Ui, volume: &mut f32) -> bool {
+    ui.scope(|ui| {
+        let dark = ui.visuals().dark_mode;
+        let accent = style::accent(ui);
+        ui.spacing_mut().slider_width = (ui.available_width() - 128.).clamp(72., 230.);
+        ui.spacing_mut().slider_rail_height = 6.;
+        ui.spacing_mut().interact_size.y = 24.;
+        let visuals = ui.visuals_mut();
+        visuals.selection.bg_fill = accent;
+        visuals.widgets.inactive.bg_fill = style::muted(dark);
+        visuals.widgets.inactive.fg_stroke.width = 2.;
+        for state in [&mut visuals.widgets.hovered, &mut visuals.widgets.active] {
+            state.bg_fill = accent;
+            state.fg_stroke.width = 2.;
+        }
+        ui.add(
+            egui::Slider::new(volume, 0.0..=100.)
+                .trailing_fill(true)
+                .fixed_decimals(0)
+                .suffix("%")
+                .text(tr("音量")),
+        )
+        .changed()
+    })
+    .inner
+}
+
 fn status_message(ui: &mut Ui, dirty: bool, saved: bool) {
     ui.weak(tr(if dirty {
         "有未保存的更改"

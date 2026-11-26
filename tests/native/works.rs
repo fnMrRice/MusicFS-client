@@ -83,7 +83,7 @@ async fn isolated_work_package_round_trip() {
         .find_map(|n| n.source_track_id.as_ref())
         .expect("No available package audio");
     let lease = session
-        .create_playback("", source, None, &["audio/wav"], false)
+        .create_playback("", source, None, &["audio/wav"])
         .await
         .unwrap();
     assert_eq!(lease.source_id, *source);

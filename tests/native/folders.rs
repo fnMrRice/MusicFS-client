@@ -63,7 +63,6 @@ async fn isolated_folder_paging_and_fixed_source_playback() {
             &chosen.source_track_id,
             None,
             &["audio/wav", "audio/x-wav"],
-            false,
         )
         .await
         .unwrap();

@@ -4,14 +4,12 @@ use musicfs_player_core::{
     FadeSettings, PlayerCommand,
 };
 use serde::{Deserialize, Serialize};
-use std::sync::atomic::Ordering;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(default)]
 pub struct AudioPreferences {
     pub volume: f32,
     pub last_volume: f32,
-    pub force_processing: bool,
     pub processing: Processing,
 }
 impl Default for AudioPreferences {
@@ -19,7 +17,6 @@ impl Default for AudioPreferences {
         Self {
             volume: 0.8,
             last_volume: 0.8,
-            force_processing: false,
             processing: Default::default(),
         }
     }
@@ -37,8 +34,6 @@ impl AudioPreferences {
         self.processing.dsp.normalize();
     }
     pub fn initialize(&self, c: &Connection, fades: FadeSettings) -> Result<(), String> {
-        c.force_processing
-            .store(self.force_processing, Ordering::Release);
         for command in [
             PlayerCommand::Volume {
                 volume: self.volume,
@@ -61,10 +56,6 @@ impl AudioPreferences {
                     self.last_volume = volume;
                 }
             }
-            AudioAction::Force(value) => {
-                c.force_processing.store(value, Ordering::Release);
-                self.force_processing = value;
-            }
             AudioAction::Level(value) => {
                 c.player
                     .command(PlayerCommand::AutoVolume { enabled: value })?;
@@ -78,7 +69,6 @@ impl AudioPreferences {
 }
 pub enum AudioAction {
     Volume(f32),
-    Force(bool),
     Level(bool),
     SaveDsp(LocalDsp),
     SaveRouting(Routing),
@@ -93,7 +83,6 @@ mod tests {
         let mut prefs = AudioPreferences {
             volume: 0.,
             last_volume: 0.37,
-            force_processing: true,
             ..Default::default()
         };
         prefs
@@ -105,12 +94,16 @@ mod tests {
             ));
         prefs.processing.routing.layout = musicfs_player_core::audio::Layout::Surround51;
         prefs.processing.auto_volume = true;
-        let mut restored: AudioPreferences =
-            serde_json::from_slice(&serde_json::to_vec(&prefs).unwrap()).unwrap();
+        let mut saved = serde_json::to_value(&prefs).unwrap();
+        saved["force_processing"] = serde_json::json!(true);
+        let mut restored: AudioPreferences = serde_json::from_value(saved).unwrap();
         restored.normalize();
         assert_eq!(restored.last_volume, 0.37);
         assert_eq!(restored.volume, 0.);
         assert_eq!(restored.processing, prefs.processing);
-        assert!(restored.force_processing);
+        assert!(serde_json::to_value(restored)
+            .unwrap()
+            .get("force_processing")
+            .is_none());
     }
 }

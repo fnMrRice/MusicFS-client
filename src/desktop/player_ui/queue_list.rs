@@ -1,57 +1,188 @@
-use crate::i18n::tr;
-use eframe::egui;
-use musicfs_player_core::{PlayerCommand, PlayerSnapshot};
+use super::lyrics::time;
+use crate::{i18n::tr, icons, ui::style};
+use eframe::egui::{self, Align2, Color32, FontId, Rect, Sense, Stroke, StrokeKind, Ui};
+use musicfs_player_core::{PlayerCommand, PlayerSnapshot, Status, Track};
 
-pub(super) fn show(ui: &mut egui::Ui, snapshot: &PlayerSnapshot) -> Option<PlayerCommand> {
-    let mut command = None;
-    ui.horizontal(|ui| {
-        ui.weak(tr("{0} 首曲目").replace("{0}", &snapshot.queue.len().to_string()));
-        if ui
-            .add_enabled(
-                !snapshot.queue.is_empty(),
-                egui::Button::new(tr("清空队列")),
-            )
-            .clicked()
-        {
-            command = Some(PlayerCommand::Clear);
-        }
-    });
-    ui.separator();
+const ROW_HEIGHT: f32 = 47.;
+
+pub(super) fn show(ui: &mut Ui, snapshot: &PlayerSnapshot) -> Option<PlayerCommand> {
+    let scroll_key = egui::Id::new("musicfs-queue-scroll-position");
     if snapshot.queue.is_empty() {
-        ui.weak(tr("队列为空"));
-        return command;
+        ui.data_mut(|d| d.remove::<(egui::Id, f32)>(scroll_key));
+        let rect = ui.available_rect_before_wrap();
+        let dark = ui.visuals().dark_mode;
+        let center = rect.center() - egui::vec2(0., 14.);
+        let tile = Rect::from_center_size(center, egui::Vec2::splat(42.));
+        ui.painter()
+            .circle_filled(center, 21., style::accent_soft(ui));
+        icons::paint(ui, "queue", tile.shrink(11.), style::accent(ui));
+        let label = tr("队列为空");
+        let response = ui.allocate_rect(rect, Sense::hover());
+        response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Label, true, label));
+        ui.painter().text(
+            center + egui::vec2(0., 32.),
+            Align2::CENTER_CENTER,
+            label,
+            FontId::proportional(13.),
+            style::muted(dark),
+        );
+        return None;
     }
 
     ui.spacing_mut().scroll.floating = false;
-    let row_height =
-        ui.spacing().interact_size.y.max(
-            ui.text_style_height(&egui::TextStyle::Button) + 2. * ui.spacing().button_padding.y,
-        );
-    egui::ScrollArea::vertical()
+    ui.spacing_mut().item_spacing.y = 1.;
+    let id = ui.make_persistent_id(egui::Id::new("queue-tracks"));
+    let saved = ui.data(|d| d.get_temp::<(egui::Id, f32)>(scroll_key));
+    let mut area = egui::ScrollArea::vertical()
         .id_salt("queue-tracks")
-        .auto_shrink([false, false])
-        .show_rows(ui, row_height, snapshot.queue.len(), |ui, range| {
-            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
-            for index in range {
-                let track = &snapshot.queue[index];
-                let label = if track.artists.is_empty() {
-                    track.title.clone()
-                } else {
-                    format!("{}   ·   {}", track.title, track.artists.join(" / "))
-                };
-                ui.horizontal(|ui| {
-                    ui.weak(format!("{:02}", index + 1));
-                    if ui
-                        .selectable_label(snapshot.index == Some(index), &label)
-                        .on_hover_text(label)
-                        .clicked()
-                    {
-                        command = Some(PlayerCommand::Select { index });
-                    }
-                });
+        .auto_shrink([false, false]);
+    // 弹层和独立窗口的控件 ID 不同，切换时从同一个队列阅读位置继续。
+    if saved.is_none_or(|(last_id, _)| last_id != id) {
+        area = area.vertical_scroll_offset(saved.map_or(0., |(_, y)| y));
+    }
+    let number_width = (snapshot.queue.len().to_string().len() as f32 * 8. + 12.).max(34.);
+    let mut command = None;
+    let area = area.show_rows(ui, ROW_HEIGHT, snapshot.queue.len(), |ui, range| {
+        for index in range {
+            let current = snapshot.index == Some(index);
+            let row = track_row(
+                ui,
+                &snapshot.queue[index],
+                index,
+                current,
+                snapshot.status,
+                number_width,
+            );
+            if row.clicked() {
+                command = Some(PlayerCommand::Select { index });
             }
-        });
+        }
+    });
+    ui.data_mut(|d| d.insert_temp(scroll_key, (id, area.state.offset.y)));
     command
+}
+
+fn track_row(
+    ui: &mut Ui,
+    track: &Track,
+    index: usize,
+    current: bool,
+    status: Status,
+    number_width: f32,
+) -> egui::Response {
+    let (full, response) =
+        ui.allocate_exact_size(egui::vec2(ui.available_width(), ROW_HEIGHT), Sense::click());
+    let artists = track.artists.join(" / ");
+    let label = if artists.is_empty() {
+        track.title.clone()
+    } else {
+        format!("{} · {artists}", track.title)
+    };
+    response.widget_info(|| {
+        egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, true, current, &label)
+    });
+    let dark = ui.visuals().dark_mode;
+    let row = full.shrink2(egui::vec2(6., 0.));
+    let accent = style::accent(ui);
+    let muted = style::muted(dark);
+    let painter = ui.painter();
+    if current {
+        painter.rect_filled(row, 6, style::accent_soft(ui));
+    } else if response.hovered() || response.has_focus() {
+        painter.rect_filled(row, 6, style::hovered(dark));
+    }
+    if response.has_focus() {
+        painter.rect_stroke(row, 6, Stroke::new(1_f32, accent), StrokeKind::Inside);
+    }
+    let index_center = egui::pos2(row.left() + 3. + number_width * 0.5, row.center().y);
+    if current {
+        if status == Status::Playing {
+            for (n, height) in [7., 14., 10.].into_iter().enumerate() {
+                let foot = index_center + egui::vec2((n as f32 - 1.) * 4., 7.);
+                painter.rect_filled(
+                    Rect::from_min_size(foot - egui::vec2(1.25, height), egui::vec2(2.5, height)),
+                    1.,
+                    accent,
+                );
+            }
+        } else {
+            icons::paint(
+                ui,
+                if status == Status::Paused {
+                    "pause"
+                } else {
+                    "music"
+                },
+                Rect::from_center_size(index_center, egui::Vec2::splat(15.)),
+                accent,
+            );
+        }
+    } else {
+        painter.text(
+            index_center,
+            Align2::CENTER_CENTER,
+            (index + 1).to_string(),
+            FontId::proportional(12.),
+            muted,
+        );
+    }
+    let left = row.left() + number_width + 7.;
+    let right = if let Some(duration) = track.duration_ms {
+        let time = painter.text(
+            egui::pos2(row.right() - 9., row.center().y),
+            Align2::RIGHT_CENTER,
+            time(duration),
+            FontId::proportional(12.),
+            muted,
+        );
+        time.left() - 12.
+    } else {
+        row.right() - 9.
+    };
+    let title_color = if current { accent } else { style::text(dark) };
+    let title_y = row.center().y - if artists.is_empty() { 0. } else { 8. };
+    let title_font = if current {
+        style::bold(ui, 14.)
+    } else {
+        FontId::proportional(14.)
+    };
+    text_line(
+        ui,
+        &track.title,
+        egui::pos2(left, title_y),
+        right,
+        title_font,
+        title_color,
+    );
+    if !artists.is_empty() {
+        text_line(
+            ui,
+            &artists,
+            egui::pos2(left, row.center().y + 10.),
+            right,
+            FontId::proportional(12.),
+            muted,
+        );
+    }
+    response
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .on_hover_text(label)
+}
+
+fn text_line(
+    ui: &Ui,
+    text: &str,
+    center_left: egui::Pos2,
+    right: f32,
+    font: FontId,
+    color: Color32,
+) {
+    let width = (right - center_left.x).max(1.);
+    let mut job = egui::text::LayoutJob::simple(text.to_owned(), font, color, width);
+    job.wrap.max_rows = 1;
+    let galley = ui.fonts(|fonts| fonts.layout_job(job));
+    let pos = center_left - egui::vec2(0., galley.size().y / 2.);
+    ui.painter().galley(pos, galley, color);
 }
 
 #[cfg(test)]

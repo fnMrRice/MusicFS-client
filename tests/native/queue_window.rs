@@ -29,11 +29,16 @@ impl Harness {
     }
 
     fn frame(&mut self, events: Vec<Event>) -> FullOutput {
-        let input = egui::RawInput {
+        let mut input = egui::RawInput {
             screen_rect: Some(Rect::from_min_size(egui::Pos2::ZERO, self.size)),
             events,
             ..Default::default()
         };
+        input
+            .viewports
+            .entry(ViewportId::ROOT)
+            .or_default()
+            .inner_rect = Some(Rect::from_min_size(egui::pos2(140., 70.), self.size));
         self.ctx.run(input, |ctx| {
             let bar = egui::TopBottomPanel::bottom("player")
                 .exact_height(60.)
@@ -118,6 +123,18 @@ fn pin_opens_a_child_viewport_and_native_close_resets_the_next_open() {
     Context::set_immediate_viewport_renderer(move |ctx, viewport| {
         assert_eq!(viewport.ids.this, queue_id);
         assert_eq!(viewport.ids.parent, ViewportId::ROOT);
+        assert_eq!(viewport.builder.decorations, Some(false));
+        let size = viewport.builder.inner_size.unwrap();
+        assert_eq!(size, super::SIZE);
+        let snapped = egui::pos2(140. + 900. - 8. - size.x, 70. + 650. - 60. - 8. - size.y);
+        let position = viewport
+            .builder
+            .position
+            .expect("Pinning must preserve the popup position");
+        assert!(
+            position.distance(snapped) <= 1.,
+            "{position:?} != {snapped:?}"
+        );
         let mut input = egui::RawInput {
             viewport_id: queue_id,
             screen_rect: Some(Rect::from_min_size(
@@ -136,7 +153,7 @@ fn pin_opens_a_child_viewport_and_native_close_resets_the_next_open() {
     ui.click("播放队列");
     assert!(!ui.frame(vec![]).viewport_output.contains_key(&queue_id));
     ui.click("固定播放队列");
-    assert!(matches!(ui.view, QueueView::Pinned));
+    assert!(matches!(ui.view, QueueView::Pinned(_)));
     assert!(ui.frame(vec![]).viewport_output.contains_key(&queue_id));
     close.set(true);
     ui.frame(vec![]);

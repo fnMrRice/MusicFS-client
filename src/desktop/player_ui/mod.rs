@@ -3,7 +3,9 @@ mod bar;
 mod controls;
 pub(crate) mod cover;
 mod lyrics;
+mod queue_dock;
 mod queue_list;
+mod queue_panel;
 mod queue_window;
 mod windows;
 

@@ -93,9 +93,13 @@ impl Settings {
                     4 => {
                         ui.horizontal_wrapped(|ui| {
                             for (value, label) in themes() {
-                                if ui
-                                    .selectable_label(prefs.theme == value, tr(label))
-                                    .clicked()
+                                if super::style::appearance_choice(
+                                    ui,
+                                    prefs.theme == value,
+                                    tr(label),
+                                    None,
+                                )
+                                .clicked()
                                 {
                                     *action = Some(HostAction::Theme(value.into()));
                                 }

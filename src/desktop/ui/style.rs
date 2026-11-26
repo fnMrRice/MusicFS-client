@@ -199,6 +199,55 @@ pub fn apply(ctx: &egui::Context, value: &str, accent_key: &str) {
     }
 }
 
+pub fn appearance_choice(
+    ui: &mut egui::Ui,
+    selected: bool,
+    label: &str,
+    swatch: Option<Color32>,
+) -> Response {
+    let response = if let Some(color) = swatch {
+        let radius = 4.;
+        let mut job = egui::text::LayoutJob::default();
+        job.append(
+            label,
+            2. * radius + ui.spacing().item_spacing.x,
+            egui::TextFormat::simple(
+                egui::TextStyle::Button.resolve(ui.style()),
+                Color32::PLACEHOLDER,
+            ),
+        );
+        let response = ui.selectable_label(selected, job);
+        let x = response.rect.left() + ui.spacing().button_padding.x + radius;
+        ui.painter()
+            .circle_filled(egui::pos2(x, response.rect.center().y), radius, color);
+        response
+    } else {
+        ui.selectable_label(selected, label)
+    };
+    let dark = ui.visuals().dark_mode;
+    let border = if selected {
+        accent(ui)
+    } else if response.hovered() || response.has_focus() {
+        muted(dark)
+    } else {
+        blend(background(dark), muted(dark), 0.8)
+    };
+    let width: f32 = if response.has_focus() {
+        2.
+    } else if selected {
+        1.5
+    } else {
+        1.
+    };
+    ui.painter().rect_stroke(
+        response.rect,
+        ui.style().interact(&response).corner_radius,
+        Stroke::new(width, border),
+        egui::StrokeKind::Inside,
+    );
+    response
+}
+
 pub fn accent_choices(ui: &mut egui::Ui, current: &str) -> Option<String> {
     use crate::i18n::tr;
     let mut chosen = None;
@@ -213,12 +262,7 @@ pub fn accent_choices(ui: &mut egui::Ui, current: &str) -> Option<String> {
             ("miku", "初音绿"),
             ("tianyi", "天依蓝"),
         ] {
-            let swatch = fill_for(key);
-            let label = tr(label);
-            let response = ui.selectable_label(current == key, format!("    {label}"));
-            let center = egui::pos2(response.rect.left() + 10., response.rect.center().y);
-            ui.painter().circle_filled(center, 4., swatch);
-            if response.clicked() {
+            if appearance_choice(ui, current == key, tr(label), Some(fill_for(key))).clicked() {
                 chosen = Some(key.into());
             }
         }

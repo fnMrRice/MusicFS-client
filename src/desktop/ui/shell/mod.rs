@@ -146,7 +146,7 @@ impl SignedUi {
         let theme = icons::button(&mut right, "theme", tr("换肤"), 36., 22.);
         popup(&right, "theme-menu", &theme, 160., |ui| {
             for (key, label) in themes() {
-                if ui.selectable_label(prefs.theme == key, tr(label)).clicked() {
+                if style::appearance_choice(ui, prefs.theme == key, tr(label), None).clicked() {
                     *action = Some(HostAction::Theme(key.into()));
                     ui.memory_mut(|m| m.close_popup());
                 }

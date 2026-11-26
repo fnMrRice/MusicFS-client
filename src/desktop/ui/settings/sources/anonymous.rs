@@ -1,28 +1,18 @@
 use super::{
-    api::{decode, get, path_id, text, Load},
+    api::{get, path_id, text, Load},
     Services,
 };
 use crate::i18n::tr;
 use eframe::egui;
 use musicfs_player_core::Track;
+use musicfs_server_adapter::TrackInfo;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::Value;
 use std::collections::HashSet;
-use uuid::Uuid;
-
-#[derive(Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct Hit {
-    external_id: String,
-    title: String,
-    artists: Vec<String>,
-    album: Option<String>,
-    duration_ms: Option<u64>,
-}
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Page {
-    tracks: Vec<Hit>,
+    tracks: Vec<TrackInfo>,
     next_cursor: Option<String>,
     truncated: bool,
 }
@@ -31,7 +21,7 @@ pub(super) struct Search {
     open: bool,
     draft: String,
     query: String,
-    results: Vec<Hit>,
+    results: Vec<TrackInfo>,
     next: Option<String>,
     seen: HashSet<String>,
     page: Load<Page>,
@@ -188,39 +178,8 @@ impl Search {
             let (s, id) = (svc.server.clone(), instance_id.to_owned());
             self.notice = None;
             self.resolved.start(ui, svc, async move {
-                let path = format!(
-                    "/online-instances/{}/tracks/{}/resolve",
-                    path_id(&id),
-                    path_id(&hit.external_id)
-                );
-                let v = s
-                    .settings_json(
-                        "POST",
-                        &path,
-                        Some(&json!({})),
-                        &[("Idempotency-Key", &Uuid::new_v4().to_string())],
-                    )
-                    .await?;
-                if text(&v, "providerInstanceId") != id
-                    || text(&v, "sourceTrackId").is_empty()
-                    || text(&v, "availability") != "available"
-                {
-                    return Err("Online audio is unavailable.".into());
-                }
-                let source = text(&v, "sourceTrackId");
                 Ok((
-                    Track {
-                        id: source.into(),
-                        source_only: true,
-                        title: v["title"].as_str().unwrap_or(&hit.title).into(),
-                        artists: decode(v["artists"].clone()).unwrap_or(hit.artists),
-                        album: v["album"].as_str().map(str::to_owned).or(hit.album),
-                        source_track_id: Some(source.into()),
-                        forced_source_track_id: None,
-                        duration_ms: v["durationMs"].as_u64().or(hit.duration_ms),
-                        cover_object_id: v["coverObjectId"].as_str().map(str::to_owned),
-                        online_cover_path: v["onlineCoverPath"].as_str().map(str::to_owned),
-                    },
+                    crate::ui::resolve_online_queue_track(&s, &id, hit).await?,
                     play,
                 ))
             });

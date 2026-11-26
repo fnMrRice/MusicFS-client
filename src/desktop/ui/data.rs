@@ -2,10 +2,16 @@ use crate::i18n::tr;
 use crate::task::Task;
 use eframe::egui::Context;
 use musicfs_player_core::{Player, Track as QueueTrack};
-use musicfs_server_adapter::{CategoryKind, Page, ServerSession, Track};
+use musicfs_server_adapter::{
+    CategoryKind, Page, ResolvedOnlineTrack, ServerSession, Track, TrackInfo,
+};
 use std::collections::HashSet;
 use std::future::Future;
 use tokio::runtime::Handle;
+
+#[cfg(test)]
+#[path = "../../../tests/native/online_queue_track.rs"]
+mod online_queue_tests;
 
 #[derive(Clone, Copy)]
 pub struct Services<'a> {
@@ -181,6 +187,32 @@ pub fn queue_track(track: &Track) -> Option<QueueTrack> {
         cover_object_id: track.cover().map(str::to_owned),
         online_cover_path: track.online_cover().map(str::to_owned),
     })
+}
+
+pub(crate) async fn resolve_online_queue_track(
+    server: &ServerSession,
+    instance: &str,
+    entry: TrackInfo,
+) -> Result<QueueTrack, String> {
+    let source = server
+        .resolve_online_track(instance, &entry.external_id)
+        .await?;
+    Ok(online_queue_track(source, entry))
+}
+
+fn online_queue_track(source: ResolvedOnlineTrack, entry: TrackInfo) -> QueueTrack {
+    QueueTrack {
+        id: source.source_track_id.clone(),
+        source_only: true,
+        title: source.title.unwrap_or(entry.title),
+        artists: source.artists.unwrap_or(entry.artists),
+        album: source.album.or(entry.album),
+        source_track_id: Some(source.source_track_id),
+        forced_source_track_id: None,
+        duration_ms: source.duration_ms.or(entry.duration_ms),
+        cover_object_id: source.cover_object_id,
+        online_cover_path: source.online_cover_path.or(entry.cover_url),
+    }
 }
 
 pub fn play_row(player: &Player, rows: &[Track], index: usize) -> Result<(), String> {

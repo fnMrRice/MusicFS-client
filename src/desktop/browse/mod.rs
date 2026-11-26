@@ -46,8 +46,17 @@ impl BrowseUi {
         self.types.started = false;
     }
 
-    pub fn recommendations(&mut self, ui: &mut egui::Ui, rt: &Handle, session: &ServerSession) {
-        self.recommendations.show(ui, rt, session);
+    pub fn leave_recommendations(&mut self) {
+        self.recommendations = Recommendations::default();
+    }
+
+    pub fn recommendations(
+        &mut self,
+        ui: &mut egui::Ui,
+        svc: crate::ui::Services<'_>,
+        artwork: &mut crate::ui::Artwork,
+    ) -> Option<QueueSelection> {
+        self.recommendations.show(ui, svc, artwork)
     }
 
     pub fn works(

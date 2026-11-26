@@ -225,12 +225,18 @@ pub fn appearance_choice(
         ui.selectable_label(selected, label)
     };
     let dark = ui.visuals().dark_mode;
-    let border = if selected {
+    let border = if selected && dark {
+        blend(background(true), accent(ui), 0.65)
+    } else if selected {
         accent(ui)
     } else if response.hovered() || response.has_focus() {
-        muted(dark)
+        if dark {
+            blend(background(true), muted(true), 0.6)
+        } else {
+            muted(false)
+        }
     } else {
-        blend(background(dark), muted(dark), 0.8)
+        choice_border(dark)
     };
     let width: f32 = if response.has_focus() {
         2.
@@ -246,6 +252,10 @@ pub fn appearance_choice(
         egui::StrokeKind::Inside,
     );
     response
+}
+
+pub fn choice_border(dark: bool) -> Color32 {
+    blend(background(dark), muted(dark), if dark { 0.36 } else { 0.8 })
 }
 
 pub fn accent_choices(ui: &mut egui::Ui, current: &str) -> Option<String> {

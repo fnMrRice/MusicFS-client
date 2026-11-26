@@ -193,7 +193,7 @@ impl Catalog {
     }
 }
 
-fn category_cards(
+pub(crate) fn category_cards(
     ui: &mut egui::Ui,
     count: usize,
     cols: usize,

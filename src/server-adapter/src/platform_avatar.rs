@@ -1,4 +1,4 @@
-use crate::{limited, Result, ServerSession, API_TIMEOUT};
+use crate::{limited, Result, ServerSession};
 use reqwest::Url;
 
 // 与网易云插件的头像验证保持一致。外部图片使用独立客户端，绝不携带 MusicFS 会话。
@@ -26,12 +26,8 @@ impl ServerSession {
     pub async fn platform_avatar(&self, raw: &str) -> Result<Vec<u8>> {
         self.ensure_active()?;
         let url = avatar_url(raw)?;
-        let client = reqwest::Client::builder()
-            .redirect(reqwest::redirect::Policy::none())
-            .timeout(API_TIMEOUT)
-            .build()
-            .map_err(|_| "Could not initialize avatar client.")?;
-        let reply = client
+        let reply = self
+            .image_client
             .get(url)
             .send()
             .await

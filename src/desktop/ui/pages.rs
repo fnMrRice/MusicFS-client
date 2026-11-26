@@ -90,11 +90,10 @@ impl SignedUi {
                 }
             }
             Screen::Recommendations => {
-                egui::ScrollArea::vertical()
-                    .id_salt("recommendations")
-                    .show(ui, |ui| {
-                        self.browse.recommendations(ui, svc.runtime, svc.server)
-                    });
+                let q = self
+                    .browse
+                    .recommendations(ui, svc, &mut self.catalog.artwork);
+                self.play_request(svc, q);
                 return;
             }
             Screen::Works(id) => {

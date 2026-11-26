@@ -147,11 +147,11 @@ mod tests {
             .into_track(None);
         let path = track.online_cover().unwrap();
         assert_eq!(
-            super::super::cover_endpoint(path).unwrap(),
+            crate::covers::cover_endpoint(path).unwrap(),
             "source-tracks/cloud/online-artwork"
         );
         assert_eq!(
-            super::super::cover_endpoint("saved").unwrap(),
+            crate::covers::cover_endpoint("saved").unwrap(),
             "media/saved"
         );
         for invalid in [
@@ -159,7 +159,7 @@ mod tests {
             "/api/v1/source-tracks/../online-artwork",
             "/api/v1/source-tracks/cloud/online-artwork?source=other",
         ] {
-            assert!(super::super::cover_endpoint(invalid).is_err());
+            assert!(crate::covers::cover_endpoint(invalid).is_err());
         }
     }
     #[test]

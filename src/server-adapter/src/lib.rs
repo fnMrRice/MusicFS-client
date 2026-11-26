@@ -1,8 +1,10 @@
 pub mod activity;
 mod catalog;
 mod control;
+mod covers;
 pub mod folders;
 pub mod lyrics;
+mod online_track;
 mod playback;
 mod playlist_edit;
 mod reader;
@@ -29,10 +31,11 @@ use serde_json::Value;
 use url::{Host, Url};
 
 pub use catalog::{Category, CategoryKind, Page, Playlist, Track};
+pub use online_track::{ResolvedOnlineTrack, TrackInfo};
 pub use playback::StreamLease;
 pub use playlist_edit::PlaylistChange;
 pub use reader::StreamReader;
-pub use recommendations::{RecommendationFeed, RecommendedPlaylistDetail};
+pub use recommendations::{RecommendationFeed, RecommendedPlaylistDetail, Source};
 pub use works::{AudioNode, PackageAudio, Work, WorkDetail, WorkHistoryEntry, WorkType};
 
 type Result<T> = std::result::Result<T, String>;
@@ -63,6 +66,7 @@ pub struct ServerSession {
     pub info: SessionInfo,
     origin: Url,
     client: Client,
+    image_client: Client,
     cookies: Arc<Jar>,
     csrf: String,
     active: Arc<AtomicBool>,
@@ -243,6 +247,7 @@ impl ServerSession {
             },
             origin,
             client,
+            image_client: covers::image_client()?,
             cookies,
             csrf: login.csrf_token,
             active: Arc::new(AtomicBool::new(true)),
@@ -342,37 +347,4 @@ impl ServerSession {
         }
         checked(reply).await.map(|_| ())
     }
-
-    pub async fn cover_bytes(&self, cover: &str) -> Result<Vec<u8>> {
-        let url = self.url(&cover_endpoint(cover)?);
-        let response = self.send(Method::GET, url, None).await?;
-        let mime = response
-            .headers()
-            .get(header::CONTENT_TYPE)
-            .and_then(|v| v.to_str().ok())
-            .unwrap_or("")
-            .split(';')
-            .next()
-            .unwrap_or("")
-            .trim()
-            .to_owned();
-        if !matches!(
-            mime.as_str(),
-            "image/png" | "image/jpeg" | "image/webp" | "image/gif"
-        ) {
-            return Err("Unsupported cover image format.".into());
-        }
-        limited(response, 8 * 1024 * 1024).await
-    }
-}
-
-// 在线封面和媒体对象都从当前登录的服务端读取。
-fn cover_endpoint(cover: &str) -> Result<String> {
-    if let Some(id) = cover
-        .strip_prefix("/api/v1/source-tracks/")
-        .and_then(|s| s.strip_suffix("/online-artwork"))
-    {
-        return Ok(format!("source-tracks/{}/online-artwork", check_id(id)?));
-    }
-    Ok(format!("media/{}", check_id(cover)?))
 }

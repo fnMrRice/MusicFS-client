@@ -1,4 +1,4 @@
-use super::{check_id, decode, Result, ServerSession};
+use super::{check_id, decode, online_track::online_id, Result, ServerSession, TrackInfo};
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -10,6 +10,7 @@ pub struct RecommendedPlaylist {
     pub title: String,
     pub track_count: Option<u64>,
     pub creator: Option<String>,
+    pub cover_url: Option<String>,
 }
 #[derive(Deserialize, Serialize)]
 pub struct Recommendation {
@@ -30,6 +31,8 @@ pub struct Source {
     plugin: Option<Plugin>,
     #[serde(skip_serializing)]
     account_id: Option<String>,
+    #[serde(skip)]
+    pub can_play_online: bool,
     pub items: Vec<Recommendation>,
     pub stale: bool,
     pub last_success_at: Option<String>,
@@ -51,7 +54,17 @@ struct Directory {
 #[serde(rename_all = "camelCase")]
 struct Instance {
     instance_id: String,
+    #[serde(default)]
+    availability: String,
+    #[serde(default)]
+    capabilities: Vec<Capability>,
     plugin: Option<Plugin>,
+}
+
+#[derive(Deserialize)]
+struct Capability {
+    name: String,
+    supported: bool,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -96,14 +109,6 @@ pub struct ObservedEntry {
     #[serde(default)]
     pub unavailable: bool,
 }
-#[derive(Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct TrackInfo {
-    pub external_id: String,
-    pub title: String,
-    pub artists: Vec<String>,
-    pub duration_ms: Option<u64>,
-}
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct TrackItem {
@@ -130,6 +135,25 @@ pub struct RecommendedPlaylistDetail {
     pub next_cursor: Option<String>,
 }
 
+impl RecommendationFeed {
+    fn apply_directory(&mut self, directory: Directory) {
+        for instance in directory.items {
+            if let Some(source) = self
+                .sources
+                .iter_mut()
+                .find(|s| s.instance_id == instance.instance_id)
+            {
+                source.plugin = instance.plugin;
+                source.can_play_online = instance.availability == "available"
+                    && instance
+                        .capabilities
+                        .iter()
+                        .any(|c| c.name == "stream.resolve" && c.supported);
+            }
+        }
+    }
+}
+
 impl ServerSession {
     pub async fn recommendations(&self, history: u8, refresh: bool) -> Result<RecommendationFeed> {
         if history > 5 || (refresh && history > 0) {
@@ -148,7 +172,7 @@ impl ServerSession {
             return Err("Invalid recommendation history depth.".into());
         }
         if !feed.sources.is_empty() {
-            // 目录只补充本地化插件名，读取失败时保留推荐页已提供的来源显示名称。
+            // 目录提供账号能力与本地化插件名，读取失败时仍可浏览已取得的推荐。
             let instances: Option<Directory> = match self
                 .send(Method::GET, self.url("online-instances"), None)
                 .await
@@ -160,14 +184,7 @@ impl ServerSession {
             let Some(instances) = instances else {
                 return Ok(feed);
             };
-            let mut identities: HashMap<_, _> = instances
-                .items
-                .into_iter()
-                .filter_map(|i| Some((i.instance_id, i.plugin?)))
-                .collect();
-            for source in &mut feed.sources {
-                source.plugin = identities.remove(&source.instance_id);
-            }
+            feed.apply_directory(instances);
         }
         Ok(feed)
     }
@@ -179,15 +196,7 @@ impl ServerSession {
         cursor: Option<&str>,
     ) -> Result<RecommendedPlaylistDetail> {
         check_id(instance)?;
-        let bytes = external.as_bytes();
-        if bytes.len() > 128
-            || !bytes.first().is_some_and(u8::is_ascii_alphanumeric)
-            || !bytes
-                .iter()
-                .all(|c| c.is_ascii_alphanumeric() || b":_.-".contains(c))
-        {
-            return Err("Invalid online playlist identifier.".into());
-        }
+        online_id(external)?;
         let path = format!("online-instances/{instance}/playlists/{external}");
         let mut tracks_url = self.url(&format!("{path}/tracks"));
         tracks_url.query_pairs_mut().append_pair("limit", "50");
@@ -247,5 +256,34 @@ impl ServerSession {
             return Err("Invalid MusicFS online playlist observation.".into());
         }
         Ok(details)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn ordinary_playlist_cards_keep_their_cover_and_receive_instance_playback_capability() {
+        let cover = "https://p2.music.126.net/cover.jpg";
+        let mut feed: RecommendationFeed = serde_json::from_value(json!({"sources":[{
+            "instanceId":"netease","name":"Listener","accountId":"user","stale":false,
+            "items":[{"playlist":{"externalId":"today","title":"每日推荐","coverUrl":cover},"reason":""}]
+        }]})).unwrap();
+        let directory = |available| {
+            serde_json::from_value(json!({"items":[{
+                "instanceId":"netease","availability":available,
+                "capabilities":[{"name":"stream.resolve","supported":true}]
+            }]}))
+            .unwrap()
+        };
+        feed.apply_directory(directory("available"));
+        let source = &feed.sources[0];
+        assert!(source.can_play_online);
+        assert_eq!(source.items.len(), 1);
+        assert_eq!(source.items[0].playlist.cover_url.as_deref(), Some(cover));
+        feed.apply_directory(directory("loginRequired"));
+        assert!(!feed.sources[0].can_play_online);
     }
 }

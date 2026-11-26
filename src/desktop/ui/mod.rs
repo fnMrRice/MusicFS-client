@@ -1,6 +1,7 @@
 use crate::i18n::tr;
 mod actions;
 mod album_merge;
+mod artwork;
 mod catalog;
 mod data;
 mod favorites;
@@ -24,8 +25,11 @@ use crate::{
     player_ui::PlayerUi,
 };
 use actions::Actions;
+pub(crate) use artwork::Artwork;
+pub(crate) use catalog::card_grid;
 use catalog::Catalog;
-use data::{Pages, Services};
+use data::Pages;
+pub(crate) use data::{resolve_online_queue_track, Services};
 use eframe::egui;
 use musicfs_player_core::{FadeSettings, PlayerCommand};
 use musicfs_server_adapter::Playlist;
@@ -178,6 +182,9 @@ impl SignedUi {
         if self.screen != screen {
             self.catalog.reset_tracks();
             self.actions.notice = None;
+            if self.screen == Screen::Recommendations {
+                self.browse.leave_recommendations();
+            }
         }
         self.shell.navigation = None;
         if matches!(screen, Screen::Search) {

@@ -3,14 +3,14 @@ mod new_track;
 mod queue;
 mod toolbar;
 use crate::i18n::tr;
-#[path = "artwork.rs"]
-mod artwork;
+pub(crate) use collection::category_cards as card_grid;
 #[path = "providers.rs"]
 pub(super) mod providers;
 #[path = "versions.rs"]
 mod versions;
 use super::data::{queue_track, CategoryTab, Pages, Services, TrackQuery};
 use super::style;
+use super::Artwork;
 use crate::task::Task;
 use eframe::egui::{self, RichText};
 use musicfs_player_core::Track as QueueTrack;
@@ -26,7 +26,7 @@ pub struct Catalog {
     pub album_merge: super::album_merge::AlbumMerge,
     folders: super::folders::Folders,
     pub versions: versions::Versions,
-    pub artwork: artwork::Artwork,
+    pub artwork: Artwork,
     pub tabs: CategoryTab,
     album_list: bool,
     unscraped_only: bool,

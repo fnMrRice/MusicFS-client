@@ -68,10 +68,7 @@ impl Catalog {
         }
         ui.add_space(10.);
         if let Some(tab) = selected {
-            self.list_query.clear();
-            self.list_draft.clear();
-            self.tabs = tab;
-            self.reset_categories();
+            self.select_tab(tab);
         }
     }
 
@@ -137,8 +134,7 @@ impl Catalog {
             && self.list_query != self.list_draft.trim()
         {
             self.list_query = self.list_draft.trim().into();
-            self.categories = Default::default();
-            self.reset_tracks();
+            self.leave_lists();
         }
     }
 
@@ -181,6 +177,8 @@ impl Catalog {
         let search = matches!(query, TrackQuery::Library(_));
         let matching = library || search;
         let mut refresh = false;
+        let mut query_changed = false;
+        let mut library_changed = false;
         self.poll_queue(svc, actions);
         let album = match query {
             TrackQuery::Category {
@@ -239,7 +237,7 @@ impl Catalog {
                     actions.favorite_many(ui, svc, checked);
                 }
                 if let Some(id) = album {
-                    refresh |= self.album_merge.show(ui, svc, id, checked);
+                    library_changed |= self.album_merge.show(ui, svc, id, checked);
                 }
                 if all && self.matching.selected_tracks().len() == 2 {
                     style::menu_button(ui, tr("曲目关联"), |ui| {
@@ -294,7 +292,7 @@ impl Catalog {
                     actions.favorites.refresh();
                     refresh = true;
                 }
-                refresh |= self.list_query != before;
+                query_changed = self.list_query != before;
             } else {
                 sort(ui);
             }
@@ -304,10 +302,10 @@ impl Catalog {
         }
         ui.horizontal_wrapped(row);
         if all {
-            refresh |= self.creation_status(ui, svc);
+            library_changed |= self.creation_status(ui, svc);
         }
         if matching {
-            refresh |= self
+            library_changed |= self
                 .matching
                 .update(ui, svc, &|id| self.providers.label(id).into());
         }
@@ -316,9 +314,11 @@ impl Catalog {
             actions.notice = Some((message, false));
         }
         actions.favorites.status(ui);
-        if refresh {
+        if library_changed {
+            self.invalidate_library();
+        } else if refresh {
             self.reset_tracks();
         }
-        refresh
+        refresh || library_changed || query_changed
     }
 }

@@ -7,6 +7,7 @@ use musicfs_server_adapter::{
 };
 use std::collections::HashSet;
 use std::future::Future;
+use std::time::{Duration, Instant};
 use tokio::runtime::Handle;
 
 #[cfg(test)]
@@ -25,13 +26,21 @@ pub struct Services<'a> {
     pub player: &'a Player,
 }
 
+struct FirstPage {
+    requested_at: Instant,
+    count: usize,
+    next: Option<String>,
+}
+
 pub struct Pages<T> {
     pub items: Vec<T>,
     pub next: Option<String>,
     pub error: Option<String>,
     pub started: bool,
     seen: HashSet<String>,
-    pending: Option<Task<Page<T>>>,
+    pending: Option<(Instant, Task<Page<T>>)>,
+    first_page: Option<FirstPage>,
+    replace_on_success: bool,
 }
 
 impl<T> Default for Pages<T> {
@@ -43,6 +52,8 @@ impl<T> Default for Pages<T> {
             started: false,
             seen: HashSet::new(),
             pending: None,
+            first_page: None,
+            replace_on_success: false,
         }
     }
 }
@@ -67,27 +78,96 @@ impl<T: Send + 'static> Pages<T> {
         }
         self.started = true;
         self.error = None;
-        self.pending = Some(Task::spawn(rt, ctx, future));
+        self.pending = Some((Instant::now(), Task::spawn(rt, ctx, future)));
     }
 
-    pub fn poll(&mut self) {
+    pub fn poll(&mut self) -> bool {
+        let replacing = self.replace_on_success;
         if let Some(items) = self.take_page() {
             self.items.extend(items);
+            return replacing;
+        }
+        false
+    }
+
+    pub(super) fn request_cursor(&self) -> Option<String> {
+        if self.replace_on_success {
+            None
+        } else {
+            self.next.clone()
+        }
+    }
+
+    pub(super) fn resume(&mut self, max_age: Duration) {
+        self.poll();
+        if !self.replace_on_success
+            && self
+                .first_page
+                .as_ref()
+                .is_some_and(|page| page.requested_at.elapsed() >= max_age)
+        {
+            // 过期游标的续页不能并入新首页。
+            self.pending = None;
+            self.replace_on_success = true;
+            self.started = false;
+        }
+        if self.error.take().is_some() {
+            self.started = false;
+        }
+    }
+
+    pub(super) fn can_cache(&self) -> bool {
+        self.first_page.is_some() || self.busy()
+    }
+
+    // 大列表离开视图时仅留首页及其对应的游标，仍可从正确的位置继续翻页。
+    pub(super) fn limit_cached_rows(&mut self, limit: usize) {
+        if self.items.len() <= limit {
+            return;
+        }
+        if let Some(page) = &self.first_page {
+            let mut rows = std::mem::take(&mut self.items).into_iter();
+            self.items.extend(rows.by_ref().take(page.count));
+            // 深翻曲库后，逐项释放字符串和音源会拖慢切换帧。
+            let _ = std::thread::Builder::new()
+                .name("catalog-cache-cleanup".into())
+                .spawn(move || drop(rows));
+            self.next = page.next.clone();
+            self.seen = page.next.iter().cloned().collect();
+            if !self.replace_on_success {
+                self.pending = None;
+            }
         }
     }
 
     pub(super) fn take_page(&mut self) -> Option<Vec<T>> {
-        let result = self.pending.as_mut()?.poll()?;
+        let (requested, task) = self.pending.as_mut()?;
+        let requested = *requested;
+        let result = task.poll()?;
         self.pending = None;
         match result {
             Ok(page) => {
-                if page
-                    .next_cursor
-                    .as_ref()
-                    .is_some_and(|c| c.is_empty() || !self.seen.insert(c.clone()))
-                {
+                if page.next_cursor.as_ref().is_some_and(|c| {
+                    c.is_empty() || (!self.replace_on_success && self.seen.contains(c))
+                }) {
                     self.error = Some(tr("服务器分页未向前推进，请刷新列表。").into());
                     return None;
+                }
+                if self.replace_on_success {
+                    self.items.clear();
+                    self.seen.clear();
+                    self.first_page = None;
+                    self.replace_on_success = false;
+                }
+                if self.first_page.is_none() {
+                    self.first_page = Some(FirstPage {
+                        requested_at: requested,
+                        count: page.items.len(),
+                        next: page.next_cursor.clone(),
+                    });
+                }
+                if let Some(cursor) = &page.next_cursor {
+                    self.seen.insert(cursor.clone());
                 }
                 self.next = page.next_cursor;
                 Some(page.items)

@@ -135,11 +135,13 @@ impl Matching {
         refresh
     }
 
-    pub(super) fn album_queue_status(&mut self, ui: &mut egui::Ui, svc: Services<'_>) {
+    pub(super) fn album_queue_status(&mut self, ui: &mut egui::Ui, svc: Services<'_>) -> bool {
         let updated = self.decisions.update(svc);
         if self.decisions.feedback(ui, svc) || updated {
             self.changed(ui.ctx(), svc);
+            return true;
         }
+        false
     }
 
     pub(super) fn queue_albums(

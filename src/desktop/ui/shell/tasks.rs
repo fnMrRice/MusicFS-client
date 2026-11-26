@@ -177,7 +177,7 @@ impl Queue {
                                         result.updated > 0
                                     }
                                     TaskDetails::BulkMerge { result } => result.merged_groups > 0,
-                                    _ => false,
+                                    TaskDetails::MetadataRefresh { .. } => true,
                                 };
                                 updated
                                     && matches!(

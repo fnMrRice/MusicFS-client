@@ -30,10 +30,7 @@ impl Catalog {
         }
         ui.scope(|ui| {
             style::checkbox_style(ui);
-            if style::checkbox(ui, &mut self.unscraped_only, tr("仅显示未刮削专辑")).changed()
-            {
-                self.categories = Default::default();
-            }
+            style::checkbox(ui, &mut self.unscraped_only, tr("仅显示未刮削专辑"));
         });
     }
 

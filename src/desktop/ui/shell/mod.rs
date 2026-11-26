@@ -162,9 +162,8 @@ impl SignedUi {
         right.spacing_mut().item_spacing.x = gap;
         self.shell.service_button(&mut right, svc);
         if self.shell.tasks.button(&mut right, svc) {
-            self.catalog.categories = Default::default();
             self.catalog.artwork = Default::default();
-            self.catalog.reset_tracks();
+            self.catalog.invalidate_library();
         }
         if icons::selectable_button(
             &mut right,

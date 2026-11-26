@@ -228,6 +228,7 @@ fn more<T: Send + 'static>(ui: &mut egui::Ui, pages: &Pages<T>) -> bool {
 impl SignedUi {
     pub(super) fn playlist_operations(&mut self, ui: &mut egui::Ui, svc: Services<'_>) {
         if self.playlists.operations.status(ui, svc) {
+            self.catalog.invalidate_library();
             self.playlists.imports = Pages::default();
             self.lists = Pages::default();
             ui.ctx().request_repaint();

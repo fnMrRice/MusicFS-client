@@ -1,4 +1,5 @@
 mod album_cover;
+mod cache;
 mod collection;
 mod new_track;
 mod queue;
@@ -38,6 +39,8 @@ pub struct Catalog {
     pub category: Option<(String, String)>,
     pub categories: Pages<Category>,
     pub tracks: Pages<Track>,
+    cache: cache::LibraryCache,
+    source_revision: Option<u64>,
     pub(super) playlist: super::playlist_tracks::LocalTracks,
     query: Option<TrackQuery>,
     complete: Option<(bool, Task<Vec<QueueTrack>>)>,
@@ -58,21 +61,30 @@ impl Catalog {
         self.query = None;
         self.complete = None;
     }
-    pub fn reset_categories(&mut self) {
-        self.category = None;
-        self.album_cover.leave();
-        self.categories = Pages::default();
-        self.reset_tracks();
-    }
-    pub fn open_credit(&mut self, tab: CategoryTab, id: String, name: String) {
+    fn select_tab(&mut self, tab: CategoryTab) {
+        self.leave_lists();
         self.tabs = tab;
         self.list_draft.clear();
         self.list_query.clear();
-        self.reset_categories();
+        self.category = None;
+        self.album_cover.leave();
+    }
+    pub fn open_credit(&mut self, tab: CategoryTab, id: String, name: String) {
+        self.select_tab(tab);
+        self.select_categories();
         self.category = Some((id, name));
     }
 
     pub fn library(&mut self, ui: &mut egui::Ui, svc: Services<'_>) -> Option<TrackQuery> {
+        let revision = svc.activity.revisions().capabilities;
+        if self
+            .source_revision
+            .replace(revision)
+            .is_some_and(|old| old != revision)
+        {
+            self.invalidate_library();
+            self.providers.refresh();
+        }
         self.album_cover.poll(&mut self.artwork);
         self.artwork.poll(ui.ctx());
         self.category_tabs(ui);
@@ -109,7 +121,8 @@ impl Catalog {
                 self.list_query.clear();
                 self.category = None;
                 self.album_cover.leave();
-                self.reset_tracks();
+                self.leave_tracks();
+                self.categories.resume(cache::MAX_AGE);
             } else {
                 return Some(TrackQuery::Category {
                     tab: self.tabs,
@@ -118,26 +131,32 @@ impl Catalog {
                 });
             }
         }
-        self.categories.poll();
-        ui.horizontal_wrapped(|ui| {
-            if self.tabs == CategoryTab::Album {
-                self.album_filters(ui);
-                self.matching.album_queue_status(ui, svc);
-            }
-            if self.categories.busy() {
-                ui.spinner();
-            }
-            if self.list_search(ui, tr("刷新分类"), |catalog, ui| {
-                if catalog.tabs == CategoryTab::Album {
-                    catalog
-                        .matching
-                        .queue_albums(ui, svc, None, &catalog.list_query);
+        let refresh = ui
+            .horizontal_wrapped(|ui| {
+                if self.tabs == CategoryTab::Album {
+                    self.album_filters(ui);
+                    if self.matching.album_queue_status(ui, svc) {
+                        self.invalidate_library();
+                    }
                 }
-            }) {
-                self.categories = Pages::default();
-                self.artwork.retry_failed();
-            }
-        });
+                if self.categories.busy() {
+                    ui.spinner();
+                }
+                self.list_search(ui, tr("刷新分类"), |catalog, ui| {
+                    if catalog.tabs == CategoryTab::Album {
+                        catalog
+                            .matching
+                            .queue_albums(ui, svc, None, &catalog.list_query);
+                    }
+                })
+            })
+            .inner;
+        self.select_categories();
+        if refresh {
+            self.categories = Pages::default();
+            self.artwork.retry_failed();
+        }
+        self.categories.poll();
         let mut load = !self.categories.started;
         ui.add_space(6.0);
         if let Some(error) = self.categories.error.as_ref() {
@@ -170,7 +189,7 @@ impl Catalog {
             });
         if load {
             let server = svc.server.clone();
-            let cursor = self.categories.next.clone();
+            let cursor = self.categories.request_cursor();
             let query = self.list_query.clone();
             let unscraped_only = self.unscraped_only;
             self.categories.load(ui.ctx(), svc.runtime, async move {
@@ -183,10 +202,7 @@ impl Catalog {
     }
 
     pub fn sync(&mut self, ui: &egui::Ui, svc: Services<'_>, query: &TrackQuery) {
-        if self.query.as_ref() != Some(query) {
-            self.reset_tracks();
-            self.query = Some(query.clone());
-        }
+        self.select_tracks(query);
         if query.is_playlist() {
             if let Some(page) = self.tracks.take_page() {
                 self.playlist.append(page, &mut self.tracks.items);
@@ -194,8 +210,9 @@ impl Catalog {
                     self.versions.clear_expanded();
                 }
             }
-        } else {
-            self.tracks.poll();
+        } else if self.tracks.poll() {
+            self.matching.clear_selection();
+            self.versions.clear_expanded();
         }
         if !self.tracks.started
             || (query.is_playlist() && self.playlist.tools.active() && self.tracks.can_load_more())
@@ -207,7 +224,7 @@ impl Catalog {
         let Some(query) = self.query.clone() else {
             return;
         };
-        let cursor = self.tracks.next.clone();
+        let cursor = self.tracks.request_cursor();
         let server = svc.server.clone();
         self.tracks.load(ui.ctx(), svc.runtime, async move {
             query.fetch(&server, cursor.as_deref()).await

@@ -26,6 +26,10 @@ mod playlist_pages;
 mod library_autoload;
 
 #[cfg(test)]
+#[path = "../../../tests/native/library_cache.rs"]
+mod library_cache;
+
+#[cfg(test)]
 #[path = "../../../tests/native/http_fixture.rs"]
 mod http_fixture;
 
@@ -226,7 +230,7 @@ impl SignedUi {
     fn set_screen(&mut self, screen: Screen) {
         if self.screen != screen {
             self.catalog.playlist = Default::default();
-            self.catalog.reset_tracks();
+            self.catalog.leave_lists();
             if matches!(self.screen, Screen::Playlists | Screen::SourcePlaylist(_)) {
                 self.playlists.leave();
             }

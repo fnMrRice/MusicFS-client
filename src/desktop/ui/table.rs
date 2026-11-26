@@ -50,7 +50,7 @@ pub fn tracks(
         return;
     }
     if data.versions.poll(ui, svc, actions) {
-        data.reset_tracks();
+        data.invalidate_library();
         ui.ctx().request_repaint();
         return;
     }

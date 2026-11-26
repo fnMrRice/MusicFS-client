@@ -6,8 +6,8 @@
   "发行商": ["Publisher", "發行商", "発売元"],
   "发行日期": ["Release date", "發行日期", "発売日"],
   "曲目数": ["Tracks", "曲目數", "曲数"],
-  "仅可播放": ["Playable only", "僅可播放", "再生可能のみ"],
-  "更多筛选": ["More filters", "更多篩選", "その他のフィルター"],
+  "仅可播放": ["Playable", "僅可播放", "再生可能のみ"],
+  "更多筛选": ["Filters…", "更多篩選", "絞り込み…"],
   "等待服务端提供全库可播放过滤": ["The server does not offer a library-wide availability filter.", "等待伺服器提供全庫可播放篩選", "ライブラリ全体の再生可否フィルターはサーバーで未対応です。"],
   "等待服务端提供组合筛选": ["The server does not offer combined filters.", "等待伺服器提供組合篩選", "フィルターの組み合わせはサーバーで未対応です。"],
   "默认顺序": ["Default order", "預設順序", "既定の順序"],
@@ -18,6 +18,7 @@
   "已添加 {0} 首到队列": ["Added {0} tracks to the queue", "已新增 {0} 首至佇列", "{0} 曲をキューに追加しました"],
   "添加到歌单": ["Add to playlist", "新增至歌單", "プレイリストに追加"],
   "清空选择": ["Clear selection", "清除選取", "選択を解除"],
+  "曲目关联": ["Track matching", "曲目關聯", "楽曲の関連付け"],
   "刷新列表": ["Refresh list", "重新整理清單", "一覧を更新"],
   "等待确认上一次提交，请使用相同内容重试。": ["The previous request could not be confirmed. Retry with the same details.", "尚未確認上一次提交，請使用相同內容重試。", "前回の送信を確認できませんでした。同じ内容で再試行してください。"]
 }

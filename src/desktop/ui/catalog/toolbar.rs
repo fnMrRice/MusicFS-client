@@ -116,9 +116,6 @@ impl Catalog {
         if focus {
             field.request_focus();
         }
-        if (focus || field.gained_focus()) && !ui.clip_rect().contains_rect(field.rect) {
-            field.scroll_to_me(Some(egui::Align::Center));
-        }
         let submit = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
         let clear = has_text && icons::button(ui, "close", tr("清除"), 28., 14.).clicked();
         if clear {
@@ -150,19 +147,19 @@ impl Catalog {
         ui: &mut egui::Ui,
         svc: Services<'_>,
         actions: &mut Actions,
-        right_edge: f32,
     ) -> bool {
-        Self::filters(ui);
         let before = self.list_query.clone();
-        if ui.button(tr("新建曲目")).clicked() {
-            self.creation = Some(Default::default());
+        if self.matching.selected_tracks().is_empty() {
+            Self::filters(ui);
+            if ui.button(tr("新建曲目")).clicked() {
+                self.creation = Some(Default::default());
+            }
+            self.matching.buttons(ui, svc);
         }
-        self.matching.buttons(ui, svc);
-        // 根据整行的内容坐标分配空白，滚动时搜索框和按钮的宽度保持稳定。
         let trailing =
             36. + SORT_WIDTH + 2. * ui.spacing().item_spacing.x + self.clear_search_width(ui);
-        let available = right_edge - ui.next_widget_position().x - trailing;
-        let field_width = available.clamp(120., 190.);
+        let available = available_width(ui) - trailing;
+        let field_width = available.clamp(90., 190.);
         ui.add_space((available - field_width).max(0.));
         self.search_field(ui, field_width);
         let refresh = icons::button(ui, "refresh", tr("刷新列表"), 36., 18.).clicked();
@@ -214,9 +211,13 @@ impl Catalog {
             _ => None,
         };
         let width = available_width(ui);
-        let mut row = |ui: &mut egui::Ui| {
-            let right_edge = ui.next_widget_position().x + width;
+        let row = |ui: &mut egui::Ui| {
             ui.spacing_mut().interact_size.y = 38.;
+            if all {
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                ui.spacing_mut().item_spacing.x = 6.;
+                ui.spacing_mut().button_padding.x = 8.;
+            }
             let checked = self.matching.selected_tracks();
             if checked.is_empty() {
                 self.queue_buttons(ui, svc, actions);
@@ -258,7 +259,11 @@ impl Catalog {
                 if let Some(id) = album {
                     refresh |= self.album_merge.show(ui, svc, id, checked);
                 }
-                if matching {
+                if all && self.matching.selected_tracks().len() == 2 {
+                    ui.menu_button(tr("曲目关联"), |ui| {
+                        self.matching.selection_buttons(ui, true)
+                    });
+                } else if matching {
                     self.matching.selection_buttons(ui, album.is_none());
                 }
                 if ui.button(tr("清空选择")).clicked() {
@@ -274,7 +279,7 @@ impl Catalog {
                 ui.spinner();
             }
             if all {
-                refresh |= self.all_track_controls(ui, svc, actions, right_edge);
+                refresh |= self.all_track_controls(ui, svc, actions);
             } else {
                 let remain = available_width(ui);
                 if width >= 520. && remain > 116. {
@@ -291,16 +296,7 @@ impl Catalog {
             );
         };
         if all {
-            ui.scope(|ui| {
-                ui.style_mut().always_scroll_the_only_direction = true;
-                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
-                egui::ScrollArea::horizontal()
-                    .id_salt("all-tracks-toolbar")
-                    .auto_shrink([false, true])
-                    .max_width(width)
-                    .animated(false)
-                    .show(ui, |ui| ui.horizontal(&mut row));
-            });
+            ui.horizontal(row);
             refresh |= self.creation_status(ui, svc);
         } else {
             ui.add_space(17.);

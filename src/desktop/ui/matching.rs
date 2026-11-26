@@ -185,6 +185,7 @@ impl Matching {
             {
                 let items = evidence::selected(&self.selected);
                 self.dialog = Some(merge(items, self.revision, false));
+                ui.close_menu();
             }
             if self.selected.len() == 2 && !self.decisions.locked() {
                 let left = self.selected[0].source();
@@ -203,6 +204,7 @@ impl Matching {
                                     excluded,
                                     false,
                                 ));
+                                ui.close_menu();
                             }
                         }
                     }

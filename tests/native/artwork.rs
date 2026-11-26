@@ -32,10 +32,18 @@ fn limits_requests_and_keeps_ready_and_failed_results() {
     assert!(cache.items["missing"].1.is_none());
     cache.touch("cover", || panic!("ready image requested again"));
     cache.touch("missing", || panic!("failed image requested again"));
+    cache.retry_failed();
+    assert!(!cache.items.contains_key("missing"));
+    cache.touch("cover", || panic!("refresh discarded a ready texture"));
+    cache.touch("third", || panic!("refresh duplicated a pending request"));
     cache.touch("fifth", || {
         Task::spawn(runtime.handle(), &ctx, std::future::pending())
     });
     assert_eq!(cache.pending.len(), 3);
+    replies.remove(0).send(Err("Late failure".into())).unwrap();
+    runtime.block_on(tokio::task::yield_now());
+    cache.poll(&ctx);
+    assert!(!cache.items.contains_key("third"));
 }
 
 #[test]

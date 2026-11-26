@@ -59,7 +59,7 @@ fn frame(
     };
     ctx.run(input, |ctx| {
         egui::CentralPanel::default().show(ctx, |ui| {
-            ui.horizontal_wrapped(|ui| catalog.list_search(ui, tr("刷新列表")));
+            ui.horizontal_wrapped(|ui| catalog.list_search(ui, tr("刷新列表"), |_, _| {}));
         });
     })
     .platform_output
@@ -99,7 +99,7 @@ fn category_search_and_refresh_stay_together_at_the_right_edge() {
                     right = f64::from(ui.max_rect().right());
                     ui.horizontal_wrapped(|ui| {
                         left_actions = ui.allocate_space(egui::vec2(250., 36.)).1;
-                        catalog.list_search(ui, tr("刷新分类"));
+                        catalog.list_search(ui, tr("刷新分类"), |_, _| {});
                     });
                 });
             });
@@ -260,17 +260,7 @@ fn library_toolbar_fits_the_viewport_and_saves_bulk_references() {
         let line_y = (search.y0 + search.y1) / 2.;
         let visible = |r: egui::accesskit::Rect| r.x0 >= 270. && r.x1 <= f64::from(width) - 29.;
         assert!(visible(search), "Search at {search:?} outside {width}");
-        for label in [
-            "播放全部",
-            "加入队列",
-            "仅可播放",
-            "更多筛选",
-            "新建曲目",
-            "一键合并重复音乐",
-            "重复识别",
-            "刷新列表",
-            "默认顺序",
-        ] {
+        for label in ["播放全部", "加入队列", "更多", "刷新列表", "默认顺序"] {
             let node = tree
                 .nodes
                 .iter()
@@ -285,7 +275,17 @@ fn library_toolbar_fits_the_viewport_and_saves_bulk_references() {
                 "{label} is outside toolbar row"
             );
         }
-        for label in ["来源", "全部来源", "全部格式", "仅收藏"] {
+        for label in [
+            "来源",
+            "全部来源",
+            "全部格式",
+            "仅收藏",
+            "仅可播放",
+            "更多筛选",
+            "新建曲目",
+            "一键合并重复音乐",
+            "重复识别",
+        ] {
             assert!(!tree.nodes.iter().any(|(_, n)| n.label() == Some(tr(label))));
         }
         if width == 1232. {

@@ -129,6 +129,13 @@ impl Matching {
         refresh
     }
 
+    pub(super) fn album_queue_status(&mut self, ui: &mut egui::Ui, svc: Services<'_>) {
+        let updated = self.decisions.update(svc);
+        if self.decisions.feedback(ui, svc) || updated {
+            self.changed(ui.ctx(), svc);
+        }
+    }
+
     pub(super) fn queue_albums(
         &mut self,
         ui: &mut egui::Ui,
@@ -136,10 +143,6 @@ impl Matching {
         provider: Option<&str>,
         query: &str,
     ) {
-        let updated = self.decisions.update(svc);
-        if self.decisions.feedback(ui, svc) || updated {
-            self.changed(ui.ctx(), svc);
-        }
         if ui
             .add_enabled(!self.locked(), egui::Button::new(tr("一键自动刮削")))
             .on_hover_text(tr("自动刮削当前来源和搜索条件下的所有未刮削专辑"))
@@ -161,6 +164,7 @@ impl Matching {
             .add_enabled(!self.locked(), egui::Button::new(tr("一键合并重复音乐")))
             .clicked()
         {
+            ui.close_menu();
             self.dialog = Some(Dialog::Bulk {
                 by_score: true,
                 minimum: "80".into(),
@@ -171,6 +175,7 @@ impl Matching {
             }
         }
         if ui.button(tr("重复识别")).clicked() {
+            ui.close_menu();
             self.dialog = Some(Dialog::Candidates);
         }
     }

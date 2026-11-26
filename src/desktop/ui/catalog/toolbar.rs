@@ -5,6 +5,10 @@ use musicfs_server_adapter::Playlist;
 
 const SORT_WIDTH: f32 = 108.;
 
+#[cfg(test)]
+#[path = "../../../../tests/native/catalog_toolbar.rs"]
+mod tests;
+
 // 表格内容可能宽于视口，工具栏只使用当前可见的宽度。
 fn available_width(ui: &egui::Ui) -> f32 {
     ui.available_rect_before_wrap()
@@ -72,16 +76,35 @@ impl Catalog {
         }
     }
 
-    pub(super) fn list_search(&mut self, ui: &mut egui::Ui, refresh_label: &str) -> bool {
+    pub(super) fn list_search(
+        &mut self,
+        ui: &mut egui::Ui,
+        refresh_label: &str,
+        leading: impl FnOnce(&mut Self, &mut egui::Ui),
+    ) -> bool {
         let buttons = 36. + ui.spacing().item_spacing.x + self.clear_search_width(ui);
         if available_width(ui) < 90. + buttons && ui.layout().main_wrap() {
             ui.end_row();
         }
-        let available = (available_width(ui) - buttons).max(0.);
-        let width = available.min(190.);
-        ui.add_space(available - width);
-        self.search_field(ui, width);
-        icons::button(ui, "refresh", refresh_label, 36., 18.).clicked()
+        let available = available_width(ui);
+        let width = (available - buttons).clamp(0., 190.);
+        ui.allocate_ui_with_layout(
+            egui::vec2(available, 36.),
+            egui::Layout::right_to_left(egui::Align::Center),
+            |ui| {
+                let refresh = ui.allocate_ui_with_layout(
+                    egui::vec2(width + buttons, 36.),
+                    egui::Layout::left_to_right(egui::Align::Center),
+                    |ui| {
+                        self.search_field(ui, width);
+                        icons::button(ui, "refresh", refresh_label, 36., 18.).clicked()
+                    },
+                );
+                leading(self, ui);
+                refresh.inner
+            },
+        )
+        .inner
     }
 
     fn clear_search_width(&self, ui: &egui::Ui) -> f32 {
@@ -120,26 +143,14 @@ impl Catalog {
         }
     }
 
-    fn filters(ui: &mut egui::Ui) {
-        ui.scope(|ui| {
-            style::checkbox_style(ui);
-            ui.spacing_mut().item_spacing.x = 5.;
-            ui.spacing_mut().interact_size.x = 16.;
-            ui.add_enabled(false, egui::Checkbox::new(&mut false, tr("仅可播放")))
-                .on_disabled_hover_text(tr("等待服务端提供全库可播放过滤"));
-        });
-        ui.add_enabled(false, egui::Button::new(tr("更多筛选")))
-            .on_disabled_hover_text(tr("等待服务端提供组合筛选"));
-    }
-
     fn all_track_actions(&mut self, ui: &mut egui::Ui, svc: Services<'_>) {
-        if self.matching.selected_tracks().is_empty() {
-            Self::filters(ui);
+        ui.menu_button(tr("更多"), |ui| {
             if ui.button(tr("新建曲目")).clicked() {
                 self.creation = Some(Default::default());
+                ui.close_menu();
             }
             self.matching.buttons(ui, svc);
-        }
+        });
     }
 
     fn creation_status(&mut self, ui: &mut egui::Ui, svc: Services<'_>) -> bool {
@@ -171,9 +182,6 @@ impl Catalog {
         let search = matches!(query, TrackQuery::Library(_));
         let matching = library || search;
         let mut refresh = false;
-        if !all && matching && !search {
-            ui.horizontal_wrapped(|ui| self.matching.buttons(ui, svc));
-        }
         self.poll_queue(svc, actions);
         let album = match query {
             TrackQuery::Category {
@@ -193,6 +201,9 @@ impl Catalog {
             let checked = self.matching.selected_tracks();
             if checked.is_empty() {
                 self.queue_buttons(ui, svc, actions);
+                if all {
+                    self.all_track_actions(ui, svc);
+                }
             } else {
                 ui.strong(tr("已选择 {0} 项").replace("{0}", &checked.len().to_string()));
                 if ui
@@ -256,9 +267,7 @@ impl Catalog {
                 });
                 return;
             }
-            if all {
-                self.all_track_actions(ui, svc);
-            } else if query.is_playlist() {
+            if query.is_playlist() {
                 if self.playlist.tools.show(ui) {
                     self.playlist.rebuild(&mut self.tracks.items);
                     self.matching.clear_selection();
@@ -268,23 +277,27 @@ impl Catalog {
                 }
                 return;
             }
-            providers::disabled_select(
-                ui,
-                "track-sort",
-                tr("默认顺序"),
-                SORT_WIDTH,
-                16.,
-                tr("等待服务端提供完整查询排序能力"),
-            );
+            let sort = |ui: &mut egui::Ui| {
+                providers::disabled_select(
+                    ui,
+                    "track-sort",
+                    tr("默认顺序"),
+                    SORT_WIDTH,
+                    16.,
+                    tr("等待服务端提供完整查询排序能力"),
+                );
+            };
             if library {
                 let before = self.list_query.clone();
-                if self.list_search(ui, tr("刷新列表")) {
+                if self.list_search(ui, tr("刷新列表"), |_, ui| sort(ui)) {
                     self.providers.refresh();
                     self.artwork = Default::default();
                     actions.favorites.refresh();
                     refresh = true;
                 }
                 refresh |= self.list_query != before;
+            } else {
+                sort(ui);
             }
         };
         if !all && !search {

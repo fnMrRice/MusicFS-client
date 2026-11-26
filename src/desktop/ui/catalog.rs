@@ -100,7 +100,8 @@ impl Catalog {
                 });
                 if self.tabs == CategoryTab::Album {
                     let known = self.categories.items.iter().find(|album| album.id == id);
-                    self.album_cover.show(ui, svc, &mut self.artwork, &id, known);
+                    self.album_cover
+                        .show(ui, svc, &mut self.artwork, &id, known);
                 }
             });
             if back {
@@ -121,13 +122,20 @@ impl Catalog {
         ui.horizontal_wrapped(|ui| {
             if self.tabs == CategoryTab::Album {
                 self.album_filters(ui);
-                self.matching.queue_albums(ui, svc, None, &self.list_query);
+                self.matching.album_queue_status(ui, svc);
             }
             if self.categories.busy() {
                 ui.spinner();
             }
-            if self.list_search(ui, tr("刷新分类")) {
+            if self.list_search(ui, tr("刷新分类"), |catalog, ui| {
+                if catalog.tabs == CategoryTab::Album {
+                    catalog
+                        .matching
+                        .queue_albums(ui, svc, None, &catalog.list_query);
+                }
+            }) {
                 self.categories = Pages::default();
+                self.artwork.retry_failed();
             }
         });
         let mut load = !self.categories.started;

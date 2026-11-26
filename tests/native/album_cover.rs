@@ -205,3 +205,93 @@ fn reopening_an_album_credit_displays_the_new_local_cover() {
         }
     }
 }
+
+#[test]
+fn refreshing_albums_retries_failed_thumbnails_from_the_server_cache() {
+    use std::sync::atomic::AtomicUsize;
+
+    const COVER: &str = "/api/v1/library/albums/slow/artwork";
+    let attempts = Arc::new(AtomicUsize::new(0));
+    let count = attempts.clone();
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let server = runtime.block_on(session_with_response(move |method, url| match url.path() {
+        "/api/v1/library/albums" => (
+            "200 OK",
+            "application/json",
+            json!({"items":[
+                {"albumId":"slow","name":"Slow album","trackCount":2,"coverPath":COVER}
+            ]})
+            .to_string()
+            .into_bytes(),
+        ),
+        COVER => {
+            assert_eq!(method, "GET");
+            if count.fetch_add(1, Ordering::SeqCst) == 0 {
+                (
+                    "503 Service Unavailable",
+                    "application/json",
+                    b"{}".to_vec(),
+                )
+            } else {
+                ("200 OK", "image/png", cover_png(91))
+            }
+        }
+        "/api/v1/provider-instances" => ("200 OK", "application/json", br#"{"items":[]}"#.to_vec()),
+        _ => ("404 Not Found", "text/plain", vec![]),
+    }));
+    let activity = server.listen_activity(|| {});
+    let player = Player::new(|_| Err("Unexpected playback".into())).unwrap();
+    let svc = Services {
+        runtime: runtime.handle(),
+        server: &server,
+        activity: &activity,
+        player: &player,
+    };
+    let ctx = egui::Context::default();
+    ctx.enable_accesskit();
+    let mut catalog = super::super::Catalog {
+        tabs: CategoryTab::Album,
+        ..Default::default()
+    };
+    let mut frame = |events| {
+        ctx.run(
+            egui::RawInput {
+                events,
+                ..Default::default()
+            },
+            |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| catalog.library(ui, svc));
+            },
+        )
+    };
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while attempts.load(Ordering::SeqCst) == 0 {
+        frame(vec![]);
+        assert!(Instant::now() < deadline, "Missing first thumbnail request");
+        std::thread::sleep(Duration::from_millis(8));
+    }
+    let tree = frame(vec![]).platform_output.accesskit_update.unwrap();
+    let (target, _) = tree
+        .nodes
+        .iter()
+        .find(|(_, n)| n.label() == Some(tr("刷新分类")))
+        .unwrap();
+    frame(vec![egui::Event::AccessKitActionRequest(ActionRequest {
+        target: *target,
+        action: Action::Click,
+        data: None,
+    })]);
+    loop {
+        let output = frame(vec![]);
+        if output.textures_delta.set.iter().any(|(_, delta)| matches!(&delta.image,
+            egui::ImageData::Color(img) if img.pixels.first() == Some(&egui::Color32::from_gray(91)))) {
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "Missing recovered album thumbnail"
+        );
+        std::thread::sleep(Duration::from_millis(8));
+    }
+    assert_eq!(attempts.load(Ordering::SeqCst), 2);
+}

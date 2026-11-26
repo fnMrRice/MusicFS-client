@@ -112,10 +112,9 @@ impl ServerSession {
     pub async fn refresh_album_cover(&self, id: &str) -> Result<()> {
         let id = super::check_id(id)?;
         let key = uuid::Uuid::new_v4().to_string();
-        self.send_with_headers(
+        self.request_album_artwork(
             reqwest::Method::POST,
-            self.url(&format!("library/albums/{id}/artwork/refresh")),
-            None,
+            &format!("library/albums/{id}/artwork/refresh"),
             &[("Idempotency-Key", &key)],
         )
         .await?;

@@ -194,6 +194,7 @@ mod tests {
             origin,
             client: reqwest::Client::new(),
             image_client: crate::covers::image_client().unwrap(),
+            album_artwork_client: reqwest::Client::new(),
             cookies,
             csrf: "test-csrf".into(),
             active: Arc::new(AtomicBool::new(true)),

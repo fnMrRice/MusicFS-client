@@ -10,16 +10,24 @@ struct Pending {
     id: String,
     last_used: u64,
     task: Task<ColorImage>,
+    retry_if_failed: bool,
 }
 #[derive(Default)]
 pub struct Artwork {
-    // 失败也占一个缓存位，直到被淘汰才重新请求。
+    // 缓存失败以防止每帧发请求；用户刷新分类时只清除失败项。
     items: HashMap<String, (u64, Option<TextureHandle>)>,
     pending: Vec<Pending>,
     counter: u64,
 }
 
 impl Artwork {
+    pub fn retry_failed(&mut self) {
+        self.items.retain(|_, (_, texture)| texture.is_some());
+        for pending in &mut self.pending {
+            pending.retry_if_failed = true;
+        }
+    }
+
     pub fn invalidate(&mut self, id: &str) {
         self.items.remove(id);
         self.pending.retain(|item| item.id != id);
@@ -30,6 +38,9 @@ impl Artwork {
             let Some(result) = pending.task.poll() else {
                 return true;
             };
+            if result.is_err() && pending.retry_if_failed {
+                return false;
+            }
             let texture = result
                 .ok()
                 .map(|image| ctx.load_texture(&pending.id, image, egui::TextureOptions::LINEAR));
@@ -67,6 +78,7 @@ impl Artwork {
             id: id.to_owned(),
             last_used: self.counter,
             task: start(),
+            retry_if_failed: false,
         });
     }
     pub fn paint(&mut self, ui: &egui::Ui, rect: egui::Rect, svc: Services<'_>, id: Option<&str>) {

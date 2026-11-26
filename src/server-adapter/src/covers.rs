@@ -3,6 +3,9 @@ use reqwest::{header, Client, Method};
 use std::time::Duration;
 use url::{Host, Url};
 
+// 服务端处理专辑封面的请求期限是 30 秒，包含插件下载后首次写入缓存的时间。
+pub(super) const ALBUM_ARTWORK_TIMEOUT: Duration = Duration::from_secs(35);
+
 pub(super) fn image_client() -> Result<Client> {
     Client::builder()
         .https_only(true)
@@ -52,6 +55,23 @@ fn public_cover(raw: &str) -> Result<Url> {
 }
 
 impl ServerSession {
+    pub(super) async fn request_album_artwork(
+        &self,
+        method: Method,
+        path: &str,
+        headers: &[(&str, &str)],
+    ) -> Result<reqwest::Response> {
+        self.send_json(
+            &self.album_artwork_client,
+            ALBUM_ARTWORK_TIMEOUT,
+            method,
+            self.url(path),
+            None,
+            headers,
+        )
+        .await
+    }
+
     pub async fn cover_bytes(&self, cover: &str) -> Result<Vec<u8>> {
         self.ensure_active()?;
         let response = if cover.starts_with("https://") {
@@ -67,8 +87,12 @@ impl ServerSession {
             }
             response
         } else {
-            self.send(Method::GET, self.url(&cover_endpoint(cover)?), None)
-                .await?
+            let path = cover_endpoint(cover)?;
+            if path.starts_with("library/albums/") {
+                self.request_album_artwork(Method::GET, &path, &[]).await?
+            } else {
+                self.send(Method::GET, self.url(&path), None).await?
+            }
         };
         let mime = response
             .headers()

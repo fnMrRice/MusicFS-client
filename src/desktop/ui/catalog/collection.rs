@@ -7,15 +7,6 @@ mod viewport_tests;
 
 impl Catalog {
     pub(super) fn album_filters(&mut self, ui: &mut egui::Ui) {
-        ui.scope(|ui| {
-            style::checkbox_style(ui);
-            if ui
-                .checkbox(&mut self.unscraped_only, tr("仅显示未刮削专辑"))
-                .changed()
-            {
-                self.categories = Default::default();
-            }
-        });
         for (mode, icon, label) in [(false, "grid", "卡片视图"), (true, "queue", "列表视图")]
         {
             let b = crate::icons::button(ui, icon, tr(label), 32., 16.);
@@ -38,6 +29,15 @@ impl Catalog {
                 );
             }
         }
+        ui.scope(|ui| {
+            style::checkbox_style(ui);
+            if ui
+                .checkbox(&mut self.unscraped_only, tr("仅显示未刮削专辑"))
+                .changed()
+            {
+                self.categories = Default::default();
+            }
+        });
     }
 
     pub(super) fn collection(

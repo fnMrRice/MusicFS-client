@@ -15,6 +15,11 @@ pub(super) struct AlbumCover {
 }
 
 impl AlbumCover {
+    pub(super) fn leave(&mut self) {
+        self.album.clear();
+        self.metadata = Default::default();
+    }
+
     pub(super) fn poll(&mut self, artwork: &mut Artwork) {
         let Some((path, task)) = self.updating.as_mut() else {
             return;

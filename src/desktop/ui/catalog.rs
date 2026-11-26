@@ -60,6 +60,7 @@ impl Catalog {
     }
     pub fn reset_categories(&mut self) {
         self.category = None;
+        self.album_cover.leave();
         self.categories = Pages::default();
         self.reset_tracks();
     }
@@ -106,6 +107,7 @@ impl Catalog {
                 self.list_draft.clear();
                 self.list_query.clear();
                 self.category = None;
+                self.album_cover.leave();
                 self.reset_tracks();
             } else {
                 return Some(TrackQuery::Category {

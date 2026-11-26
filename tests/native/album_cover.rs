@@ -6,9 +6,18 @@ use musicfs_player_core::Player;
 use musicfs_server_adapter::CategoryKind;
 use serde_json::json;
 use std::{
+    sync::atomic::{AtomicBool, Ordering},
     sync::{Arc, Mutex},
     time::{Duration, Instant},
 };
+
+fn cover_png(gray: u8) -> Vec<u8> {
+    let mut png = Vec::new();
+    image::codecs::png::PngEncoder::new(&mut png)
+        .write_image(&[gray; 6 * 6 * 3], 6, 6, image::ExtendedColorType::Rgb8)
+        .unwrap();
+    png
+}
 
 #[test]
 fn album_gallery_uses_local_artwork_and_only_refetches_after_manual_update() {
@@ -29,12 +38,7 @@ fn album_gallery_uses_local_artwork_and_only_refetches_after_manual_update() {
                 ("200 OK","application/json",page.to_string().into_bytes())
             }
             ("GET", PATH) => {
-                let gray = if updated {183} else {43};
-                let mut png = Vec::new();
-                image::codecs::png::PngEncoder::new(&mut png).write_image(
-                    &[gray; 6 * 6 * 3], 6, 6, image::ExtendedColorType::Rgb8
-                ).unwrap();
-                ("200 OK","image/png",png)
+                ("200 OK","image/png",cover_png(if updated {183} else {43}))
             }
             ("POST", "/api/v1/library/albums/record/artwork/refresh") => ("204 No Content","text/plain",vec![]),
             _ => ("404 Not Found","text/plain",vec![])
@@ -137,4 +141,67 @@ fn album_gallery_uses_local_artwork_and_only_refetches_after_manual_update() {
             ("GET", PATH)
         ]
     );
+}
+
+#[test]
+fn reopening_an_album_credit_displays_the_new_local_cover() {
+    const ALBUM: &str = "/api/v1/library/albums/record";
+    const REMOTE: &str = "/api/v1/library/albums/record/artwork";
+    const MEDIA: &str = "/api/v1/media/local";
+    let local = Arc::new(AtomicBool::new(false));
+    let selected = Arc::clone(&local);
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let server = runtime.block_on(session_with_response(move |_, url| match url.path() {
+        ALBUM => {
+            let path = if selected.load(Ordering::Relaxed) {
+                MEDIA
+            } else {
+                REMOTE
+            };
+            (
+                "200 OK",
+                "application/json",
+                json!({"coverPath":path}).to_string().into_bytes(),
+            )
+        }
+        REMOTE => ("200 OK", "image/png", cover_png(43)),
+        MEDIA => ("200 OK", "image/png", cover_png(183)),
+        "/api/v1/provider-instances" => ("200 OK", "application/json", br#"{"items":[]}"#.to_vec()),
+        _ => ("404 Not Found", "text/plain", vec![]),
+    }));
+    let player = Player::new(|_| Err("Unexpected playback".into())).unwrap();
+    let activity = server.listen_activity(|| {});
+    let svc = Services {
+        runtime: runtime.handle(),
+        server: &server,
+        activity: &activity,
+        player: &player,
+    };
+    let ctx = egui::Context::default();
+    ctx.enable_accesskit();
+    let mut catalog = super::super::Catalog::default();
+    for (manual, gray) in [(false, 43), (true, 183)] {
+        local.store(manual, Ordering::Relaxed);
+        catalog.open_credit(CategoryTab::Album, "record".into(), "The Album".into());
+        let deadline = Instant::now() + Duration::from_secs(4);
+        loop {
+            let out = ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    catalog.library(ui, svc);
+                });
+            });
+            if out.textures_delta.set.iter().any(|(_, delta)| matches!(&delta.image,
+                egui::ImageData::Color(img) if img.pixels.first()==Some(&egui::Color32::from_gray(gray)))) {
+                let tree = out.platform_output.accesskit_update.unwrap();
+                let can_update = tree.nodes.iter().any(|(_, node)| node.label()==Some(tr("更新封面")));
+                assert_eq!(can_update, !manual);
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "Album credit did not show the current cover"
+            );
+            std::thread::sleep(Duration::from_millis(8));
+        }
+    }
 }

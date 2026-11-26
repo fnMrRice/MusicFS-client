@@ -1,0 +1,15 @@
+{
+  "搜索曲名、歌手或专辑": ["Search tracks, artists, or albums", "搜尋曲名、歌手或專輯", "曲名、アーティスト、アルバムを検索"],
+  "清空搜索": ["Clear search", "清除搜尋", "検索をクリア"],
+  "关键词最多 256 个字符，且不能包含控制字符。": ["Use up to 256 characters without control characters.", "關鍵字最多 256 個字元，且不能含有控制字元。", "検索語は制御文字を含まない 256 文字以内で入力してください。"],
+  "搜索音乐库": ["Search your library", "搜尋音樂庫", "ライブラリを検索"],
+  "输入曲名、歌手或专辑名，按 Enter 搜索。": ["Enter a track, artist, or album name and press Enter.", "輸入曲名、歌手或專輯名稱，按 Enter 搜尋。", "曲名、アーティスト名、アルバム名を入力して Enter キーで検索します。"],
+  "最近搜索": ["Recent searches", "最近搜尋", "最近の検索"],
+  "清空记录": ["Clear history", "清除紀錄", "履歴を消去"],
+  "“{0}”的搜索结果": ["Results for “{0}”", "「{0}」的搜尋結果", "「{0}」の検索結果"],
+  "试试其他关键词，或切换搜索类型。": ["Try another search or select a different category.", "試試其他關鍵字，或切換搜尋類型。", "別の検索語または検索カテゴリをお試しください。"],
+  "没有找到相关曲目": ["No matching tracks", "找不到相關曲目", "該当する曲がありません"],
+  "没有找到相关专辑": ["No matching albums", "找不到相關專輯", "該当するアルバムがありません"],
+  "没有找到相关歌手": ["No matching artists", "找不到相關歌手", "該当するアーティストがいません"],
+  "正在搜索…": ["Searching…", "正在搜尋…", "検索中…"]
+}

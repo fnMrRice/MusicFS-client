@@ -1,4 +1,4 @@
-use super::detail::Detail;
+use super::Detail;
 use crate::{
     i18n::tr,
     ui::{card_grid, style},
@@ -15,6 +15,35 @@ pub(super) fn show(
     source: &Source,
     mut paint_cover: impl FnMut(&egui::Ui, Rect, Option<&str>),
 ) -> Option<Detail> {
+    let index = playlist_cards(
+        ui,
+        source.items.len(),
+        |index| {
+            let item = &source.items[index];
+            (&item.playlist, item.reason.as_str())
+        },
+        &mut paint_cover,
+    )?;
+    let playlist = &source.items[index].playlist;
+    Some(Detail::new(
+        &source.instance_id,
+        &playlist.external_id,
+        playlist.cover_url.clone(),
+        source.can_play_online,
+    ))
+}
+
+pub(crate) fn playlist_cards<'a>(
+    ui: &mut egui::Ui,
+    count: usize,
+    item: impl Fn(
+        usize,
+    ) -> (
+        &'a musicfs_server_adapter::online_playlists::OnlinePlaylist,
+        &'a str,
+    ),
+    mut paint_cover: impl FnMut(&egui::Ui, Rect, Option<&str>),
+) -> Option<usize> {
     let width = ui.available_width();
     let gap = ui.spacing().item_spacing.x;
     let cols = ((width + gap) / (230. + gap)).floor().clamp(1., 4.) as usize;
@@ -22,22 +51,16 @@ pub(super) fn show(
     let mut selected = None;
     card_grid(
         ui,
-        source.items.len(),
+        count,
         cols,
         egui::vec2(card_width, 94.),
         |ui, index, rect, response| {
-            let item = &source.items[index];
-            let playlist = &item.playlist;
+            let (playlist, reason) = item(index);
             let title = &playlist.title;
             response
                 .widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, title));
             if response.clicked() {
-                selected = Some(Detail::new(
-                    &source.instance_id,
-                    &playlist.external_id,
-                    playlist.cover_url.clone(),
-                    source.can_play_online,
-                ));
+                selected = Some(index);
             }
             if !ui.is_rect_visible(rect) {
                 return;
@@ -88,7 +111,7 @@ pub(super) fn show(
             let primary = style::text(dark);
             let secondary = style::muted(dark);
             let title_text = text(title, style::bold(ui, 15.), primary, 2);
-            let details = [&metadata[..], item.reason.as_str()]
+            let details = [&metadata[..], reason]
                 .into_iter()
                 .filter(|s| !s.is_empty())
                 .map(|s| text(s, FontId::proportional(12.), secondary, 1))

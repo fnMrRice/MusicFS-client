@@ -50,6 +50,9 @@ pub(super) fn language_menu(ui: &mut egui::Ui, current: &str) -> Option<String> 
 }
 
 impl Settings {
+    pub(super) fn open_sources(&mut self) {
+        self.tab = 0;
+    }
     pub(super) fn open_plugins(&mut self) {
         self.tab = 1;
     }

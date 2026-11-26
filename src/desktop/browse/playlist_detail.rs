@@ -1,4 +1,4 @@
-use super::super::{resource::Resource, QueueSelection};
+use super::{resource::Resource, QueueSelection};
 use crate::{
     i18n::tr,
     ui::{Artwork, Services},
@@ -8,7 +8,7 @@ use musicfs_player_core::Track;
 use musicfs_server_adapter::{RecommendedPlaylistDetail, TrackInfo};
 use std::collections::HashSet;
 
-pub(super) struct Detail {
+pub(crate) struct Detail {
     instance: String,
     external: String,
     cover_url: Option<String>,
@@ -33,6 +33,10 @@ impl Detail {
             seen: HashSet::new(),
             visible: 50,
         }
+    }
+
+    pub fn playlist(&self) -> Option<&musicfs_server_adapter::online_playlists::OnlinePlaylist> {
+        self.details.as_ref().map(|d| &d.playlist)
     }
 
     pub fn key(&self) -> (&str, &str) {

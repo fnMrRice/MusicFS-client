@@ -1,6 +1,10 @@
+mod playlist_detail;
+pub(crate) use playlist_detail::Detail as OnlinePlaylistDetail;
 mod recommendations;
-mod resource;
+pub(crate) use recommendations::playlist_cards;
+pub(crate) mod resource;
 mod work_detail;
+mod work_gallery;
 mod works;
 
 use eframe::egui;
@@ -62,20 +66,32 @@ impl BrowseUi {
     pub fn works(
         &mut self,
         ui: &mut egui::Ui,
-        rt: &Handle,
-        session: &ServerSession,
+        svc: crate::ui::Services<'_>,
+        artwork: &mut crate::ui::Artwork,
         type_id: &str,
     ) -> Option<QueueSelection> {
-        self.works.show(ui, rt, session, type_id)
+        let kind = self
+            .types
+            .value
+            .as_ref()?
+            .iter()
+            .find(|t| t.id == type_id)?;
+        self.works.show(ui, svc, artwork, kind)
     }
 
     pub fn history(
         &mut self,
         ui: &mut egui::Ui,
-        rt: &Handle,
-        session: &ServerSession,
+        svc: crate::ui::Services<'_>,
+        artwork: &mut crate::ui::Artwork,
         type_id: &str,
     ) -> Option<QueueSelection> {
-        self.history.show(ui, rt, session, type_id)
+        let kind = self
+            .types
+            .value
+            .as_ref()?
+            .iter()
+            .find(|t| t.id == type_id)?;
+        self.history.show(ui, svc, artwork, kind)
     }
 }

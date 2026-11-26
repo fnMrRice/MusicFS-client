@@ -5,7 +5,7 @@ use musicfs_server_adapter::Page;
 use std::{collections::HashSet, future::Future};
 use tokio::runtime::Handle;
 
-pub(super) struct Resource<T> {
+pub(crate) struct Resource<T> {
     pub value: Option<T>,
     pub error: Option<String>,
     pub started: bool,

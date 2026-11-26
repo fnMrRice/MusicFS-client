@@ -67,6 +67,16 @@ fn messages() -> &'static Catalog {
         let shell: Catalog = serde_json::from_str(include_str!("shell_translations.json"))
             .expect("Invalid shell language catalog");
         data.extend(shell);
+        for source in [
+            include_str!("work_translations.json"),
+            include_str!("search_translations.json"),
+            include_str!("playlist_translations.json"),
+            include_str!("playlist_local_translations.json"),
+        ] {
+            data.extend(
+                serde_json::from_str::<Catalog>(source).expect("Invalid desktop language catalog"),
+            );
+        }
         data
     })
 }

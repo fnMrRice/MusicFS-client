@@ -4,7 +4,7 @@ use super::{
     table, SignedUi,
 };
 use crate::i18n::tr;
-use eframe::egui::{self, RichText};
+use eframe::egui;
 
 impl SignedUi {
     pub(super) fn page(&mut self, ui: &mut egui::Ui, svc: Services<'_>) {
@@ -16,14 +16,14 @@ impl SignedUi {
                 };
                 query
             }
-            Screen::Search => {
-                self.catalog.search_bar(ui);
-                if self.catalog.search.is_empty() {
-                    ui.weak(tr("输入关键词并按回车搜索音乐库。"));
+            Screen::Search => match self.catalog.search_page(ui, svc) {
+                super::catalog::SearchAction::Tracks(query) => query,
+                super::catalog::SearchAction::OpenCategory => {
+                    self.navigate(Screen::Library);
                     return;
                 }
-                TrackQuery::Library(self.catalog.search.clone())
-            }
+                super::catalog::SearchAction::Stay => return,
+            },
             Screen::Favorites => TrackQuery::Favorites,
             Screen::History => {
                 ui.horizontal_wrapped(|ui| {
@@ -37,8 +37,12 @@ impl SignedUi {
                     let q = egui::ScrollArea::vertical()
                         .id_salt("work-history")
                         .show(ui, |ui| {
-                            self.browse
-                                .history(ui, svc.runtime, svc.server, &self.history_type)
+                            self.browse.history(
+                                ui,
+                                svc,
+                                &mut self.catalog.artwork,
+                                &self.history_type,
+                            )
                         })
                         .inner;
                     self.play_request(svc, q);
@@ -70,6 +74,7 @@ impl SignedUi {
                     }
                     return;
                 };
+                self.local_playlists.detail(ui, p);
                 if p.stale {
                     ui.horizontal(|ui| {
                         ui.weak(tr("歌单有未应用的更改。"));
@@ -97,10 +102,7 @@ impl SignedUi {
                 return;
             }
             Screen::Works(id) => {
-                let q = egui::ScrollArea::vertical()
-                    .id_salt(("works", &id))
-                    .show(ui, |ui| self.browse.works(ui, svc.runtime, svc.server, &id))
-                    .inner;
+                let q = self.browse.works(ui, svc, &mut self.catalog.artwork, &id);
                 self.play_request(svc, q);
                 return;
             }
@@ -118,7 +120,7 @@ impl SignedUi {
             self.player.status(),
         );
     }
-    fn play_request(
+    pub(super) fn play_request(
         &mut self,
         svc: Services<'_>,
         request: Option<(Vec<musicfs_player_core::Track>, usize)>,
@@ -127,56 +129,6 @@ impl SignedUi {
             if let Err(error) = svc.player.set_queue(tracks, index) {
                 self.actions.notice = Some((error, true));
             }
-        }
-    }
-    fn playlists(&mut self, ui: &mut egui::Ui, svc: Services<'_>) {
-        ui.horizontal(|ui| {
-            ui.strong(tr("{0} 个歌单").replace("{0}", &self.lists.items.len().to_string()));
-            if ui.button(tr("刷新歌单")).clicked() {
-                self.lists = Pages::default();
-            }
-            if self.lists.busy() {
-                ui.spinner();
-            }
-        });
-        ui.separator();
-        if let Some(error) = &self.lists.error {
-            ui.colored_label(ui.visuals().error_fg_color, error);
-        }
-        if self.lists.started
-            && !self.lists.busy()
-            && self.lists.error.is_none()
-            && self.lists.items.is_empty()
-        {
-            ui.weak(tr("暂无歌单。可从曲目右侧的「＋」新建歌单。"));
-        }
-        let mut selected = None;
-        let mut more = false;
-        egui::ScrollArea::vertical()
-            .id_salt("all-playlists")
-            .show(ui, |ui| {
-                for p in &self.lists.items {
-                    if ui
-                        .add_sized(
-                            [ui.available_width(), 42.0],
-                            egui::Button::new(RichText::new(&p.name).size(15.0)),
-                        )
-                        .clicked()
-                    {
-                        selected = Some(p.id.clone());
-                    }
-                }
-                if self.lists.next.is_some() || self.lists.error.is_some() {
-                    more = ui
-                        .add_enabled(!self.lists.busy(), egui::Button::new(tr("继续读取歌单")))
-                        .clicked();
-                }
-            });
-        if more {
-            self.load_lists(ui.ctx(), svc);
-        }
-        if let Some(id) = selected {
-            self.navigate(Screen::Playlist(id));
         }
     }
 }

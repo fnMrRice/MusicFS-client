@@ -10,6 +10,7 @@ mod login;
 mod matching;
 mod navigation;
 mod pages;
+mod playlists;
 mod settings;
 mod shell;
 pub(crate) mod style;
@@ -53,6 +54,8 @@ struct SignedUi {
     browse: BrowseUi,
     catalog: Catalog,
     lists: Pages<Playlist>,
+    playlists: playlists::Management,
+    local_playlists: playlists::local::LocalPlaylists,
     actions: Actions,
     works_closed: bool,
     mine_closed: bool,
@@ -171,6 +174,9 @@ impl SignedUi {
         self.set_screen(screen);
     }
     fn back(&mut self, wide: bool) {
+        if self.screen == Screen::Playlists && self.playlists.back() {
+            return;
+        }
         if let Some(screen) = self.shell.history.pop() {
             self.set_screen(screen);
         } else {
@@ -181,6 +187,9 @@ impl SignedUi {
     fn set_screen(&mut self, screen: Screen) {
         if self.screen != screen {
             self.catalog.reset_tracks();
+            if self.screen == Screen::Playlists {
+                self.playlists.leave();
+            }
             self.actions.notice = None;
             if self.screen == Screen::Recommendations {
                 self.browse.leave_recommendations();
@@ -301,6 +310,13 @@ impl SignedUi {
             });
         if self.actions.show_editor(ctx, svc, &self.lists) {
             self.load_lists(ctx, svc);
+        }
+        if self.local_playlists.dialogs(ctx, svc, &self.lists) {
+            self.lists = Pages::default();
+            if matches!(self.screen, Screen::Playlist(_)) {
+                self.catalog.reset_tracks();
+            }
+            ctx.request_repaint();
         }
         action
     }

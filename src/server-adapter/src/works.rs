@@ -12,10 +12,21 @@ struct Items<T> {
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ContentType {
     id: String,
     name: String,
+    #[serde(default)]
+    credit_roles: Vec<NamedValue>,
+    #[serde(default)]
+    external_id_namespaces: Vec<NamedValue>,
     library: Option<Library>,
+}
+
+#[derive(Deserialize, Serialize)]
+struct NamedValue {
+    id: String,
+    name: String,
 }
 
 #[derive(Deserialize)]
@@ -34,6 +45,30 @@ pub struct WorkType {
     pub name: String,
     pub icon: String,
     pub separate_history: bool,
+    credit_roles: Vec<NamedValue>,
+    external_id_namespaces: Vec<NamedValue>,
+}
+
+impl WorkType {
+    pub fn role_label<'a>(&'a self, role: &'a str) -> &'a str {
+        self.credit_roles
+            .iter()
+            .find(|r| r.id == role)
+            .map_or(role, |r| r.name.as_str())
+    }
+
+    pub fn namespace_label<'a>(&'a self, namespace: &'a str) -> &'a str {
+        self.external_id_namespaces
+            .iter()
+            .find(|n| n.id == namespace)
+            .map_or(namespace, |n| n.name.as_str())
+    }
+}
+
+#[derive(Deserialize, Serialize)]
+pub struct WorkExternalId {
+    pub namespace: String,
+    pub value: String,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -51,6 +86,8 @@ pub struct Work {
     pub description: String,
     pub credits: Vec<Credit>,
     pub tags: Vec<String>,
+    #[serde(default)]
+    pub external_ids: Vec<WorkExternalId>,
 }
 
 #[derive(Deserialize)]
@@ -200,6 +237,8 @@ impl ServerSession {
                         name: t.name,
                         icon: library.icon,
                         separate_history: library.separate_history,
+                        credit_roles: t.credit_roles,
+                        external_id_namespaces: t.external_id_namespaces,
                     },
                 ))
             })

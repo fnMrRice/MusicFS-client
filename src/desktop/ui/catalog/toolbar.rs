@@ -180,9 +180,10 @@ impl Catalog {
     ) -> bool {
         let all = matches!(query, TrackQuery::AvailableSources { .. });
         let library = all || matches!(query, TrackQuery::Category { .. });
-        let matching = library || matches!(query, TrackQuery::Library(_));
+        let search = matches!(query, TrackQuery::Library(_));
+        let matching = library || search;
         let mut refresh = false;
-        if !all && matching {
+        if !all && matching && !search {
             ui.horizontal_wrapped(|ui| self.matching.buttons(ui, svc));
         }
         self.poll_queue(svc, actions);
@@ -262,6 +263,12 @@ impl Catalog {
             if self.tracks.busy() || self.complete.is_some() {
                 ui.spinner();
             }
+            if search {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.menu_button(tr("更多操作"), |ui| self.matching.buttons(ui, svc));
+                });
+                return;
+            }
             if all {
                 self.all_track_actions(ui, svc);
             } else if !library {
@@ -289,7 +296,7 @@ impl Catalog {
                 refresh |= self.list_query != before;
             }
         };
-        if !all {
+        if !all && !search {
             ui.add_space(17.);
         }
         ui.horizontal_wrapped(row);

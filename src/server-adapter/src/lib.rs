@@ -4,6 +4,7 @@ mod control;
 mod covers;
 pub mod folders;
 pub mod lyrics;
+pub mod online_playlists;
 mod online_track;
 mod playback;
 mod playlist_edit;

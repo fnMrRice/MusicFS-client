@@ -1,9 +1,11 @@
 mod collection;
 mod new_track;
 mod queue;
+mod search;
 mod toolbar;
 use crate::i18n::tr;
 pub(crate) use collection::category_cards as card_grid;
+pub(super) use search::SearchAction;
 #[path = "providers.rs"]
 pub(super) mod providers;
 #[path = "versions.rs"]
@@ -40,8 +42,7 @@ pub struct Catalog {
     feedback: Option<String>,
     list_draft: String,
     list_query: String,
-    pub search_draft: String,
-    pub search: String,
+    search: search::LibrarySearch,
     pub focus_search: bool,
 }
 
@@ -58,28 +59,6 @@ impl Catalog {
         self.categories = Pages::default();
         self.reset_tracks();
     }
-    pub fn search_bar(&mut self, ui: &mut egui::Ui) {
-        ui.horizontal(|ui| {
-            let field = ui.add(
-                egui::TextEdit::singleline(&mut self.search_draft)
-                    .hint_text(tr("搜索歌曲、歌手或专辑"))
-                    .desired_width((ui.available_width() - 95.0).clamp(120.0, 460.0)),
-            );
-            if self.focus_search {
-                field.request_focus();
-                self.focus_search = false;
-            }
-            let enter = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-            if style::primary(ui, tr("搜索"), !self.search_draft.trim().is_empty()).clicked()
-                || enter
-            {
-                self.search = self.search_draft.trim().into();
-                self.reset_tracks();
-            }
-        });
-        ui.add_space(10.0);
-    }
-
     pub fn open_credit(&mut self, tab: CategoryTab, id: String, name: String) {
         self.tabs = tab;
         self.list_draft.clear();

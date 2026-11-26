@@ -45,8 +45,26 @@ impl Catalog {
         ui: &mut egui::Ui,
         svc: Services<'_>,
     ) -> Option<(String, String)> {
-        let albums = self.tabs == CategoryTab::Album;
-        let list = albums && self.album_list;
+        Self::category_collection(
+            ui,
+            svc,
+            &self.categories.items,
+            self.tabs,
+            self.album_list,
+            &mut self.artwork,
+        )
+    }
+
+    pub(super) fn category_collection(
+        ui: &mut egui::Ui,
+        svc: Services<'_>,
+        items: &[Category],
+        tab: CategoryTab,
+        list_view: bool,
+        artwork: &mut Artwork,
+    ) -> Option<(String, String)> {
+        let albums = tab == CategoryTab::Album;
+        let list = albums && list_view;
         let width = ui.available_width();
         let cols = if list {
             1
@@ -55,7 +73,7 @@ impl Catalog {
         };
         let card = (width - (cols - 1) as f32 * ui.spacing().item_spacing.x) / cols as f32;
         let mut selected = None;
-        if list && !self.categories.items.is_empty() {
+        if list && !items.is_empty() {
             let (r, _) = ui.allocate_exact_size(egui::vec2(card, 32.), Sense::hover());
             let fg = style::muted(ui.visuals().dark_mode);
             field(ui, r, 12., card * 0.46, tr("专辑名称"), fg);
@@ -68,13 +86,13 @@ impl Catalog {
         let card_size = egui::vec2(card, if list { 55. } else { 68. });
         category_cards(
             ui,
-            self.categories.items.len(),
+            items.len(),
             cols,
             card_size,
             |ui, index, r, response| {
-                let item = &self.categories.items[index];
+                let item = &items[index];
                 let name = if item.name.is_empty() {
-                    tr("未知{0}").replace("{0}", self.tabs.label())
+                    tr("未知{0}").replace("{0}", tab.label())
                 } else {
                     item.name.clone()
                 };
@@ -115,12 +133,11 @@ impl Catalog {
                     egui::Vec2::splat(42.),
                 );
                 if albums {
-                    self.artwork
-                        .paint(ui, cover, svc, item.cover_object_id.as_deref());
+                    artwork.paint(ui, cover, svc, item.cover_object_id.as_deref());
                 } else {
                     crate::icons::paint(
                         ui,
-                        if self.tabs == CategoryTab::Artist {
+                        if tab == CategoryTab::Artist {
                             "user"
                         } else {
                             "music"

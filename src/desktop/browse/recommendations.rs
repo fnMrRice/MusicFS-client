@@ -1,11 +1,11 @@
 mod cards;
-mod detail;
+use super::playlist_detail::Detail;
 use super::{resource::Resource, QueueSelection};
 use crate::{
     i18n::tr,
     ui::{Artwork, Services},
 };
-use detail::Detail;
+pub(crate) use cards::playlist_cards;
 use eframe::egui;
 use musicfs_server_adapter::RecommendationFeed;
 

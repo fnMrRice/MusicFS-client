@@ -186,6 +186,21 @@ impl ServerSession {
         })
     }
 
+    pub async fn playlist_rule_entries(
+        &self,
+        entries: Vec<serde_json::Value>,
+    ) -> Result<Vec<Track>> {
+        let entries = entries.into_iter().map(serde_json::from_value::<Entry>);
+        stream::iter(entries)
+            .map(|entry| async move {
+                self.entry(entry.map_err(|_| "Invalid playlist entry.")?)
+                    .await
+            })
+            .buffered(4)
+            .try_collect()
+            .await
+    }
+
     async fn entry(&self, entry: Entry) -> Result<Track> {
         let r = entry.source;
         let target = if let Some(id) = &r.track_id {

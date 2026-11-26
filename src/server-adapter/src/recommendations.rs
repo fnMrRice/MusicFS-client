@@ -1,9 +1,9 @@
 use super::{check_id, decode, online_track::online_id, Result, ServerSession, TrackInfo};
+use crate::online_playlists::{Directory, Plugin};
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RecommendedPlaylist {
     pub external_id: String,
@@ -11,6 +11,8 @@ pub struct RecommendedPlaylist {
     pub track_count: Option<u64>,
     pub creator: Option<String>,
     pub cover_url: Option<String>,
+    #[serde(default)]
+    pub writable: bool,
 }
 #[derive(Deserialize, Serialize)]
 pub struct Recommendation {
@@ -45,33 +47,6 @@ pub struct RecommendationFeed {
     // 历史功能由服务端响应声明。
     #[serde(default)]
     pub history_depth: u8,
-}
-#[derive(Deserialize)]
-struct Directory {
-    items: Vec<Instance>,
-}
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Instance {
-    instance_id: String,
-    #[serde(default)]
-    availability: String,
-    #[serde(default)]
-    capabilities: Vec<Capability>,
-    plugin: Option<Plugin>,
-}
-
-#[derive(Deserialize)]
-struct Capability {
-    name: String,
-    supported: bool,
-}
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct Plugin {
-    name: String,
-    #[serde(default)]
-    localized_names: HashMap<String, String>,
 }
 
 impl Source {
@@ -143,12 +118,8 @@ impl RecommendationFeed {
                 .iter_mut()
                 .find(|s| s.instance_id == instance.instance_id)
             {
+                source.can_play_online = instance.available("stream.resolve");
                 source.plugin = instance.plugin;
-                source.can_play_online = instance.availability == "available"
-                    && instance
-                        .capabilities
-                        .iter()
-                        .any(|c| c.name == "stream.resolve" && c.supported);
             }
         }
     }

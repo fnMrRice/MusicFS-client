@@ -27,6 +27,40 @@ fn selection(source_ids: &[String]) -> Result<Value> {
 }
 
 impl ServerSession {
+    pub async fn playlist_rules(&self, id: &str) -> Result<(super::Playlist, Vec<Value>)> {
+        let path = format!("/playlists/{}", check_id(id)?);
+        let mut value = self.settings_json("GET", &path, None, &[]).await?;
+        let bindings = value["bindings"]
+            .as_array_mut()
+            .map(std::mem::take)
+            .ok_or("Invalid playlist bindings.")?;
+        let playlist: super::Playlist =
+            serde_json::from_value(value).map_err(|_| "Invalid playlist response.")?;
+        if playlist.id != id {
+            return Err("Invalid playlist response.".into());
+        }
+        Ok((playlist, bindings))
+    }
+
+    pub async fn save_playlist_rules(
+        &self,
+        target: Option<(&str, u64)>,
+        name: &str,
+        bindings: &[Value],
+        key: &str,
+    ) -> Result<()> {
+        let name = name.trim();
+        if name.is_empty() || name.chars().count() > 256 || name.chars().any(char::is_control) {
+            return Err("Enter a playlist name of at most 256 characters.".into());
+        }
+        let mut body = json!({"name":name, "bindings":bindings});
+        if let Some((_, revision)) = target {
+            body["expectedRevision"] = json!(revision);
+        }
+        self.submit_track_references(target.map(|(id, _)| id), &body, key)
+            .await
+    }
+
     async fn playlist_write<T: DeserializeOwned>(
         &self,
         path: &str,

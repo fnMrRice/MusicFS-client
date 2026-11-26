@@ -87,38 +87,45 @@ impl Local {
         }
         for root in &config.roots {
             ui.push_id(&root.id, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    ui.strong(&root.name);
-                    if let Some(stats) = &self.stats.value {
-                        let row = stats["roots"]
-                            .as_array()
-                            .and_then(|rows| rows.iter().find(|v| v["rootId"] == root.id));
-                        let (n, b) = row
-                            .map(|v| {
-                                (
-                                    v["trackCount"].as_u64().unwrap_or(0),
-                                    v["sizeBytes"].as_u64().unwrap_or(0),
-                                )
-                            })
-                            .unwrap_or((0, 0));
-                        ui.weak(format!("{n} {} · {}", tr("首"), bytes(b)));
-                    }
-                    if ui.button(tr("编辑")).clicked() {
-                        action = Some(Action::Edit(root.id.clone()));
-                    }
-                    if ui.button(tr("删除")).clicked() {
-                        action = Some(Action::Remove(root.id.clone()));
-                    }
-                    if ui
-                        .add_enabled(
-                            ready && !self.scans.active(&root.id),
-                            egui::Button::new(tr("刷新元数据")),
-                        )
-                        .clicked()
-                    {
-                        self.scans.refresh(ui, svc, id, &root.id, &root.name);
-                    }
-                });
+                super::action_row(
+                    ui,
+                    |ui| {
+                        ui.add(
+                            egui::Label::new(egui::RichText::new(&root.name).strong()).truncate(),
+                        );
+                        if let Some(stats) = &self.stats.value {
+                            let row = stats["roots"]
+                                .as_array()
+                                .and_then(|rows| rows.iter().find(|v| v["rootId"] == root.id));
+                            let (n, b) = row
+                                .map(|v| {
+                                    (
+                                        v["trackCount"].as_u64().unwrap_or(0),
+                                        v["sizeBytes"].as_u64().unwrap_or(0),
+                                    )
+                                })
+                                .unwrap_or((0, 0));
+                            ui.weak(format!("{n} {} · {}", tr("首"), bytes(b)));
+                        }
+                    },
+                    |ui| {
+                        if ui.button(tr("编辑")).clicked() {
+                            action = Some(Action::Edit(root.id.clone()));
+                        }
+                        if ui.button(tr("删除")).clicked() {
+                            action = Some(Action::Remove(root.id.clone()));
+                        }
+                        if ui
+                            .add_enabled(
+                                ready && !self.scans.active(&root.id),
+                                egui::Button::new(tr("刷新元数据")),
+                            )
+                            .clicked()
+                        {
+                            self.scans.refresh(ui, svc, id, &root.id, &root.name);
+                        }
+                    },
+                );
             });
         }
         if let Some(a) = action {

@@ -79,24 +79,32 @@ impl Order {
                 let mut remove = None;
                 for (i, id) in self.draft.iter().enumerate() {
                     ui.push_id(id, |ui| {
-                        ui.horizontal(|ui| {
-                            ui.label(name(id));
-                            if ui.add_enabled(i > 0, egui::Button::new("↑")).clicked() {
-                                move_to = Some((i, i - 1));
-                            }
-                            if ui
-                                .add_enabled(i + 1 < self.draft.len(), egui::Button::new("↓"))
-                                .clicked()
-                            {
-                                move_to = Some((i, i + 1));
-                            }
-                            if ui
-                                .add_enabled(self.draft.len() > 1, egui::Button::new(tr("移除")))
-                                .clicked()
-                            {
-                                remove = Some(i);
-                            }
-                        })
+                        super::action_row(
+                            ui,
+                            |ui| {
+                                ui.add(egui::Label::new(name(id)).truncate());
+                            },
+                            |ui| {
+                                if ui.add_enabled(i > 0, egui::Button::new("↑")).clicked() {
+                                    move_to = Some((i, i - 1));
+                                }
+                                if ui
+                                    .add_enabled(i + 1 < self.draft.len(), egui::Button::new("↓"))
+                                    .clicked()
+                                {
+                                    move_to = Some((i, i + 1));
+                                }
+                                if ui
+                                    .add_enabled(
+                                        self.draft.len() > 1,
+                                        egui::Button::new(tr("移除")),
+                                    )
+                                    .clicked()
+                                {
+                                    remove = Some(i);
+                                }
+                            },
+                        )
                     });
                 }
                 let mut changed = false;

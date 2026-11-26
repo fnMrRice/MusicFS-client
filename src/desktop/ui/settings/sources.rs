@@ -14,6 +14,22 @@ use eframe::egui;
 use serde_json::Value;
 use std::collections::{HashMap, HashSet};
 
+#[cfg(test)]
+#[path = "../../../../tests/native/source_action_rows.rs"]
+mod action_row_tests;
+
+fn action_row(
+    ui: &mut egui::Ui,
+    description: impl FnOnce(&mut egui::Ui),
+    buttons: impl FnOnce(&mut egui::Ui),
+) {
+    ui.columns_const(|[info, actions]| {
+        info.horizontal_wrapped(description);
+        actions.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+        actions.horizontal_wrapped(buttons);
+    });
+}
+
 #[derive(Default)]
 pub(super) struct Sources {
     providers: Load<Vec<Value>>,

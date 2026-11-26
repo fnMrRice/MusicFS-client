@@ -47,7 +47,7 @@ impl<T: Send + 'static> Pages<T> {
                 if page
                     .next
                     .as_ref()
-                    .is_some_and(|c| !self.seen.insert(c.token.clone())) =>
+                    .is_some_and(|c| c.token.is_empty() || !self.seen.insert(c.token.clone())) =>
             {
                 self.error = Some(tr("服务器分页未向前推进，请刷新列表。").into());
                 self.cursor = None;
@@ -60,7 +60,7 @@ impl<T: Send + 'static> Pages<T> {
             Err(e) => self.error = Some(e),
         }
     }
-    fn request(&mut self, ui: &mut egui::Ui, more: &str) -> bool {
+    fn request(&mut self, ui: &mut egui::Ui) -> bool {
         if self.task.is_some() {
             ui.spinner();
             false
@@ -81,7 +81,7 @@ impl<T: Send + 'static> Pages<T> {
         } else if self.total.is_none() {
             true
         } else {
-            self.cursor.is_some() && ui.button(tr(more)).clicked()
+            self.cursor.is_some() && super::page_end_visible(ui)
         }
     }
 }
@@ -199,7 +199,7 @@ impl Folders {
                         })
                     });
                 }
-                if self.children.request(ui, "加载更多目录") {
+                if self.children.request(ui) {
                     let (s, parent, cursor) = (
                         svc.server.clone(),
                         folder.clone(),
@@ -220,7 +220,7 @@ impl Folders {
                 if let Some(id) = folder.as_ref() {
                     ui.separator();
                     self.recordings(ui, svc, providers);
-                    if self.tracks.request(ui, "加载更多曲目") {
+                    if self.tracks.request(ui) {
                         let (s, id, q, cursor) = (
                             svc.server.clone(),
                             id.clone(),
@@ -239,6 +239,7 @@ impl Folders {
         if let Some(f) = open {
             self.path.push(f);
             self.change_folder();
+            ui.ctx().request_repaint();
         }
     }
     fn recordings(&mut self, ui: &mut egui::Ui, svc: Services<'_>, providers: &Providers) {

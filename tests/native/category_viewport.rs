@@ -48,8 +48,7 @@ fn frame(ctx: &Context, cols: usize, offset: Option<f32>, events: Vec<egui::Even
                             result.clicked = Some(index);
                         }
                     });
-                    let more = ui.button("More");
-                    result.more_visible = ui.is_rect_visible(more.rect);
+                    result.more_visible = crate::ui::page_end_visible(ui);
                 });
                 result.max_scroll = output.content_size.y - output.inner_rect.height();
             });

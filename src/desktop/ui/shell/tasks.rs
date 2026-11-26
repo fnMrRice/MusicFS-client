@@ -19,7 +19,9 @@ pub(super) struct Queue {
     history: Vec<LibraryTask>,
     history_pages: usize,
     history_cursor: Option<String>,
-    pending: Option<Task<TaskPage>>,
+    history_cursors: HashSet<String>,
+    history_error: Option<String>,
+    pending: Option<Task<(TaskPage, HashSet<String>)>>,
     changed_during_read: HashMap<String, LibraryTask>,
     cancel: Option<Task<()>>,
     error: Option<String>,
@@ -49,6 +51,8 @@ impl Queue {
         if self.history_pages == 0 || snapshot.reset || !overlap {
             self.history.clear();
             self.history_cursor = None;
+            self.history_cursors.clear();
+            self.history_error = None;
             self.pending = None;
             self.changed_during_read.clear();
             return self.history_pages > 0;
@@ -75,11 +79,47 @@ impl Queue {
     fn load_history(&mut self, ui: &Ui, svc: Services<'_>, cursor: String, pages: usize) {
         let server = svc.server.clone();
         let all = self.all;
-        self.error = None;
+        self.history_error = None;
+        let cursors = self.history_cursors.clone();
         self.changed_during_read.clear();
         self.pending = Some(Task::spawn(svc.runtime, ui.ctx(), async move {
-            read_history(&server, all, cursor, pages).await
+            read_history(&server, all, cursor, pages, cursors).await
         }));
+    }
+
+    fn next_history(&self) -> Option<(&str, usize)> {
+        let cursor = if self.history_cursors.is_empty() {
+            self.page.next_cursor.as_deref()
+        } else {
+            self.history_cursor.as_deref()
+        }?;
+        // 快照重置或读取失败时，从已确认的游标补齐此前展开的范围。
+        let pages = self
+            .history_pages
+            .saturating_sub(self.history_cursors.len())
+            .max(1);
+        Some((cursor, pages))
+    }
+
+    fn history_footer(&mut self, ui: &mut Ui, svc: Services<'_>) {
+        if self.pending.is_some() {
+            ui.spinner();
+            return;
+        }
+        let Some((cursor, pages)) = self.next_history() else {
+            return;
+        };
+        if let Some(error) = &self.history_error {
+            ui.colored_label(ui.visuals().error_fg_color, error);
+            if !ui.button(tr("重试")).clicked() {
+                return;
+            }
+        } else if !crate::ui::page_end_visible(ui) {
+            return;
+        }
+        let cursor = cursor.to_owned();
+        self.history_pages = self.history_cursors.len() + pages;
+        self.load_history(ui, svc, cursor, pages);
     }
 
     fn append(&mut self, page: TaskPage) {
@@ -105,8 +145,12 @@ impl Queue {
         if let Some(result) = self.pending.as_mut().and_then(Task::poll) {
             self.pending = None;
             match result {
-                Ok(page) => self.append(page),
-                Err(e) => self.error = Some(e),
+                Ok((page, cursors)) => {
+                    self.history_cursors = cursors;
+                    self.history_pages = self.history_cursors.len();
+                    self.append(page);
+                }
+                Err(e) => self.history_error = Some(e),
             }
         }
         if let Some(result) = self.cancel.as_mut().and_then(Task::poll) {
@@ -236,6 +280,7 @@ impl Queue {
                             }
                         });
                     }
+                    self.history_footer(ui, svc);
                 });
             if let Some(id) = cancel {
                 let server = svc.server.clone();
@@ -250,20 +295,6 @@ impl Queue {
                         .map(|_| ())
                 }));
             }
-            let cursor = if self.history_pages == 0 {
-                &self.page.next_cursor
-            } else {
-                &self.history_cursor
-            };
-            if let Some(cursor) = cursor.clone() {
-                if ui
-                    .add_enabled(self.pending.is_none(), egui::Button::new(tr("加载更多")))
-                    .clicked()
-                {
-                    self.history_pages += 1;
-                    self.load_history(ui, svc, cursor, 1);
-                }
-            }
         });
         catalog_changed
     }
@@ -274,12 +305,12 @@ async fn read_history(
     all: bool,
     mut cursor: String,
     pages: usize,
-) -> Result<TaskPage, String> {
+    mut cursors: HashSet<String>,
+) -> Result<(TaskPage, HashSet<String>), String> {
     let scope = if all { "all" } else { "mine" };
     let mut result = TaskPage::default();
-    let mut cursors = HashSet::new();
     for _ in 0..pages {
-        if !cursors.insert(cursor.clone()) {
+        if cursor.is_empty() || !cursors.insert(cursor.clone()) {
             return Err("Repeated MusicFS task cursor.".into());
         }
         let query = url::form_urlencoded::Serializer::new(String::new())
@@ -302,7 +333,7 @@ async fn read_history(
         }
         cursor = next.clone();
     }
-    Ok(result)
+    Ok((result, cursors))
 }
 
 #[cfg(test)]
@@ -338,6 +369,7 @@ mod tests {
             history: vec![task("old", "running")],
             history_pages: 1,
             history_cursor: Some("tail".into()),
+            history_cursors: HashSet::from(["cursor".into()]),
             ..Default::default()
         };
         assert!(!queue.apply(TaskSnapshot {
@@ -355,12 +387,16 @@ mod tests {
         );
         assert_eq!(queue.history[1].status, "succeeded");
         assert_eq!(queue.history_cursor.as_deref(), Some("tail"));
+        assert_eq!(queue.next_history(), Some(("tail", 1)));
+        // 续页失败、再试及快照重置都需要保留已展开的深度。
+        queue.history_pages = 2;
+        assert_eq!(queue.next_history(), Some(("tail", 1)));
         assert!(queue.apply(TaskSnapshot {
             page: page(&["c", "b"]),
             changed: vec![],
             reset: true
         }));
         assert!(queue.history.is_empty());
-        assert_eq!(queue.history_pages, 1);
+        assert_eq!(queue.next_history(), Some(("cursor", 2)));
     }
 }

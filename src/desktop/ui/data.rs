@@ -13,6 +13,10 @@ use tokio::runtime::Handle;
 #[path = "../../../tests/native/online_queue_track.rs"]
 mod online_queue_tests;
 
+#[cfg(test)]
+#[path = "../../../tests/native/catalog_paging.rs"]
+mod catalog_paging;
+
 #[derive(Clone, Copy)]
 pub struct Services<'a> {
     pub runtime: &'a Handle,
@@ -48,6 +52,10 @@ impl<T: Send + 'static> Pages<T> {
         self.pending.is_some()
     }
 
+    pub fn can_load_more(&self) -> bool {
+        self.next.is_some() && !self.busy() && self.error.is_none()
+    }
+
     pub fn load(
         &mut self,
         ctx: &Context,
@@ -72,10 +80,9 @@ impl<T: Send + 'static> Pages<T> {
                 if page
                     .next_cursor
                     .as_ref()
-                    .is_some_and(|c| !self.seen.insert(c.clone()))
+                    .is_some_and(|c| c.is_empty() || !self.seen.insert(c.clone()))
                 {
                     self.error = Some(tr("服务器分页未向前推进，请刷新列表。").into());
-                    self.next = None;
                     return;
                 }
                 self.items.extend(page.items);

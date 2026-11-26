@@ -129,7 +129,7 @@ impl Entries {
             if ui.button(tr("重试")).clicked() {
                 self.load(ui, svc, entries);
             }
-        } else if self.tracks.len() < entries.len() && ui.button(tr("加载更多")).clicked() {
+        } else if self.tracks.len() < entries.len() && crate::ui::page_end_visible(ui) {
             self.load(ui, svc, entries);
         }
         changed

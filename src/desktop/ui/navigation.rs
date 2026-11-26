@@ -244,18 +244,19 @@ impl SignedUi {
                                     }
                                 }
                                 if self.lists.items.is_empty()
+                                    && self.lists.next.is_none()
                                     && !self.lists.busy()
                                     && self.lists.error.is_none()
                                 {
                                     ui.weak(tr("歌单列表为空"));
                                 }
-                                if self.lists.error.is_some() || self.lists.next.is_some() {
+                                if let Some(error) = &self.lists.error {
                                     more = ui
-                                        .add_enabled(
-                                            !self.lists.busy(),
-                                            egui::Button::new(tr("继续读取歌单")),
-                                        )
+                                        .button(tr("重试读取歌单"))
+                                        .on_hover_text(error)
                                         .clicked();
+                                } else if self.lists.can_load_more() {
+                                    more = super::page_end_visible(ui);
                                 }
                             }
                         }

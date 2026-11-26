@@ -107,8 +107,8 @@ impl LocalPlaylists {
                 } else if lists.busy() || !lists.started {
                     ui.spinner();
                 } else if action.is_none()
-                    && lists.next.is_some()
-                    && ui.button(tr("加载更多")).clicked()
+                    && lists.can_load_more()
+                    && crate::ui::page_end_visible(ui)
                 {
                     action = Some(LocalAction::More);
                 }

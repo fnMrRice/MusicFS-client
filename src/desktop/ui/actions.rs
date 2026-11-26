@@ -265,14 +265,15 @@ impl Actions {
                             for p in &lists.items {
                                 ui.selectable_value(&mut ed.target_id, Some(p.id.clone()), &p.name);
                             }
+                            if lists.can_load_more() {
+                                more = super::page_end_visible(ui);
+                            }
                         });
                     if lists.busy() {
                         ui.spinner();
                     } else if let Some(error) = &lists.error {
                         ui.colored_label(ui.visuals().error_fg_color, error);
                         more = ui.button(tr("重试读取歌单")).clicked();
-                    } else if lists.next.is_some() {
-                        more = ui.button(tr("读取更多目标歌单")).clicked();
                     }
                     if ed.target_id.is_none() {
                         ui.label(tr("新歌单名称"));

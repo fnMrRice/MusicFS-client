@@ -110,7 +110,7 @@ impl Works {
                         ui.weak(tr("正在读取作品…"));
                     });
                 } else if self.pages.next.is_some() {
-                    if ui.button(tr("加载更多作品")).clicked() {
+                    if crate::ui::page_end_visible(ui) {
                         self.load(ui, svc);
                     }
                 } else if self.pages.items.is_empty() {

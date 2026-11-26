@@ -261,7 +261,7 @@ impl Catalog {
                 } else if search.results.busy() || !search.results.started {
                     loading(ui);
                 } else if search.results.next.is_some() {
-                    load |= ui.button(tr("加载更多")).clicked();
+                    load |= crate::ui::page_end_visible(ui);
                 } else if search.results.items.is_empty() {
                     let title = if search.section == CategoryTab::Album {
                         tr("没有找到相关专辑")

@@ -1,5 +1,5 @@
 use super::*;
-use eframe::egui::accesskit::{Action, ActionRequest, NodeId};
+use eframe::egui::accesskit::{Role, TreeUpdate};
 use musicfs_player_core::Player;
 use musicfs_server_adapter::ServerSession;
 use std::time::{Duration, Instant};
@@ -9,37 +9,26 @@ fn frame(
     screen: &mut SignedUi,
     ctx: &egui::Context,
     svc: Services<'_>,
-    click: Option<NodeId>,
-) -> Option<NodeId> {
-    let mut input = egui::RawInput::default();
-    if let Some(target) = click {
-        input
-            .events
-            .push(egui::Event::AccessKitActionRequest(ActionRequest {
-                action: Action::Click,
-                target,
-                data: None,
-            }));
-    }
+    events: Vec<egui::Event>,
+) -> TreeUpdate {
+    let input = egui::RawInput {
+        screen_rect: Some(egui::Rect::from_min_size(
+            egui::Pos2::ZERO,
+            egui::vec2(800., 720.),
+        )),
+        events,
+        ..Default::default()
+    };
     let output = ctx.run(input, |ctx| {
         screen.show(ctx, svc, &Default::default(), false, None);
     });
-    output
-        .platform_output
-        .accesskit_update?
-        .nodes
-        .into_iter()
-        .find(|(_, node)| node.label() == Some("读取更多目标歌单"))
-        .map(|(id, _)| id)
+    output.platform_output.accesskit_update.unwrap()
 }
 
-fn wait(mut condition: impl FnMut() -> bool) {
+fn wait(stage: &str, mut condition: impl FnMut() -> bool) {
     let deadline = Instant::now() + Duration::from_secs(10);
     while !condition() {
-        assert!(
-            Instant::now() < deadline,
-            "Desktop page did not finish loading"
-        );
+        assert!(Instant::now() < deadline, "Timed out waiting for {stage}");
         std::thread::sleep(Duration::from_millis(20));
     }
 }
@@ -104,27 +93,79 @@ fn opens_playlist_from_second_page_after_refreshing_the_directory() {
     let ctx = egui::Context::default();
     ctx.enable_accesskit();
     let mut screen = SignedUi::default();
-    wait(|| {
-        frame(&mut screen, &ctx, svc, None);
+    screen.lists_closed = true;
+    wait("the playlist directory", || {
+        frame(&mut screen, &ctx, svc, vec![]);
         screen.lists.next.is_some()
     });
     assert!(!screen.lists.items.iter().any(|p| p.id == target.id));
     screen.actions.open(&track, &screen.lists.items);
-    let mut button = None;
-    wait(|| {
-        button = frame(&mut screen, &ctx, svc, None);
-        button.is_some()
-    });
-    frame(&mut screen, &ctx, svc, button);
-    wait(|| {
-        frame(&mut screen, &ctx, svc, None);
+    // 等待编辑窗口完成初次测量后，在目标歌单下拉框内滚到底部。
+    frame(&mut screen, &ctx, svc, vec![]);
+    let tree = frame(&mut screen, &ctx, svc, vec![]);
+    let bounds = tree
+        .nodes
+        .iter()
+        .find(|(_, node)| {
+            node.role() == Role::ComboBox && node.label() == Some(crate::i18n::tr("目标歌单"))
+        })
+        .unwrap()
+        .1
+        .bounds()
+        .unwrap();
+    let pos = egui::pos2(
+        (bounds.x0 + bounds.x1) as f32 / 2.,
+        (bounds.y0 + bounds.y1) as f32 / 2.,
+    );
+    let press = |pressed| egui::Event::PointerButton {
+        pos,
+        button: egui::PointerButton::Primary,
+        pressed,
+        modifiers: egui::Modifiers::NONE,
+    };
+    frame(
+        &mut screen,
+        &ctx,
+        svc,
+        vec![egui::Event::PointerMoved(pos), press(true)],
+    );
+    frame(&mut screen, &ctx, svc, vec![press(false)]);
+    frame(&mut screen, &ctx, svc, vec![]);
+    let tree = frame(&mut screen, &ctx, svc, vec![]);
+    let option = tree
+        .nodes
+        .iter()
+        .find(|(_, node)| node.label() == Some(crate::i18n::tr("新建歌单…")))
+        .expect("Playlist picker did not open")
+        .1
+        .bounds()
+        .unwrap();
+    let pos = egui::pos2(
+        (option.x0 + option.x1) as f32 / 2.,
+        (option.y0 + option.y1) as f32 / 2.,
+    );
+    frame(
+        &mut screen,
+        &ctx,
+        svc,
+        vec![
+            egui::Event::PointerMoved(pos),
+            egui::Event::MouseWheel {
+                unit: egui::MouseWheelUnit::Page,
+                delta: egui::vec2(0., -10.),
+                modifiers: egui::Modifiers::NONE,
+            },
+        ],
+    );
+    wait("the second page of the playlist picker", || {
+        frame(&mut screen, &ctx, svc, vec![]);
         screen.lists.items.iter().any(|p| p.id == target.id)
     });
     screen.actions = Actions::default();
     screen.navigate(Screen::Playlist(target.id));
     screen.lists = Pages::default();
-    wait(|| {
-        frame(&mut screen, &ctx, svc, None);
+    wait("the selected playlist tracks", || {
+        frame(&mut screen, &ctx, svc, vec![]);
         screen.catalog.tracks.items.iter().any(|t| t.id == track.id)
     });
     rt.block_on(server.logout()).unwrap();

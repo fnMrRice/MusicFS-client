@@ -1,7 +1,7 @@
 use super::{resource::Resource, QueueSelection};
 use crate::{
     i18n::tr,
-    ui::{Artwork, Services},
+    ui::{page_end_visible, Artwork, Services},
 };
 use eframe::egui;
 use musicfs_player_core::Track;
@@ -83,11 +83,11 @@ impl Detail {
                 }
             }
         }
-        let retry = self.request.status(ui, tr("正在读取在线歌单…"));
-        if !self.request.started || retry {
-            self.load(ui.ctx(), svc);
-        }
         let Some(detail) = &self.details else {
+            let retry = self.request.status(ui, tr("正在读取在线歌单…"));
+            if !self.request.started || retry {
+                self.load(ui.ctx(), svc);
+            }
             return result;
         };
         ui.horizontal(|ui| {
@@ -123,7 +123,7 @@ impl Detail {
         }
         ui.add_space(10.0);
         ui.separator();
-        if detail.entries.is_empty() {
+        if detail.entries.is_empty() && detail.next_cursor.is_none() {
             ui.weak(tr("此歌单暂无可见曲目。"));
         }
         let mut play = None;
@@ -166,15 +166,17 @@ impl Detail {
             ui.separator();
         }
         if detail.entries.len() > self.visible {
-            if ui.button(tr("显示更多曲目")).clicked() {
+            if page_end_visible(ui) {
                 self.visible = self.visible.saturating_add(50);
+                ui.ctx().request_repaint();
             }
-        } else if detail.next_cursor.is_some()
-            && !self.request.busy()
-            && self.request.error.is_none()
-            && ui.button(tr("加载更多曲目")).clicked()
-        {
-            self.load(ui.ctx(), svc);
+        } else if detail.next_cursor.is_some() {
+            let retry = self.request.status(ui, tr("正在读取在线歌单…"));
+            if retry
+                || (!self.request.busy() && self.request.error.is_none() && page_end_visible(ui))
+            {
+                self.load(ui.ctx(), svc);
+            }
         }
         if let Some(track) = play {
             self.play_track(ui, svc, track);

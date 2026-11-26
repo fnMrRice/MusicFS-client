@@ -46,10 +46,12 @@ pub fn tracks(
     data.artwork.poll(ui.ctx());
     data.providers.sync(ui, svc);
     if data.table_toolbar(ui, svc, actions, &query, lists) {
+        ui.ctx().request_repaint();
         return;
     }
     if data.versions.poll(ui, svc, actions) {
         data.reset_tracks();
+        ui.ctx().request_repaint();
         return;
     }
     if let Some(error) = data.tracks.error.as_ref() {
@@ -163,13 +165,10 @@ pub fn tracks(
                                 );
                             }
                             Line::More => {
-                                cell.add_space(14.);
-                                more = cell
-                                    .add_enabled(
-                                        !data.tracks.busy(),
-                                        egui::Button::new(tr("加载更多曲目")),
-                                    )
-                                    .clicked();
+                                more = data.tracks.can_load_more() && ui.is_rect_visible(rect);
+                                if data.tracks.busy() {
+                                    cell.spinner();
+                                }
                             }
                         }
                         if line + 1 < lines.len {
@@ -180,8 +179,7 @@ pub fn tracks(
         });
     if let Some((i, event)) = event {
         apply(ui, svc, data, actions, lists, i, event, favorites);
-    }
-    if more {
+    } else if more {
         data.more(ui, svc);
     }
 }
@@ -199,6 +197,7 @@ fn apply(
     let (action, multi) = match event {
         RowEvent::Credit(tab, id, name) => {
             data.open_credit(tab, id, name);
+            ui.ctx().request_repaint();
             return;
         }
         RowEvent::Action(action, multi) => (action, multi),

@@ -62,6 +62,7 @@ impl SignedUi {
                         ui.colored_label(ui.visuals().error_fg_color, error);
                         if ui.button(tr("重试读取歌单")).clicked() {
                             self.lists = Pages::default();
+                            ui.ctx().request_repaint();
                         }
                     } else if self.lists.next.is_some() {
                         self.load_lists(ui.ctx(), svc);

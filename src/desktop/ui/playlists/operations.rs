@@ -261,8 +261,8 @@ impl Operations {
                             for p in &local.items {
                                 ui.selectable_value(&mut dialog.target, p.id.clone(), &p.name);
                             }
-                            if local.next.is_some() && !local.busy() && local.error.is_none() {
-                                more = ui.button(tr("加载更多")).clicked();
+                            if local.can_load_more() {
+                                more = crate::ui::page_end_visible(ui);
                             }
                         });
                     if local.busy() {

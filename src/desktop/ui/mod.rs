@@ -20,6 +20,10 @@ mod table;
 #[path = "../../../tests/native/playlist_pages.rs"]
 mod playlist_pages;
 
+#[cfg(test)]
+#[path = "../../../tests/native/library_autoload.rs"]
+mod library_autoload;
+
 use crate::{
     browse::BrowseUi,
     model::{DesktopState, Preferences},
@@ -35,6 +39,12 @@ use eframe::egui;
 use musicfs_player_core::{FadeSettings, PlayerCommand};
 use musicfs_server_adapter::Playlist;
 use navigation::Screen;
+
+// 在当前滚动容器里为列表末尾留出位置，短列表和滚动到底部时都会触发续页。
+pub(crate) fn page_end_visible(ui: &mut egui::Ui) -> bool {
+    let (_, end) = ui.allocate_space(egui::vec2(1., 12.));
+    ui.is_rect_visible(end)
+}
 
 #[derive(Default)]
 pub struct DesktopUi {

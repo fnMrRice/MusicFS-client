@@ -114,12 +114,18 @@ impl Browser {
                         })
                     });
                 }
-                if self.entries.is_empty() && !self.page.busy() && self.revision.is_some() {
+                if self.entries.is_empty()
+                    && self.next.is_none()
+                    && !self.page.busy()
+                    && self.page.error.is_none()
+                    && self.revision.is_some()
+                {
                     ui.weak(tr("此目录没有可浏览的子目录。"));
                 }
                 if self.next.is_some()
                     && !self.page.busy()
-                    && ui.button(tr("加载更多目录")).clicked()
+                    && self.page.error.is_none()
+                    && crate::ui::page_end_visible(ui)
                 {
                     load = true;
                 }

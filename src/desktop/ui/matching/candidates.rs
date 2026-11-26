@@ -192,7 +192,7 @@ impl Candidates {
         }
         if self.task.is_some() {
             ui.spinner();
-        } else if self.after.is_some() && !self.stale && ui.button(tr("加载更多")).clicked() {
+        } else if self.after.is_some() && self.error.is_none() && crate::ui::page_end_visible(ui) {
             self.load(ui.ctx(), svc);
         } else if self.rows.is_empty() && self.error.is_none() && self.after.is_none() {
             ui.weak(tr(if svc.server.info.role == "admin" {

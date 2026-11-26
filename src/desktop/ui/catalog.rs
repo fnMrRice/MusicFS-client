@@ -128,6 +128,7 @@ impl Catalog {
         } else if self.categories.started
             && !self.categories.busy()
             && self.categories.items.is_empty()
+            && self.categories.next.is_none()
         {
             ui.weak(tr("音乐库中暂无{0}。").replace("{0}", self.tabs.label()));
         }
@@ -139,14 +140,11 @@ impl Catalog {
                     self.list_draft.clear();
                     self.list_query.clear();
                     self.category = Some((id, name));
+                    ui.ctx().request_repaint();
                 }
-                if self.categories.next.is_some()
-                    && ui
-                        .add_enabled(
-                            !self.categories.busy(),
-                            egui::Button::new(tr("加载更多分类")),
-                        )
-                        .clicked()
+                if self.category.is_none()
+                    && self.categories.can_load_more()
+                    && super::page_end_visible(ui)
                 {
                     load = true;
                 }

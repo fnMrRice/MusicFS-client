@@ -231,7 +231,7 @@ fn more<T: Send + 'static>(ui: &mut egui::Ui, pages: &Pages<T>) -> bool {
         ui.colored_label(ui.visuals().error_fg_color, error);
         return ui.button(tr("重试")).clicked();
     }
-    pages.next.is_some() && ui.button(tr("加载更多")).clicked()
+    pages.can_load_more() && crate::ui::page_end_visible(ui)
 }
 
 impl SignedUi {

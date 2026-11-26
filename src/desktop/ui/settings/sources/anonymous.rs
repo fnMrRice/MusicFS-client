@@ -114,7 +114,14 @@ impl Search {
                 self.truncated = page.truncated;
             }
         }
-        load |= self.page.status(ui);
+        if self.page.status(ui) {
+            if self.next.is_none() {
+                self.seen.clear();
+                self.results.clear();
+                self.truncated = false;
+            }
+            load = true;
+        }
         let mut action = None;
         for hit in &self.results {
             ui.push_id(&hit.external_id, |ui| {
@@ -147,10 +154,15 @@ impl Search {
             && self.page.error.is_none()
             && !load
             && self.results.is_empty()
+            && self.next.is_none()
         {
             ui.weak(tr("没有搜索结果"));
         }
-        if self.next.is_some() && !self.page.busy() && ui.button(tr("加载更多")).clicked() {
+        if self.next.is_some()
+            && !self.page.busy()
+            && self.page.error.is_none()
+            && crate::ui::page_end_visible(ui)
+        {
             load = true;
         }
         if self.truncated {

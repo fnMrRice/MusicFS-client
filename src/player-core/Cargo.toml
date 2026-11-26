@@ -8,5 +8,6 @@ license = "GPL-3.0-only"
 path = "lib.rs"
 
 [dependencies]
+fastrand = "2"
 rodio = { version = "=0.21.1", default-features = false, features = ["playback", "mp3", "flac", "wav"] }
 serde = { version = "1", features = ["derive", "rc"] }

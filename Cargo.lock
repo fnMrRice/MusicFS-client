@@ -2767,6 +2767,7 @@ dependencies = [
 name = "musicfs-player-core"
 version = "0.52.1"
 dependencies = [
+ "fastrand",
  "rodio",
  "serde",
 ]

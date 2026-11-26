@@ -22,33 +22,86 @@ fn playback_bar_uses_session_codec_bitrate_and_device_channels() {
     assert_eq!(format_label(None, Some(2)), tr("暂无编码信息"));
 }
 
-#[test]
-fn playback_ticks_never_seek_but_a_pointer_drag_commits_the_draft_once() {
-    let ctx = egui::Context::default();
+fn seekable_player() -> PlayerUi {
     let mut player = PlayerUi::default();
     player.snapshot.duration_ms = Some(90_000);
     player.snapshot.seekable = true;
     player.snapshot.seek_range_ms = Some((0, 90_000));
+    player
+}
+
+fn timeline_frame(
+    ctx: &egui::Context,
+    player: &mut PlayerUi,
+    events: Vec<Event>,
+) -> (Option<u64>, egui::FullOutput) {
+    let screen = Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(600., 105.));
+    let mut result = None;
+    let output = ctx.run(
+        egui::RawInput {
+            screen_rect: Some(screen),
+            events,
+            ..Default::default()
+        },
+        |ctx| {
+            egui::CentralPanel::default()
+                .frame(egui::Frame::NONE)
+                .show(ctx, |ui| {
+                    let (bar, _) = ui.allocate_exact_size(screen.size(), egui::Sense::hover());
+                    result = player.timeline(ui, bar);
+                });
+        },
+    );
+    (result, output)
+}
+
+#[test]
+fn hovering_keeps_the_thumb_centered_on_the_fill_and_visible_at_both_ends() {
+    let ctx = egui::Context::default();
+    let mut player = seekable_player();
+    timeline_frame(&ctx, &mut player, vec![]);
+    for ms in [0, 45_000, 90_000] {
+        player.snapshot.position_ms = ms;
+        let (_, frame) = timeline_frame(
+            &ctx,
+            &mut player,
+            vec![Event::PointerMoved(egui::pos2(200., 6.))],
+        );
+        let (thumb, clip) = frame
+            .shapes
+            .iter()
+            .find_map(|s| match &s.shape {
+                egui::Shape::Circle(thumb) if thumb.fill != Color32::TRANSPARENT => {
+                    Some((thumb, s.clip_rect))
+                }
+                _ => None,
+            })
+            .expect("Missing timeline thumb");
+        let endpoint = frame
+            .shapes
+            .iter()
+            .find_map(|s| match &s.shape {
+                egui::Shape::LineSegment { points, stroke } if stroke.color == thumb.fill => {
+                    Some(points[1])
+                }
+                _ => None,
+            })
+            .expect("Missing played part of timeline");
+        assert_eq!(thumb.center, endpoint);
+        assert!(clip.contains_rect(Rect::from_center_size(
+            thumb.center,
+            egui::Vec2::splat(thumb.radius * 2.)
+        )));
+    }
+}
+
+#[test]
+fn playback_ticks_never_seek_but_a_pointer_drag_commits_the_draft_once() {
+    let ctx = egui::Context::default();
+    let mut player = seekable_player();
     let mut frame = |position, events| {
         player.snapshot.position_ms = position;
-        let mut result = None;
-        let screen = Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(600., 105.));
-        let _ = ctx.run(
-            egui::RawInput {
-                screen_rect: Some(screen),
-                events,
-                ..Default::default()
-            },
-            |ctx| {
-                egui::CentralPanel::default()
-                    .frame(egui::Frame::NONE)
-                    .show(ctx, |ui| {
-                        let (bar, _) = ui.allocate_exact_size(screen.size(), egui::Sense::hover());
-                        result = player.timeline(ui, bar);
-                    });
-            },
-        );
-        result
+        timeline_frame(&ctx, &mut player, events).0
     };
     let start = egui::pos2(103., 6.);
     let end = egui::pos2(202., 6.);

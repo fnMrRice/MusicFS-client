@@ -1,4 +1,4 @@
-use super::{lyrics::time, PlayerUi};
+use super::{lyrics::time, BarChange, PlayerUi};
 use crate::{i18n::tr, icons, ui::style};
 use eframe::egui::{self, Align, Color32, Layout, Rect, RichText, Ui, UiBuilder};
 use musicfs_player_core::{PlaybackFormat, Player, PlayerCommand, Status};
@@ -48,7 +48,7 @@ impl PlayerUi {
         player: &Player,
         volume: f32,
         last_volume: f32,
-        change: &mut Option<f32>,
+        change: &mut Option<BarChange>,
     ) -> egui::Response {
         let width = ui.available_width();
         let (bar, _) = ui.allocate_exact_size(egui::vec2(width, 105.), egui::Sense::hover());
@@ -134,15 +134,15 @@ impl PlayerUi {
         painter.rect_filled(hit, 0., style::sidebar(dark));
         let active =
             range.is_some() && (response.hovered() || response.has_focus() || response.dragged());
-        let y = hit.top() + 3.;
-        let thumb_inset = 6.;
+        let y = hit.center().y;
+        let thumb_radius = 6.;
         let fraction = if end > start {
             (target - start) as f32 / (end - start) as f32
         } else {
             0.
         };
         let x = egui::lerp(
-            (hit.left() + thumb_inset)..=(hit.right() - thumb_inset),
+            (hit.left() + thumb_radius)..=(hit.right() - thumb_radius),
             fraction,
         );
         let height: f32 = if active { 5. } else { 2. };
@@ -171,7 +171,7 @@ impl PlayerUi {
             style::muted(dark)
         };
         if active {
-            painter.circle_filled(egui::pos2(x, y.max(bar.top() + 6.)), 6., ink);
+            painter.circle_filled(egui::pos2(x, y), thumb_radius, ink);
         } else {
             painter.rect_filled(
                 Rect::from_center_size(egui::pos2(x, y), egui::vec2(2., 6.)),
@@ -242,7 +242,7 @@ impl PlayerUi {
     fn transport(&mut self, ui: &mut Ui, player: &Player, narrow: bool) {
         let index = self.snapshot.index;
         let prev = ui
-            .add_enabled_ui(index.is_some_and(|i| i > 0), |ui| {
+            .add_enabled_ui(self.snapshot.can_previous, |ui| {
                 icons::button(ui, "previous", tr("上一首"), 36., 22.)
             })
             .inner;
@@ -254,10 +254,9 @@ impl PlayerUi {
             self.run(player, PlayerCommand::Toggle);
         }
         let next = ui
-            .add_enabled_ui(
-                index.is_some_and(|i| i + 1 < self.snapshot.queue.len()),
-                |ui| icons::button(ui, "next", tr("下一首"), 36., 22.),
-            )
+            .add_enabled_ui(self.snapshot.can_next, |ui| {
+                icons::button(ui, "next", tr("下一首"), 36., 22.)
+            })
             .inner;
         if next.clicked() {
             self.run(player, PlayerCommand::Next);
@@ -286,7 +285,7 @@ impl PlayerUi {
         ui: &mut Ui,
         mut volume: f32,
         last_volume: f32,
-        change: &mut Option<f32>,
+        change: &mut Option<BarChange>,
         compact: bool,
         narrow: bool,
     ) -> egui::Response {
@@ -324,7 +323,7 @@ impl PlayerUi {
             .on_hover_text(format!("{} {:.0}%", tr("音量"), volume * 100.))
             .changed()
         {
-            *change = Some(volume);
+            *change = Some(BarChange::Volume(volume));
         }
         let muted = volume == 0.;
         if icons::button(
@@ -336,7 +335,7 @@ impl PlayerUi {
         )
         .clicked()
         {
-            *change = Some(if muted { last_volume } else { 0. });
+            *change = Some(BarChange::Volume(if muted { last_volume } else { 0. }));
         }
         if icons::button(ui, "lyrics", tr("桌面歌词"), 36., 21.).clicked() {
             self.windows.open_lyrics(ui.ctx());
@@ -344,6 +343,9 @@ impl PlayerUi {
         let queue_button = icons::button(ui, "queue", tr("播放队列"), 36., 21.);
         if icons::button(ui, "mini", tr("迷你播放器"), 36., 21.).clicked() {
             self.windows.open_mini(ui.ctx());
+        }
+        if let Some(mode) = super::controls::playback_mode_menu(ui, self.snapshot.playback_mode) {
+            *change = Some(BarChange::PlaybackMode(mode));
         }
         queue_button
     }

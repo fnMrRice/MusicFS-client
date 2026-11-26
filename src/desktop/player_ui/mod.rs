@@ -7,16 +7,22 @@ mod queue_list;
 mod queue_window;
 mod windows;
 
+pub(crate) use controls::PLAYBACK_MODES;
 use crate::ui::style;
 use cover::Cover;
 use eframe::egui::{self, Context};
-use musicfs_player_core::{Player, PlayerCommand, PlayerSnapshot, Status, Track};
+use musicfs_player_core::{PlaybackMode, Player, PlayerCommand, PlayerSnapshot, Status, Track};
 use musicfs_server_adapter::ServerSession;
 use std::time::{Duration, Instant};
 use tokio::runtime::Handle;
 use windows::Windows;
 
 const TICK: Duration = Duration::from_millis(160);
+
+pub(crate) enum BarChange {
+    Volume(f32),
+    PlaybackMode(PlaybackMode),
+}
 
 #[derive(Default)]
 pub struct PlayerUi {
@@ -74,8 +80,8 @@ impl PlayerUi {
         runtime: &Handle,
         volume: f32,
         last_volume: f32,
-    ) -> Option<f32> {
-        let mut volume_change = None;
+    ) -> Option<BarChange> {
+        let mut change = None;
         if self.last_poll.is_none_or(|t| t.elapsed() >= TICK) {
             self.poll(player);
             self.last_poll = Some(Instant::now());
@@ -101,7 +107,7 @@ impl PlayerUi {
             .show_separator_line(false)
             .frame(egui::Frame::new().fill(style::sidebar(ctx.style().visuals.dark_mode)))
             .show(ctx, |ui| {
-                let queue_button = self.bar(ui, player, volume, last_volume, &mut volume_change);
+                let queue_button = self.bar(ui, player, volume, last_volume, &mut change);
                 if let Some(error) = error {
                     ui.horizontal(|ui| {
                         ui.colored_label(ui.visuals().error_fg_color, error);
@@ -122,7 +128,7 @@ impl PlayerUi {
         }
         self.windows.show(ctx, player, server, runtime);
         ctx.request_repaint_after(TICK);
-        volume_change
+        change
     }
 
     fn poll(&mut self, player: &Player) {

@@ -1,7 +1,7 @@
 use crate::connection::Connection;
 use musicfs_player_core::{
     audio::{LocalDsp, Processing, Routing},
-    FadeSettings, PlayerCommand,
+    FadeSettings, PlaybackMode, PlayerCommand,
 };
 use serde::{Deserialize, Serialize};
 
@@ -35,8 +35,14 @@ impl AudioPreferences {
         }
         self.processing.dsp.normalize();
     }
-    pub fn initialize(&self, c: &Connection, fades: FadeSettings) -> Result<(), String> {
+    pub fn initialize(
+        &self,
+        c: &Connection,
+        fades: FadeSettings,
+        mode: PlaybackMode,
+    ) -> Result<(), String> {
         for command in [
+            PlayerCommand::SetPlaybackMode { mode },
             PlayerCommand::OutputDevice {
                 device: self.output_device.clone(),
             },

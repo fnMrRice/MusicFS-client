@@ -9,8 +9,10 @@ mod output;
 mod pause;
 mod pcm;
 mod processing;
+mod queue_order;
 mod routing;
 pub use devices::{device_channels, output_devices, OutputDeviceInfo};
+pub use queue_order::PlaybackMode;
 
 #[cfg(test)]
 #[path = "../../tests/native/player.rs"]
@@ -122,6 +124,9 @@ pub enum Status {
 pub struct PlayerSnapshot {
     pub queue: Arc<Vec<Track>>,
     pub index: Option<usize>,
+    pub playback_mode: PlaybackMode,
+    pub can_previous: bool,
+    pub can_next: bool,
     pub status: Status,
     pub position_ms: u64,
     pub duration_ms: Option<u64>,
@@ -139,6 +144,9 @@ impl Default for PlayerSnapshot {
         Self {
             queue: Arc::default(),
             index: None,
+            playback_mode: PlaybackMode::default(),
+            can_previous: false,
+            can_next: false,
             status: Status::Idle,
             position_ms: 0,
             duration_ms: None,
@@ -165,6 +173,7 @@ pub enum PlayerCommand {
     Toggle,
     Next,
     Previous,
+    SetPlaybackMode { mode: PlaybackMode },
     Stop,
     Clear,
     Seek { position_ms: u64 },
@@ -201,6 +210,7 @@ pub struct Presentation {
     pub position_ms: u64,
     pub duration_ms: Option<u64>,
     pub has_next: bool,
+    pub has_previous: bool,
     pub error: Option<String>,
 }
 

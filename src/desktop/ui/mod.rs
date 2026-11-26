@@ -27,7 +27,7 @@ mod library_autoload;
 use crate::{
     browse::BrowseUi,
     model::{DesktopState, Preferences},
-    player_ui::PlayerUi,
+    player_ui::{BarChange, PlayerUi},
 };
 use actions::Actions;
 pub(crate) use artwork::Artwork;
@@ -36,7 +36,7 @@ use catalog::Catalog;
 use data::Pages;
 pub(crate) use data::{resolve_online_queue_track, Services};
 use eframe::egui;
-use musicfs_player_core::{FadeSettings, PlayerCommand};
+use musicfs_player_core::{FadeSettings, PlaybackMode, PlayerCommand};
 use musicfs_server_adapter::Playlist;
 use navigation::Screen;
 
@@ -82,6 +82,7 @@ enum HostAction {
     Theme(String),
     Accent(String),
     Fades(FadeSettings),
+    PlaybackMode(PlaybackMode),
 }
 
 impl DesktopUi {
@@ -154,6 +155,17 @@ impl DesktopUi {
                 state.prefs.accent = accent;
                 state.save_preferences();
                 ctx.request_repaint();
+            }
+            Some(HostAction::PlaybackMode(mode)) => {
+                match svc.player.command(PlayerCommand::SetPlaybackMode { mode }) {
+                    Ok(_) => {
+                        state.prefs.playback_mode = mode;
+                        state.save_preferences();
+                        ui.player.refresh();
+                        ctx.request_repaint();
+                    }
+                    Err(error) => state.error = Some(error),
+                }
             }
             Some(HostAction::Fades(settings)) => {
                 match svc.player.command(PlayerCommand::SetFades { settings }) {
@@ -257,7 +269,7 @@ impl SignedUi {
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::ALT, egui::Key::ArrowLeft)) {
             self.back(ctx.screen_rect().width() > 850.);
         }
-        let changed_volume = self.player.show(
+        let bar_change = self.player.show(
             ctx,
             svc.player,
             svc.server,
@@ -273,8 +285,10 @@ impl SignedUi {
             self.sidebar(ctx, svc);
         }
         let dark = ctx.style().visuals.dark_mode;
-        let mut action =
-            changed_volume.map(|v| HostAction::Audio(crate::model::audio::AudioAction::Volume(v)));
+        let mut action = bar_change.map(|change| match change {
+            BarChange::Volume(v) => HostAction::Audio(crate::model::audio::AudioAction::Volume(v)),
+            BarChange::PlaybackMode(mode) => HostAction::PlaybackMode(mode),
+        });
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::new()

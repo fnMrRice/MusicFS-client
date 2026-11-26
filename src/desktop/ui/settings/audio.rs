@@ -42,6 +42,16 @@ impl AudioSettingsUi {
             *action = Some(HostAction::Audio(AudioAction::Volume(volume / 100.)));
         }
         ui.separator();
+        ui.horizontal(|ui| {
+            ui.label(tr("播放顺序"));
+            for (mode, label) in crate::player_ui::PLAYBACK_MODES {
+                let active = mode == prefs.playback_mode;
+                if style::appearance_choice(ui, active, tr(label), None).clicked() && !active {
+                    *action = Some(HostAction::PlaybackMode(mode));
+                }
+            }
+        });
+        ui.separator();
         let mut fades = prefs.fades;
         ui.horizontal_wrapped(|ui| {
             ui.checkbox(&mut fades.enabled, tr("淡出淡入"));

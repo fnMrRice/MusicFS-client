@@ -17,6 +17,8 @@ fn fixture() -> PlayerSnapshot {
     PlayerSnapshot {
         queue: Arc::new(vec![track.clone(), track]),
         index: Some(0),
+        can_next: true,
+        can_previous: false,
         position_ms: 3_000,
         status: Status::Playing,
         seekable: true,
@@ -37,10 +39,18 @@ fn queue_entries_and_sessions_have_independent_system_identities() {
         SystemState::from_snapshot(2, &snapshot, None).track_id()
     );
     snapshot.index = Some(1);
+    snapshot.can_next = false;
+    snapshot.can_previous = true;
     let last = SystemState::from_snapshot(1, &snapshot, None);
     assert_ne!(first.track_id(), last.track_id());
     assert!(!last.can_next);
     assert!(last.command(SystemAction::Next).is_none());
+    snapshot.can_next = true;
+    let looping = SystemState::from_snapshot(1, &snapshot, None);
+    assert!(matches!(
+        looping.command(SystemAction::Next),
+        Some(PlayerCommand::Next)
+    ));
     snapshot.index = None;
     assert_eq!(
         SystemState::from_snapshot(1, &snapshot, None),

@@ -171,7 +171,7 @@ fn mini(ui: &mut egui::Ui, player: &Player, now: &Presentation, visible: &Atomic
     ui.horizontal(|ui| {
         let mut action = None;
         if ui
-            .add_enabled_ui(enabled, |ui| {
+            .add_enabled_ui(now.has_previous, |ui| {
                 icons::button(ui, "previous", tr("上一首"), 32., 20.)
             })
             .inner

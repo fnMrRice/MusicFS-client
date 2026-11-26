@@ -2,8 +2,10 @@ mod commands;
 
 use crate::decode::{Event, Lifecycle, Worker};
 use crate::output::Output;
+use crate::queue_order::QueueOrder;
 use crate::{
-    FadeSettings, Operation, PlayerCommand, PlayerSnapshot, Presentation, Request, Status, Track,
+    FadeSettings, Operation, PlaybackMode, PlayerCommand, PlayerSnapshot, Presentation, Request,
+    Status, Track,
 };
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender};
@@ -18,13 +20,17 @@ mod fade_tests;
 #[path = "../../tests/native/active_format.rs"]
 mod active_format_tests;
 
+#[cfg(test)]
+#[path = "../../tests/native/playback_order.rs"]
+mod playback_order_tests;
+
 pub fn run(receiver: Receiver<Request>, decoder: Worker) {
     let mut player = Actor::new(decoder);
     loop {
         player.poll();
         match receiver.recv_timeout(Duration::from_millis(30)) {
             Ok(Request::Full(op, reply)) => {
-                let result = player.apply(op).map(|_| player.state.clone());
+                let result = player.apply(op).map(|_| player.snapshot());
                 let _ = reply.send(result);
             }
             Ok(Request::Presentation(reply)) => {
@@ -40,6 +46,7 @@ pub fn run(receiver: Receiver<Request>, decoder: Worker) {
 struct Actor {
     instance: u64,
     state: PlayerSnapshot,
+    order: QueueOrder,
     decoder: Worker,
     generation: u64,
     revision: u64,
@@ -59,6 +66,7 @@ impl Actor {
         Self {
             instance: NEXT_INSTANCE.fetch_add(1, Ordering::Relaxed),
             state: PlayerSnapshot::default(),
+            order: QueueOrder::default(),
             decoder,
             generation: 0,
             revision: 0,
@@ -72,6 +80,14 @@ impl Actor {
             processing: Default::default(),
         }
     }
+    fn snapshot(&self) -> PlayerSnapshot {
+        PlayerSnapshot {
+            can_next: self.order.can_next(&self.state),
+            can_previous: self.order.can_previous(&self.state),
+            ..self.state.clone()
+        }
+    }
+
     fn presentation(&self) -> Presentation {
         let track = self.state.index.and_then(|i| self.state.queue.get(i));
         Presentation {
@@ -83,20 +99,29 @@ impl Actor {
             status: self.state.status,
             position_ms: self.state.position_ms,
             duration_ms: self.state.duration_ms,
-            has_next: self.has_next(),
+            has_next: self.order.can_next(&self.state),
+            has_previous: self.order.can_previous(&self.state),
             error: self.state.error.clone(),
         }
     }
-    fn has_next(&self) -> bool {
-        self.state
-            .index
-            .is_some_and(|i| i + 1 < self.state.queue.len())
-    }
     fn track_tail_ms(&self) -> u64 {
-        if self.has_next() {
+        let repeats_on_end = self.state.index.is_some()
+            && matches!(
+                self.state.playback_mode,
+                PlaybackMode::RepeatOne | PlaybackMode::Shuffle
+            );
+        if repeats_on_end || self.order.can_next(&self.state) {
             self.fades.duration(self.fades.track_ms)
         } else {
             0
+        }
+    }
+    fn update_track_tail(&self) {
+        if let Some(clock) = &self.output.clock {
+            clock
+                .fades
+                .track_tail_ms
+                .store(self.track_tail_ms(), Ordering::Release);
         }
     }
     fn apply(&mut self, op: Operation) -> Result<(), String> {
@@ -109,21 +134,19 @@ impl Actor {
                 let Some(first) = tracks.first() else {
                     return Ok(());
                 };
-                let queue = Arc::make_mut(&mut self.state.queue);
-                if let Some(index) = self.state.index {
-                    let at = if next { index + 1 } else { queue.len() };
-                    queue.splice(at..at, tracks);
+                let at = if next {
+                    self.state.index.map_or(0, |i| i + 1)
                 } else {
+                    self.state.queue.len()
+                };
+                self.order.insert(at, tracks.len(), next, &self.state);
+                if self.state.index.is_none() {
+                    self.order.select(0, &self.state);
                     self.state.index = Some(0);
                     self.state.duration_ms = first.duration_ms;
-                    queue.extend(tracks);
                 }
-                if let Some(clock) = &self.output.clock {
-                    clock
-                        .fades
-                        .track_tail_ms
-                        .store(self.track_tail_ms(), Ordering::Release);
-                }
+                Arc::make_mut(&mut self.state.queue).splice(at..at, tracks);
+                self.update_track_tail();
                 Ok(())
             }
             Operation::Queue(tracks, start) => {
@@ -137,7 +160,10 @@ impl Actor {
                     return Err("Missing track identifier.".into());
                 }
                 self.state.queue = Arc::new(tracks);
-                self.select(start)
+                self.state.index = Some(start);
+                self.order = QueueOrder::default();
+                self.order.reset_shuffle(&self.state);
+                self.start(start, false)
             }
             Operation::Command(command) => self.command(command),
         }
@@ -165,6 +191,10 @@ impl Actor {
     }
 
     fn select(&mut self, index: usize) -> Result<(), String> {
+        if index >= self.state.queue.len() {
+            return Err("Queue index is out of range.".into());
+        }
+        self.order.select(index, &self.state);
         self.start(index, false)
     }
 
@@ -202,7 +232,7 @@ impl Actor {
     fn play(&mut self) -> Result<(), String> {
         let index = self.state.index.ok_or("Queue is empty.")?;
         if self.seeks.is_none() {
-            return self.select(index);
+            return self.start(index, false);
         }
         if self.paused {
             let ms = self.fades.duration(self.fades.pause_ms);
@@ -225,14 +255,16 @@ impl Actor {
         self.state.status = Status::Paused;
     }
 
-    fn advance(&mut self, drain_tail: bool) -> Result<(), String> {
-        let index = self.state.index.ok_or("Queue is empty.")?;
-        if index + 1 < self.state.queue.len() {
-            return self.start(index + 1, drain_tail);
+    fn advance(&mut self, ended: bool) -> Result<(), String> {
+        self.state.index.ok_or("Queue is empty.")?;
+        if let Some(index) = self.order.next(&self.state, ended) {
+            return self.start(index, ended);
         }
-        // 曲终时保留输出设备，让系统缓冲区内的末尾样本实际播完。
-        self.reset_media(drain_tail, 0);
-        self.state.status = Status::Ended;
+        if ended {
+            // 曲终时保留输出设备，让系统缓冲区内的末尾样本实际播完。
+            self.reset_media(true, 0);
+            self.state.status = Status::Ended;
+        }
         Ok(())
     }
 

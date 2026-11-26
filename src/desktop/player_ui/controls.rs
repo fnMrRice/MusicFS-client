@@ -1,5 +1,61 @@
-use crate::{icons, ui::style};
+use crate::{i18n::tr, icons, ui::style};
 use eframe::egui::{self, Response, RichText, Ui};
+use musicfs_player_core::PlaybackMode;
+
+#[cfg(test)]
+#[path = "../../../tests/native/playback_mode_menu.rs"]
+mod tests;
+
+pub(crate) const PLAYBACK_MODES: [(PlaybackMode, &str); 4] = [
+    (PlaybackMode::Sequence, "顺序播放"),
+    (PlaybackMode::RepeatOne, "单曲循环"),
+    (PlaybackMode::Shuffle, "随机循环"),
+    (PlaybackMode::RepeatAll, "列表循环"),
+];
+
+pub(super) fn playback_mode_menu(ui: &mut Ui, current: PlaybackMode) -> Option<PlaybackMode> {
+    let icon = match current {
+        PlaybackMode::Sequence => "sequence",
+        PlaybackMode::RepeatOne => "repeat-one",
+        PlaybackMode::Shuffle => "shuffle",
+        PlaybackMode::RepeatAll => "repeat",
+    };
+    let (_, label) = PLAYBACK_MODES.iter().find(|(mode, _)| *mode == current)?;
+    let hint = tr("播放顺序：{0}").replace("{0}", tr(label));
+    let button = icons::button(ui, icon, &hint, 36., 21.);
+    let id = button.id.with("playback-order");
+    if button.clicked() {
+        ui.memory_mut(|m| m.toggle_popup(id));
+    }
+    let mut changed = None;
+    egui::popup_above_or_below_widget(
+        ui,
+        id,
+        &button,
+        egui::AboveOrBelow::Above,
+        egui::PopupCloseBehavior::CloseOnClickOutside,
+        |ui| {
+            ui.set_min_width(136.);
+            for (mode, label) in PLAYBACK_MODES {
+                let option = ui.radio(current == mode, tr(label));
+                if button.clicked() && button.has_focus() && mode == current {
+                    option.request_focus();
+                }
+                if option.clicked() {
+                    if mode != current {
+                        changed = Some(mode);
+                    }
+                    ui.memory_mut(|m| m.close_popup());
+                    button.request_focus();
+                }
+            }
+            if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                button.request_focus();
+            }
+        },
+    );
+    changed
+}
 
 pub(super) fn play_button(ui: &mut Ui, playing: bool, enabled: bool, size: f32) -> Response {
     let label = crate::i18n::tr(if playing { "暂停" } else { "播放" });

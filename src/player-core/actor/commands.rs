@@ -21,8 +21,19 @@ impl Actor {
             }
             PlayerCommand::Next => self.advance(false),
             PlayerCommand::Previous => {
-                let index = self.state.index.ok_or("Queue is empty.")?;
-                self.select(index.saturating_sub(1))
+                self.state.index.ok_or("Queue is empty.")?;
+                if let Some(target) = self.order.previous(&self.state) {
+                    self.start(target, false)?;
+                }
+                Ok(())
+            }
+            PlayerCommand::SetPlaybackMode { mode } => {
+                if self.state.playback_mode != mode {
+                    self.state.playback_mode = mode;
+                    self.order.reset_shuffle(&self.state);
+                    self.update_track_tail();
+                }
+                Ok(())
             }
             PlayerCommand::Clear | PlayerCommand::Stop => {
                 self.stop_output();
@@ -30,6 +41,7 @@ impl Actor {
                 self.state.position_ms = 0;
                 self.state.error = None;
                 if matches!(command, PlayerCommand::Clear) {
+                    self.order = Default::default();
                     self.state.index = None;
                     self.state.duration_ms = None;
                     self.state.queue = Arc::default();

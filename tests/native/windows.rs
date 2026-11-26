@@ -12,6 +12,7 @@ fn idle() -> Presentation {
         position_ms: 0,
         duration_ms: None,
         has_next: false,
+        has_previous: false,
         error: None,
     }
 }

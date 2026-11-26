@@ -89,8 +89,8 @@ impl SystemState {
                 artwork_png,
             }),
             status: snapshot.status,
-            can_next: index + 1 < snapshot.queue.len(),
-            can_previous: true,
+            can_next: snapshot.can_next,
+            can_previous: snapshot.can_previous,
             seek_range: snapshot
                 .seek_range_ms
                 .filter(|(start, end)| snapshot.seekable && start <= end),

@@ -1,7 +1,7 @@
 use crate::{connection::Connection, task::Task};
 use directories::ProjectDirs;
 use eframe::egui::Context;
-use musicfs_player_core::FadeSettings;
+use musicfs_player_core::{FadeSettings, PlaybackMode};
 #[path = "model/audio.rs"]
 pub mod audio;
 #[path = "model/credentials.rs"]
@@ -22,6 +22,7 @@ pub struct Preferences {
     pub accent: String,
     pub language: String,
     pub fades: FadeSettings,
+    pub playback_mode: PlaybackMode,
     pub audio: audio::AudioPreferences,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub saved_login: Option<String>,
@@ -37,6 +38,7 @@ impl Default for Preferences {
             accent: "default".into(),
             language: "system".into(),
             fades: FadeSettings::default(),
+            playback_mode: PlaybackMode::default(),
             audio: Default::default(),
             saved_login: None,
             forgotten_logins: vec![],
@@ -56,6 +58,21 @@ impl Preferences {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn playback_mode_defaults_to_sequence_and_survives_restart() {
+        let mut prefs = Preferences::decode(br#"{"theme":"light"}"#).unwrap();
+        assert_eq!(prefs.playback_mode, PlaybackMode::Sequence);
+        for mode in [
+            PlaybackMode::RepeatOne,
+            PlaybackMode::Shuffle,
+            PlaybackMode::RepeatAll,
+        ] {
+            prefs.playback_mode = mode;
+            let saved = serde_json::to_vec(&prefs).unwrap();
+            assert_eq!(Preferences::decode(&saved).unwrap().playback_mode, mode);
+        }
+    }
 
     #[test]
     fn fade_preferences_use_defaults_and_normalize_each_duration() {
@@ -268,7 +285,11 @@ impl DesktopState {
     }
     fn accept(&mut self, mut active: Connection) {
         self.error = active.login_notice.take();
-        if let Err(error) = self.prefs.audio.initialize(&active, self.prefs.fades) {
+        if let Err(error) =
+            self.prefs
+                .audio
+                .initialize(&active, self.prefs.fades, self.prefs.playback_mode)
+        {
             self.error = Some(error);
         }
         if self.prefs.saved_login != active.saved_login {

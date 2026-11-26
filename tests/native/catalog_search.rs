@@ -33,6 +33,17 @@ fn key(key: Key, modifiers: Modifiers) -> Event {
     }
 }
 
+fn scroll_toolbar(pointer: egui::Pos2, delta: egui::Vec2) -> Vec<Event> {
+    vec![
+        Event::PointerMoved(pointer),
+        Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta,
+            modifiers: Modifiers::NONE,
+        },
+    ]
+}
+
 #[test]
 fn batch_selection_keeps_explicit_pins_and_credit_navigation_resets_the_scope() {
     let mut catalog = Catalog::default();
@@ -56,12 +67,26 @@ fn batch_selection_keeps_explicit_pins_and_credit_navigation_resets_the_scope() 
     catalog.providers.selected = Some("local".into());
     catalog.list_query = "old".into();
     catalog.tracks.started = true;
+    catalog.query = Some(TrackQuery::Category {
+        tab: CategoryTab::Album,
+        id: "album".into(),
+        provider: catalog.providers.selected.clone(),
+        query: catalog.list_query.clone(),
+    });
     catalog.open_credit(CategoryTab::Artist, "a".into(), "歌手".into());
     assert!(catalog.tabs == CategoryTab::Artist);
     assert_eq!(catalog.category, Some(("a".into(), "歌手".into())));
     assert_eq!(catalog.providers.selected.as_deref(), Some("local"));
     assert!(catalog.list_query.is_empty() && catalog.matching.selected_tracks().is_empty());
     assert!(!catalog.tracks.started);
+
+    catalog.query = Some(TrackQuery::AvailableSources {
+        query: String::new(),
+    });
+    catalog.open_credit(CategoryTab::Album, "b".into(), "专辑".into());
+    assert!(catalog.tabs == CategoryTab::Album);
+    assert_eq!(catalog.category, Some(("b".into(), "专辑".into())));
+    assert!(catalog.providers.selected.is_none());
 }
 
 // 独立实例包含扫描曲目，检查真实工具栏布局以及批量加入歌单的来源绑定。
@@ -94,40 +119,125 @@ fn library_toolbar_fits_the_viewport_and_saves_bulk_references() {
         super::super::style::apply(&ctx, "dark", "default");
         ctx.enable_accesskit();
         let mut catalog = Catalog::default();
+        catalog.providers.selected = Some("category-provider".into());
         let mut actions = Actions::default();
         let bounds = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(width, 650.));
-        let output = ctx.run(
-            egui::RawInput {
-                screen_rect: Some(bounds),
-                ..Default::default()
-            },
-            |ctx| {
-                egui::CentralPanel::default().show(ctx, |ui| {
-                    let q = catalog.library(ui, svc).unwrap();
-                    catalog.table_toolbar(ui, svc, &mut actions, &q, &[]);
-                });
-            },
+        let mut now = 0.;
+        let mut draw = |events, modifiers| {
+            now += 1. / 30.;
+            ctx.run(
+                egui::RawInput {
+                    screen_rect: Some(bounds),
+                    events,
+                    modifiers,
+                    time: Some(now),
+                    ..Default::default()
+                },
+                |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let q = catalog.library(ui, svc).unwrap();
+                        assert!(
+                            matches!(&q, TrackQuery::AvailableSources { query } if query.is_empty())
+                        );
+                        assert_eq!(
+                            catalog.providers.selected.as_deref(),
+                            Some("category-provider")
+                        );
+                        catalog.table_toolbar(ui, svc, &mut actions, &q, &[]);
+                    });
+                },
+            )
+            .platform_output
+            .accesskit_update
+            .unwrap()
+        };
+        draw(vec![], Modifiers::NONE);
+        let mut tree = draw(vec![], Modifiers::NONE);
+        let initial = tree
+            .nodes
+            .iter()
+            .find(|(_, n)| n.label() == Some(tr("播放全部")))
+            .unwrap()
+            .1
+            .bounds()
+            .unwrap();
+        let line_y = (initial.y0 + initial.y1) / 2.;
+        let pointer = egui::pos2(width / 2., line_y as f32);
+        let expected = [
+            "播放全部",
+            "加入队列",
+            "仅可播放",
+            "更多筛选",
+            "新建曲目",
+            "一键合并重复音乐",
+            "重复识别",
+            "搜索当前列表",
+            "刷新列表",
+            "默认顺序",
+        ];
+        let mut seen = std::collections::HashSet::new();
+        for _ in 0..45 {
+            for (_, node) in &tree.nodes {
+                let text = if node.role() == Role::TextInput {
+                    tr("搜索当前列表")
+                } else {
+                    node.label().unwrap_or("")
+                };
+                assert!(!["来源", "全部来源", "全部格式", "仅收藏"]
+                    .iter()
+                    .any(|s| tr(s) == text));
+                let Some(label) = expected.iter().find(|s| tr(s) == text) else {
+                    continue;
+                };
+                let Some(rect) = node.bounds() else { continue };
+                if rect.x0 >= 0. && rect.x1 <= f64::from(width) {
+                    assert!(
+                        ((rect.y0 + rect.y1) / 2. - line_y).abs() <= 3.,
+                        "{label} at {rect:?} outside toolbar row {line_y}"
+                    );
+                    seen.insert(*label);
+                    if *label == "默认顺序" && width == 1500. {
+                        assert!(rect.x1 > f64::from(width) - 60.);
+                    }
+                }
+            }
+            if seen.len() == expected.len() || width == 1500. {
+                break;
+            }
+            let delta = if width == 460. {
+                egui::vec2(0., -45.)
+            } else {
+                egui::vec2(-45., 0.)
+            };
+            tree = draw(scroll_toolbar(pointer, delta), Modifiers::NONE);
+        }
+        assert_eq!(
+            seen.len(),
+            expected.len(),
+            "Unreachable controls at width {width}, found {seen:?}"
         );
-        let tree = output.platform_output.accesskit_update.unwrap();
-        for label in ["新建曲目", "重复识别", "刷新列表", "默认顺序"] {
-            let node = tree
-                .nodes
-                .iter()
-                .find(|(_, n)| n.label() == Some(tr(label)))
-                .unwrap_or_else(|| panic!("Missing {label}"))
-                .1
-                .bounds()
-                .unwrap();
-            assert!(
-                node.x0 >= 0. && node.x1 <= width as f64,
-                "{label} at {node:?} exceeds {width}"
-            );
-            if width >= 900. && matches!(label, "默认顺序" | "刷新列表") {
-                assert!(
-                    node.x1 > width as f64 - 60.,
-                    "{label} at {node:?} ends before edge {width}"
+        if width == 460. {
+            for _ in 0..40 {
+                draw(
+                    scroll_toolbar(pointer, egui::vec2(0., 60.)),
+                    Modifiers::NONE,
                 );
             }
+            let shortcut = Modifiers::COMMAND | Modifiers::CTRL;
+            draw(vec![key(Key::F, shortcut)], shortcut);
+            for _ in 0..30 {
+                tree = draw(vec![], Modifiers::NONE);
+            }
+            let focused = tree
+                .nodes
+                .iter()
+                .find(|(id, n)| *id == tree.focus && n.role() == Role::TextInput)
+                .unwrap();
+            let field = focused.1.bounds().unwrap();
+            assert!(
+                field.x0 >= 0. && field.x1 <= f64::from(width),
+                "Shortcut focused offscreen field: {field:?}"
+            );
         }
     }
     rt.block_on(async {

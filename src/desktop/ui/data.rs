@@ -120,7 +120,6 @@ impl CategoryTab {
 pub enum TrackQuery {
     Library(String),
     AvailableSources {
-        provider: Option<String>,
         query: String,
     },
     Favorites,
@@ -145,10 +144,8 @@ impl TrackQuery {
     ) -> Result<Page<Track>, String> {
         match self {
             Self::Library(q) => server.tracks(q, after).await,
-            Self::AvailableSources { provider, query } => {
-                server
-                    .search_sourced_tracks(provider.as_deref(), query, after)
-                    .await
+            Self::AvailableSources { query } => {
+                server.search_sourced_tracks(None, query, after).await
             }
             Self::History => server.history(after).await,
             Self::Favorites => server.favorites(after).await,

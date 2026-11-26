@@ -3,7 +3,9 @@ use super::*;
 use crate::icons;
 use musicfs_server_adapter::Playlist;
 
-// 上一排的最小宽度可能大于视口，靠右的控件必须使用当前可见范围。
+const SORT_WIDTH: f32 = 108.;
+
+// 表格内容可能宽于视口，工具栏只使用当前可见的宽度。
 fn available_width(ui: &egui::Ui) -> f32 {
     ui.available_rect_before_wrap()
         .intersect(ui.clip_rect())
@@ -83,20 +85,28 @@ impl Catalog {
     }
 
     pub(super) fn list_search(&mut self, ui: &mut egui::Ui) {
-        let focus = ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::F));
-        let has_text = !self.list_draft.is_empty() || !self.list_query.is_empty();
+        let clear_width = self.clear_search_width(ui);
         let after = if ui.layout().main_dir().is_horizontal() {
-            36. + ui.spacing().item_spacing.x
-                + if has_text {
-                    28. + ui.spacing().item_spacing.x
-                } else {
-                    0.
-                }
+            36. + ui.spacing().item_spacing.x + clear_width
         } else {
             0.
         };
+        self.search_field(ui, (available_width(ui) - after).clamp(100., 190.));
+    }
+
+    fn clear_search_width(&self, ui: &egui::Ui) -> f32 {
+        if self.list_draft.is_empty() && self.list_query.is_empty() {
+            0.
+        } else {
+            28. + ui.spacing().item_spacing.x
+        }
+    }
+
+    fn search_field(&mut self, ui: &mut egui::Ui, width: f32) {
+        let focus = ui.input_mut(|i| i.consume_key(egui::Modifiers::COMMAND, egui::Key::F));
+        let has_text = !self.list_draft.is_empty() || !self.list_query.is_empty();
         let field = ui.add_sized(
-            [(available_width(ui) - after).clamp(100., 190.), 36.],
+            [width, 36.],
             egui::TextEdit::singleline(&mut self.list_draft)
                 .hint_text(tr("搜索当前列表"))
                 .margin(egui::Margin::symmetric(12, 4))
@@ -105,6 +115,9 @@ impl Catalog {
         );
         if focus {
             field.request_focus();
+        }
+        if (focus || field.gained_focus()) && !ui.clip_rect().contains_rect(field.rect) {
+            field.scroll_to_me(Some(egui::Align::Center));
         }
         let submit = field.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
         let clear = has_text && icons::button(ui, "close", tr("清除"), 28., 14.).clicked();
@@ -120,57 +133,38 @@ impl Catalog {
         }
     }
 
-    fn filters(&mut self, ui: &mut egui::Ui) -> bool {
-        let changed = self.providers.select(ui);
-        providers::disabled_select(
-            ui,
-            "format-filter",
-            tr("全部格式"),
-            125.,
-            13.,
-            tr("等待服务端提供全库格式筛选"),
-        );
+    fn filters(ui: &mut egui::Ui) {
         ui.scope(|ui| {
             style::checkbox_style(ui);
-            for (label, hint) in [
-                ("仅收藏", "请在我的收藏中查看已收藏曲目"),
-                ("仅可播放", "等待服务端提供全库可播放过滤"),
-            ] {
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 5.;
-                    ui.spacing_mut().interact_size.x = 16.;
-                    let check = ui.add_enabled(false, egui::Checkbox::without_text(&mut false));
-                    check.widget_info(|| {
-                        egui::WidgetInfo::selected(
-                            egui::WidgetType::Checkbox,
-                            false,
-                            false,
-                            tr(label),
-                        )
-                    });
-                    check.on_disabled_hover_text(tr(hint));
-                    ui.label(egui::RichText::new(tr(label)).size(13.))
-                        .on_hover_text(tr(hint));
-                });
-            }
+            ui.spacing_mut().item_spacing.x = 5.;
+            ui.spacing_mut().interact_size.x = 16.;
+            ui.add_enabled(false, egui::Checkbox::new(&mut false, tr("仅可播放")))
+                .on_disabled_hover_text(tr("等待服务端提供全库可播放过滤"));
         });
         ui.add_enabled(false, egui::Button::new(tr("更多筛选")))
             .on_disabled_hover_text(tr("等待服务端提供组合筛选"));
-        changed
     }
 
-    fn list_controls(
+    fn all_track_controls(
         &mut self,
         ui: &mut egui::Ui,
         svc: Services<'_>,
         actions: &mut Actions,
+        right_edge: f32,
     ) -> bool {
+        Self::filters(ui);
         let before = self.list_query.clone();
         if ui.button(tr("新建曲目")).clicked() {
             self.creation = Some(Default::default());
         }
         self.matching.buttons(ui, svc);
-        self.list_search(ui);
+        // 根据整行的内容坐标分配空白，滚动时搜索框和按钮的宽度保持稳定。
+        let trailing =
+            36. + SORT_WIDTH + 2. * ui.spacing().item_spacing.x + self.clear_search_width(ui);
+        let available = right_edge - ui.next_widget_position().x - trailing;
+        let field_width = available.clamp(120., 190.);
+        ui.add_space((available - field_width).max(0.));
+        self.search_field(ui, field_width);
         let refresh = icons::button(ui, "refresh", tr("刷新列表"), 36., 18.).clicked();
         if refresh {
             self.providers.refresh();
@@ -180,34 +174,7 @@ impl Catalog {
         refresh || self.list_query != before
     }
 
-    fn source_filters(
-        &mut self,
-        ui: &mut egui::Ui,
-        svc: Services<'_>,
-        actions: &mut Actions,
-    ) -> bool {
-        let mut changed = false;
-        let wide = available_width(ui) >= 1200.0;
-        ui.horizontal_wrapped(|ui| {
-            ui.spacing_mut().item_spacing.x = 12.;
-            ui.spacing_mut().interact_size.y = 39.;
-            changed |= self.filters(ui);
-            if wide {
-                let space = (available_width(ui) - self.actions_width(ui)).max(0.);
-                ui.add_space(space);
-                changed |= self.list_controls(ui, svc, actions);
-            }
-        });
-        if !wide {
-            ui.horizontal_wrapped(|ui| {
-                ui.spacing_mut().interact_size.y = 39.;
-                let space = (available_width(ui) - self.actions_width(ui)).max(0.);
-                if space > 0. {
-                    ui.add_space(space);
-                }
-                changed |= self.list_controls(ui, svc, actions);
-            });
-        }
+    fn creation_status(&mut self, ui: &mut egui::Ui, svc: Services<'_>) -> bool {
         self.providers.status(ui);
         if let Some(saved) = self
             .creation
@@ -216,32 +183,11 @@ impl Catalog {
         {
             self.creation = None;
             if saved {
-                self.providers.selected = None;
                 self.feedback = Some(tr("已新建曲目，可在搜索中查看。").into());
-                changed = true;
+                return true;
             }
         }
-        changed
-    }
-
-    fn actions_width(&self, ui: &egui::Ui) -> f32 {
-        let font = egui::TextStyle::Button.resolve(ui.style());
-        let buttons = ["新建曲目", "一键合并重复音乐", "重复识别"];
-        let x = ui.spacing().button_padding.x * 2. + ui.spacing().item_spacing.x;
-        buttons
-            .iter()
-            .map(|t| {
-                ui.painter()
-                    .layout_no_wrap(tr(t).to_owned(), font.clone(), egui::Color32::WHITE)
-                    .size()
-                    .x
-                    + x
-            })
-            .sum::<f32>()
-            + 190.
-            + 36.
-            + ui.spacing().item_spacing.x * 2.
-            + if self.list_draft.is_empty() { 0. } else { 34. }
+        false
     }
 
     pub fn table_toolbar(
@@ -255,19 +201,8 @@ impl Catalog {
         let all = matches!(query, TrackQuery::AvailableSources { .. });
         let matching = all || matches!(query, TrackQuery::Category { .. } | TrackQuery::Library(_));
         let mut refresh = false;
-        if all {
-            refresh = self.source_filters(ui, svc, actions);
-        } else if matching {
+        if !all && matching {
             ui.horizontal_wrapped(|ui| self.matching.buttons(ui, svc));
-        }
-        if matching {
-            refresh |= self
-                .matching
-                .update(ui, svc, &|id| self.providers.label(id).into());
-        }
-        if refresh {
-            self.reset_tracks();
-            return true;
         }
         self.poll_queue(svc, actions);
         let album = match query {
@@ -278,9 +213,9 @@ impl Catalog {
             } => Some(id),
             _ => None,
         };
-        ui.add_space(17.);
-        let width = ui.available_width();
-        ui.horizontal_wrapped(|ui| {
+        let width = available_width(ui);
+        let mut row = |ui: &mut egui::Ui| {
+            let right_edge = ui.next_widget_position().x + width;
             ui.spacing_mut().interact_size.y = 38.;
             let checked = self.matching.selected_tracks();
             if checked.is_empty() {
@@ -338,19 +273,44 @@ impl Catalog {
             if self.tracks.busy() || self.complete.is_some() {
                 ui.spinner();
             }
-            let remain = available_width(ui);
-            if width >= 520. && remain > 116. {
-                ui.add_space(remain - 116.);
+            if all {
+                refresh |= self.all_track_controls(ui, svc, actions, right_edge);
+            } else {
+                let remain = available_width(ui);
+                if width >= 520. && remain > 116. {
+                    ui.add_space(remain - 116.);
+                }
             }
             providers::disabled_select(
                 ui,
                 "track-sort",
                 tr("默认顺序"),
-                108.,
+                SORT_WIDTH,
                 16.,
                 tr("等待服务端提供完整查询排序能力"),
             );
-        });
+        };
+        if all {
+            ui.scope(|ui| {
+                ui.style_mut().always_scroll_the_only_direction = true;
+                ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Extend);
+                egui::ScrollArea::horizontal()
+                    .id_salt("all-tracks-toolbar")
+                    .auto_shrink([false, true])
+                    .max_width(width)
+                    .animated(false)
+                    .show(ui, |ui| ui.horizontal(&mut row));
+            });
+            refresh |= self.creation_status(ui, svc);
+        } else {
+            ui.add_space(17.);
+            ui.horizontal_wrapped(row);
+        }
+        if matching {
+            refresh |= self
+                .matching
+                .update(ui, svc, &|id| self.providers.label(id).into());
+        }
         ui.add_space(10.);
         if let Some(message) = self.feedback.take() {
             actions.notice = Some((message, false));

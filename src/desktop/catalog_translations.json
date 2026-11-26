@@ -1,5 +1,4 @@
 {
-  "全部格式": ["All formats", "全部格式", "すべての形式"],
   "仅显示未刮削专辑": ["Unscraped albums only", "僅顯示未刮削專輯", "未取得のアルバムのみ"],
   "卡片视图": ["Card view", "卡片檢視", "カード表示"],
   "列表视图": ["List view", "清單檢視", "リスト表示"],
@@ -7,11 +6,8 @@
   "发行商": ["Publisher", "發行商", "発売元"],
   "发行日期": ["Release date", "發行日期", "発売日"],
   "曲目数": ["Tracks", "曲目數", "曲数"],
-  "仅收藏": ["Favorites only", "僅收藏", "お気に入りのみ"],
   "仅可播放": ["Playable only", "僅可播放", "再生可能のみ"],
   "更多筛选": ["More filters", "更多篩選", "その他のフィルター"],
-  "等待服务端提供全库格式筛选": ["The server does not offer a library-wide format filter.", "等待伺服器提供全庫格式篩選", "ライブラリ全体の形式フィルターはサーバーで未対応です。"],
-  "请在我的收藏中查看已收藏曲目": ["Open Favorites to see your saved tracks.", "請在我的收藏中查看已收藏曲目", "保存した曲はお気に入りで表示できます。"],
   "等待服务端提供全库可播放过滤": ["The server does not offer a library-wide availability filter.", "等待伺服器提供全庫可播放篩選", "ライブラリ全体の再生可否フィルターはサーバーで未対応です。"],
   "等待服务端提供组合筛选": ["The server does not offer combined filters.", "等待伺服器提供組合篩選", "フィルターの組み合わせはサーバーで未対応です。"],
   "默认顺序": ["Default order", "預設順序", "既定の順序"],

@@ -66,7 +66,7 @@ pub fn tracks(
             }
             let label = match &query {
                 TrackQuery::Library(q)
-                | TrackQuery::AvailableSources { query: q, .. }
+                | TrackQuery::AvailableSources { query: q }
                 | TrackQuery::Category { query: q, .. }
                     if !q.is_empty() =>
                 {

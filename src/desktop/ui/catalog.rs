@@ -81,6 +81,9 @@ impl Catalog {
     }
 
     pub fn open_credit(&mut self, tab: CategoryTab, id: String, name: String) {
+        if matches!(self.query, Some(TrackQuery::AvailableSources { .. })) {
+            self.providers.selected = None;
+        }
         self.tabs = tab;
         self.list_draft.clear();
         self.list_query.clear();
@@ -93,7 +96,6 @@ impl Catalog {
         self.providers.sync(ui, svc);
         if self.tabs == CategoryTab::All {
             return Some(TrackQuery::AvailableSources {
-                provider: self.providers.selected.clone(),
                 query: self.list_query.clone(),
             });
         }
@@ -121,12 +123,7 @@ impl Catalog {
             self.folders.show(ui, svc, &self.providers);
             return None;
         }
-        let Some(kind) = self.tabs.kind() else {
-            return Some(TrackQuery::AvailableSources {
-                provider: self.providers.selected.clone(),
-                query: self.list_query.clone(),
-            });
-        };
+        let kind = self.tabs.kind()?;
         if let Some((id, name)) = self.category.clone() {
             let mut back = false;
             ui.horizontal(|ui| {

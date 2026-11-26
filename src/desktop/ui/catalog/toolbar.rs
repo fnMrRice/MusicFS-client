@@ -84,14 +84,16 @@ impl Catalog {
         }
     }
 
-    pub(super) fn list_search(&mut self, ui: &mut egui::Ui) {
-        let clear_width = self.clear_search_width(ui);
-        let after = if ui.layout().main_dir().is_horizontal() {
-            36. + ui.spacing().item_spacing.x + clear_width
-        } else {
-            0.
-        };
-        self.search_field(ui, (available_width(ui) - after).clamp(100., 190.));
+    pub(super) fn list_search(&mut self, ui: &mut egui::Ui, refresh_label: &str) -> bool {
+        let buttons = 36. + ui.spacing().item_spacing.x + self.clear_search_width(ui);
+        if available_width(ui) < 90. + buttons && ui.layout().main_wrap() {
+            ui.end_row();
+        }
+        let available = (available_width(ui) - buttons).max(0.);
+        let width = available.min(190.);
+        ui.add_space(available - width);
+        self.search_field(ui, width);
+        icons::button(ui, "refresh", refresh_label, 36., 18.).clicked()
     }
 
     fn clear_search_width(&self, ui: &egui::Ui) -> f32 {
@@ -142,13 +144,7 @@ impl Catalog {
             .on_disabled_hover_text(tr("等待服务端提供组合筛选"));
     }
 
-    fn all_track_controls(
-        &mut self,
-        ui: &mut egui::Ui,
-        svc: Services<'_>,
-        actions: &mut Actions,
-    ) -> bool {
-        let before = self.list_query.clone();
+    fn all_track_actions(&mut self, ui: &mut egui::Ui, svc: Services<'_>) {
         if self.matching.selected_tracks().is_empty() {
             Self::filters(ui);
             if ui.button(tr("新建曲目")).clicked() {
@@ -156,19 +152,6 @@ impl Catalog {
             }
             self.matching.buttons(ui, svc);
         }
-        let trailing =
-            36. + SORT_WIDTH + 2. * ui.spacing().item_spacing.x + self.clear_search_width(ui);
-        let available = available_width(ui) - trailing;
-        let field_width = available.clamp(90., 190.);
-        ui.add_space((available - field_width).max(0.));
-        self.search_field(ui, field_width);
-        let refresh = icons::button(ui, "refresh", tr("刷新列表"), 36., 18.).clicked();
-        if refresh {
-            self.providers.refresh();
-            self.artwork = Default::default();
-            actions.favorites.refresh();
-        }
-        refresh || self.list_query != before
     }
 
     fn creation_status(&mut self, ui: &mut egui::Ui, svc: Services<'_>) -> bool {
@@ -196,7 +179,8 @@ impl Catalog {
         lists: &[Playlist],
     ) -> bool {
         let all = matches!(query, TrackQuery::AvailableSources { .. });
-        let matching = all || matches!(query, TrackQuery::Category { .. } | TrackQuery::Library(_));
+        let library = all || matches!(query, TrackQuery::Category { .. });
+        let matching = library || matches!(query, TrackQuery::Library(_));
         let mut refresh = false;
         if !all && matching {
             ui.horizontal_wrapped(|ui| self.matching.buttons(ui, svc));
@@ -270,7 +254,7 @@ impl Catalog {
                     self.matching.clear_selection();
                 }
             }
-            if !all && icons::button(ui, "refresh", tr("刷新列表"), 32., 17.).clicked() {
+            if !library && icons::button(ui, "refresh", tr("刷新列表"), 32., 17.).clicked() {
                 self.artwork = Default::default();
                 actions.favorites.refresh();
                 refresh = true;
@@ -279,8 +263,8 @@ impl Catalog {
                 ui.spinner();
             }
             if all {
-                refresh |= self.all_track_controls(ui, svc, actions);
-            } else {
+                self.all_track_actions(ui, svc);
+            } else if !library {
                 let remain = available_width(ui);
                 if width >= 520. && remain > 116. {
                     ui.add_space(remain - 116.);
@@ -294,13 +278,23 @@ impl Catalog {
                 16.,
                 tr("等待服务端提供完整查询排序能力"),
             );
+            if library {
+                let before = self.list_query.clone();
+                if self.list_search(ui, tr("刷新列表")) {
+                    self.providers.refresh();
+                    self.artwork = Default::default();
+                    actions.favorites.refresh();
+                    refresh = true;
+                }
+                refresh |= self.list_query != before;
+            }
         };
-        if all {
-            ui.horizontal(row);
-            refresh |= self.creation_status(ui, svc);
-        } else {
+        if !all {
             ui.add_space(17.);
-            ui.horizontal_wrapped(row);
+        }
+        ui.horizontal_wrapped(row);
+        if all {
+            refresh |= self.creation_status(ui, svc);
         }
         if matching {
             refresh |= self

@@ -87,7 +87,6 @@ impl<T: Send + 'static> Pages<T> {
 }
 #[derive(Default)]
 pub(super) struct Folders {
-    provider: Option<String>,
     path: Vec<Folder>,
     search: String,
     draft: String,
@@ -98,12 +97,6 @@ pub(super) struct Folders {
 }
 impl Folders {
     pub(super) fn show(&mut self, ui: &mut egui::Ui, svc: Services<'_>, providers: &Providers) {
-        if self.provider != providers.selected {
-            *self = Self {
-                provider: providers.selected.clone(),
-                ..Default::default()
-            };
-        }
         let mut go = None;
         ui.horizontal_wrapped(|ui| {
             if ui.link(tr("文件夹")).clicked() {
@@ -122,7 +115,13 @@ impl Folders {
                 self.change_folder();
             }
         }
-        ui.horizontal_wrapped(|ui| {
+        let toolbar_size = egui::vec2(ui.available_width(), ui.spacing().interact_size.y);
+        let layout = egui::Layout::right_to_left(egui::Align::Center).with_main_wrap(true);
+        ui.allocate_ui_with_layout(toolbar_size, layout, |ui| {
+            let refresh = ui.button(tr("刷新列表")).clicked();
+            let clear = !self.search.is_empty() && ui.button(tr("清空")).clicked();
+            let search = ui.button(tr("搜索")).clicked();
+            let width = ui.available_size_before_wrap().x.clamp(80., 220.);
             let edit = ui.add(
                 egui::TextEdit::singleline(&mut self.draft)
                     .char_limit(256)
@@ -131,19 +130,16 @@ impl Folders {
                     } else {
                         "搜索当前列表"
                     }))
-                    .desired_width(220.),
+                    .desired_width(width),
             );
             let enter = edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-            if ui.button(tr("搜索")).clicked() || enter {
-                self.search = self.draft.trim().into();
-                self.reload();
-            }
-            if !self.search.is_empty() && ui.button(tr("清空")).clicked() {
+            if clear {
                 self.draft.clear();
                 self.search.clear();
-                self.reload();
+            } else if search || enter {
+                self.search = self.draft.trim().into();
             }
-            if ui.button(tr("刷新列表")).clicked() {
+            if refresh || clear || search || enter {
                 self.reload();
             }
         });
@@ -199,16 +195,13 @@ impl Folders {
                                 open = Some(f.clone());
                             }
                             ui.weak(count);
-                            if self.provider.is_none() {
-                                ui.weak(providers.label(&f.provider_instance_id));
-                            }
+                            ui.weak(providers.label(&f.provider_instance_id));
                         })
                     });
                 }
                 if self.children.request(ui, "加载更多目录") {
-                    let (s, prov, parent, cursor) = (
+                    let (s, parent, cursor) = (
                         svc.server.clone(),
-                        self.provider.clone(),
                         folder.clone(),
                         self.children.cursor.clone(),
                     );
@@ -218,8 +211,7 @@ impl Folders {
                         String::new()
                     };
                     self.children.load(ui, svc, async move {
-                        s.folders(prov.as_deref(), parent.as_deref(), &q, cursor)
-                            .await
+                        s.folders(None, parent.as_deref(), &q, cursor).await
                     });
                 }
                 if folder.is_none() && self.children.total == Some(0) {
@@ -229,15 +221,14 @@ impl Folders {
                     ui.separator();
                     self.recordings(ui, svc, providers);
                     if self.tracks.request(ui, "加载更多曲目") {
-                        let (s, prov, id, q, cursor) = (
+                        let (s, id, q, cursor) = (
                             svc.server.clone(),
-                            self.provider.clone(),
                             id.clone(),
                             self.search.clone(),
                             self.tracks.cursor.clone(),
                         );
                         self.tracks.load(ui, svc, async move {
-                            s.folder_recordings(prov.as_deref(), &id, &q, cursor).await
+                            s.folder_recordings(None, &id, &q, cursor).await
                         });
                     }
                     if self.tracks.total == Some(0) {
@@ -269,9 +260,7 @@ impl Folders {
                     if let Some(artists) = &t.artists {
                         ui.weak(artists.join(" / "));
                     }
-                    if self.provider.is_none() {
-                        ui.weak(providers.label(&t.provider_instance_id));
-                    }
+                    ui.weak(providers.label(&t.provider_instance_id));
                     if playable(t) {
                         if let Some(ms) = t.duration_ms {
                             ui.weak(format!("{}:{:02}", ms / 60_000, ms / 1000 % 60));
@@ -301,11 +290,8 @@ impl Folders {
         let Some(id) = self.path.last().map(|f| f.category_id.clone()) else {
             return;
         };
-        let (s, provider, q) = (
-            svc.server.clone(),
-            self.provider.clone(),
-            self.search.clone(),
-        );
+        let s = svc.server.clone();
+        let q = self.search.clone();
         let mut tracks: Vec<_> = self
             .tracks
             .rows
@@ -320,9 +306,7 @@ impl Folders {
                 if !seen.insert(c.token.clone()) {
                     return Err("Repeated MusicFS folder cursor.".into());
                 }
-                let p = s
-                    .folder_recordings(provider.as_deref(), &id, &q, Some(c))
-                    .await?;
+                let p = s.folder_recordings(None, &id, &q, Some(c)).await?;
                 tracks.extend(p.items.iter().filter(|r| playable(r)).map(queue));
                 cursor = p.next;
             }

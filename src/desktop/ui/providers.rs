@@ -101,7 +101,6 @@ impl Provider {
 }
 #[derive(Default)]
 pub struct Providers {
-    pub selected: Option<String>,
     items: Vec<Provider>,
     task: Option<Task<Vec<Provider>>>,
     started: bool,
@@ -148,28 +147,6 @@ impl Providers {
             .iter()
             .find(|p| p.id == id)
             .map_or(tr("未知来源"), Provider::label)
-    }
-    pub fn select(&mut self, ui: &mut egui::Ui) -> bool {
-        let old = self.selected.clone();
-        let response = dropdown("library-provider", 125.)
-            .selected_text(
-                self.selected
-                    .as_ref()
-                    .map(|id| self.label(id))
-                    .unwrap_or(tr("全部来源")),
-            )
-            .show_ui(ui, |ui| {
-                ui.selectable_value(&mut self.selected, None, tr("全部来源"));
-                for item in &self.items {
-                    ui.selectable_value(&mut self.selected, Some(item.id.clone()), item.label());
-                }
-            })
-            .response;
-        response.widget_info(|| {
-            egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, true, tr("来源"))
-        });
-        response.on_hover_text(tr("来源"));
-        old != self.selected
     }
     pub fn refresh(&mut self) {
         self.started = false;

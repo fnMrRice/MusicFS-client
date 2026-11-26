@@ -131,7 +131,6 @@ pub enum TrackQuery {
     Category {
         tab: CategoryTab,
         id: String,
-        provider: Option<String>,
         query: String,
     },
 }
@@ -150,17 +149,12 @@ impl TrackQuery {
             Self::History => server.history(after).await,
             Self::Favorites => server.favorites(after).await,
             Self::Playlist { id, revision } => server.playlist_tracks(id, *revision, after).await,
-            Self::Category {
-                tab,
-                id,
-                provider,
-                query,
-            } => {
+            Self::Category { tab, id, query } => {
                 server
                     .category_tracks(
                         tab.kind().ok_or("Invalid category.")?,
                         id,
-                        provider.as_deref(),
+                        None,
                         query,
                         after,
                     )

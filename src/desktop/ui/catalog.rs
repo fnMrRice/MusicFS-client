@@ -81,9 +81,6 @@ impl Catalog {
     }
 
     pub fn open_credit(&mut self, tab: CategoryTab, id: String, name: String) {
-        if matches!(self.query, Some(TrackQuery::AvailableSources { .. })) {
-            self.providers.selected = None;
-        }
         self.tabs = tab;
         self.list_draft.clear();
         self.list_query.clear();
@@ -99,25 +96,6 @@ impl Catalog {
                 query: self.list_query.clone(),
             });
         }
-        ui.horizontal_wrapped(|ui| {
-            if self.providers.select(ui) {
-                self.reset_categories();
-            }
-            if self.tabs == CategoryTab::Album && self.category.is_none() {
-                self.album_filters(ui);
-            }
-            if self.tabs != CategoryTab::Folder {
-                self.list_search(ui);
-            }
-            if self.tabs == CategoryTab::Album && self.category.is_none() {
-                self.matching.queue_albums(
-                    ui,
-                    svc,
-                    self.providers.selected.as_deref(),
-                    &self.list_query,
-                );
-            }
-        });
         self.providers.status(ui);
         if self.tabs == CategoryTab::Folder {
             self.folders.show(ui, svc, &self.providers);
@@ -144,22 +122,24 @@ impl Catalog {
                 return Some(TrackQuery::Category {
                     tab: self.tabs,
                     id,
-                    provider: self.providers.selected.clone(),
                     query: self.list_query.clone(),
                 });
             }
         }
         self.categories.poll();
-        let mut load = !self.categories.started;
-        ui.horizontal(|ui| {
-            if ui.button(tr("刷新分类")).clicked() {
-                self.categories = Pages::default();
-                load = true;
+        ui.horizontal_wrapped(|ui| {
+            if self.tabs == CategoryTab::Album {
+                self.album_filters(ui);
+                self.matching.queue_albums(ui, svc, None, &self.list_query);
             }
             if self.categories.busy() {
                 ui.spinner();
             }
+            if self.list_search(ui, tr("刷新分类")) {
+                self.categories = Pages::default();
+            }
         });
+        let mut load = !self.categories.started;
         ui.add_space(6.0);
         if let Some(error) = self.categories.error.as_ref() {
             ui.colored_label(ui.visuals().error_fg_color, error);
@@ -195,18 +175,11 @@ impl Catalog {
         if load {
             let server = svc.server.clone();
             let cursor = self.categories.next.clone();
-            let provider = self.providers.selected.clone();
             let query = self.list_query.clone();
             let unscraped_only = self.unscraped_only;
             self.categories.load(ui.ctx(), svc.runtime, async move {
                 server
-                    .filtered_categories(
-                        kind,
-                        provider.as_deref(),
-                        &query,
-                        cursor.as_deref(),
-                        unscraped_only,
-                    )
+                    .filtered_categories(kind, None, &query, cursor.as_deref(), unscraped_only)
                     .await
             });
         }

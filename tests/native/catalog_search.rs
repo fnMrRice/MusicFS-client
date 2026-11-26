@@ -16,7 +16,9 @@ fn frame(
         ..Default::default()
     };
     ctx.run(input, |ctx| {
-        egui::CentralPanel::default().show(ctx, |ui| catalog.list_search(ui));
+        egui::CentralPanel::default().show(ctx, |ui| {
+            ui.horizontal_wrapped(|ui| catalog.list_search(ui, tr("刷新列表")));
+        });
     })
     .platform_output
     .accesskit_update
@@ -30,6 +32,68 @@ fn key(key: Key, modifiers: Modifiers) -> Event {
         pressed: true,
         repeat: false,
         modifiers,
+    }
+}
+
+#[test]
+fn category_search_and_refresh_stay_together_at_the_right_edge() {
+    for width in [330., 960.] {
+        for draft in ["", "demo"] {
+            let ctx = Context::default();
+            ctx.enable_accesskit();
+            let mut catalog = Catalog::default();
+            catalog.list_draft = draft.into();
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(width, 180.),
+                )),
+                ..Default::default()
+            };
+            let mut right = 0.;
+            let mut left_actions = egui::Rect::NOTHING;
+            let output = ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    right = f64::from(ui.max_rect().right());
+                    ui.horizontal_wrapped(|ui| {
+                        left_actions = ui.allocate_space(egui::vec2(250., 36.)).1;
+                        catalog.list_search(ui, tr("刷新分类"));
+                    });
+                });
+            });
+            let tree = output.platform_output.accesskit_update.unwrap();
+            let button = |label| {
+                tree.nodes
+                    .iter()
+                    .find(|(_, n)| n.role() == Role::Button && n.label() == Some(tr(label)))
+                    .and_then(|(_, n)| n.bounds())
+            };
+            let search = tree
+                .nodes
+                .iter()
+                .find(|(_, n)| n.role() == Role::TextInput)
+                .unwrap()
+                .1
+                .bounds()
+                .unwrap();
+            let refresh = button("刷新分类").unwrap();
+            assert!(
+                (refresh.x1 - right).abs() <= 1.,
+                "Refresh at {refresh:?}, right edge {right}"
+            );
+            assert!(search.x1 <= refresh.x0 && search.y0 < refresh.y1 && refresh.y0 < search.y1);
+            if width == 330. {
+                assert!(search.y0 >= f64::from(left_actions.bottom()));
+            } else {
+                assert!(search.x0 >= f64::from(left_actions.right()));
+            }
+            let clear = button("清除");
+            assert_eq!(clear.is_some(), !draft.is_empty());
+            if let Some(clear) = clear {
+                assert!(search.x1 <= clear.x0 && clear.x1 <= refresh.x0);
+                assert!(clear.y0 < refresh.y1 && refresh.y0 < clear.y1);
+            }
+        }
     }
 }
 
@@ -53,19 +117,16 @@ fn batch_selection_keeps_explicit_pins_and_credit_navigation_resets_the_scope() 
         .select_rows(std::slice::from_ref(&pin), false);
     assert!(catalog.matching.selected(&auto));
     assert!(!catalog.matching.selected(&pin));
-    catalog.providers.selected = Some("local".into());
     catalog.list_query = "old".into();
     catalog.tracks.started = true;
     catalog.query = Some(TrackQuery::Category {
         tab: CategoryTab::Album,
         id: "album".into(),
-        provider: catalog.providers.selected.clone(),
         query: catalog.list_query.clone(),
     });
     catalog.open_credit(CategoryTab::Artist, "a".into(), "歌手".into());
     assert!(catalog.tabs == CategoryTab::Artist);
     assert_eq!(catalog.category, Some(("a".into(), "歌手".into())));
-    assert_eq!(catalog.providers.selected.as_deref(), Some("local"));
     assert!(catalog.list_query.is_empty() && catalog.matching.selected_tracks().is_empty());
     assert!(!catalog.tracks.started);
 
@@ -75,7 +136,7 @@ fn batch_selection_keeps_explicit_pins_and_credit_navigation_resets_the_scope() 
     catalog.open_credit(CategoryTab::Album, "b".into(), "专辑".into());
     assert!(catalog.tabs == CategoryTab::Album);
     assert_eq!(catalog.category, Some(("b".into(), "专辑".into())));
-    assert!(catalog.providers.selected.is_none());
+    assert!(catalog.query.is_none());
 }
 
 // 独立实例包含扫描曲目，检查真实工具栏布局以及批量加入歌单的来源绑定。
@@ -120,7 +181,6 @@ fn library_toolbar_fits_the_viewport_and_saves_bulk_references() {
         super::super::style::apply(&ctx, "dark", "default");
         ctx.enable_accesskit();
         let mut catalog = Catalog::default();
-        catalog.providers.selected = Some("category-provider".into());
         let mut actions = Actions::default();
         let bounds = egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(width, 800.));
         let shortcut = Modifiers::COMMAND | Modifiers::CTRL;
@@ -141,10 +201,6 @@ fn library_toolbar_fits_the_viewport_and_saves_bulk_references() {
                         let q = catalog.library(ui, svc).unwrap();
                         assert!(
                             matches!(&q, TrackQuery::AvailableSources { query } if query.is_empty())
-                        );
-                        assert_eq!(
-                            catalog.providers.selected.as_deref(),
-                            Some("category-provider")
                         );
                         catalog.table_toolbar(ui, svc, &mut actions, &q, &[]);
                     });

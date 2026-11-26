@@ -2,7 +2,7 @@ pub mod activity;
 mod catalog;
 mod control;
 pub mod folders;
-mod lyrics;
+pub mod lyrics;
 mod playback;
 mod playlist_edit;
 mod reader;
@@ -37,6 +37,16 @@ pub use works::{AudioNode, PackageAudio, Work, WorkDetail, WorkHistoryEntry, Wor
 
 type Result<T> = std::result::Result<T, String>;
 const API_TIMEOUT: Duration = Duration::from_secs(20);
+
+fn http_client(cookies: Arc<Jar>, read_timeout: Duration) -> Result<Client> {
+    Client::builder()
+        .cookie_provider(cookies)
+        .redirect(reqwest::redirect::Policy::none())
+        .connect_timeout(Duration::from_secs(8))
+        .read_timeout(read_timeout)
+        .build()
+        .map_err(|_| "Unable to initialize the MusicFS connection.".into())
+}
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -175,13 +185,7 @@ impl ServerSession {
             return Err("Enter a valid MusicFS access token.".into());
         }
         let cookies = Arc::new(Jar::default());
-        let client = Client::builder()
-            .cookie_provider(cookies.clone())
-            .redirect(reqwest::redirect::Policy::none())
-            .connect_timeout(Duration::from_secs(8))
-            .read_timeout(API_TIMEOUT)
-            .build()
-            .map_err(|_| "Unable to initialize the MusicFS connection.")?;
+        let client = http_client(cookies.clone(), API_TIMEOUT)?;
         let endpoint = origin.origin().ascii_serialization();
         let ready: Ready = decode(
             client
@@ -277,11 +281,21 @@ impl ServerSession {
         body: Option<&Value>,
         headers: &[(&str, &str)],
     ) -> Result<Response> {
+        self.send_json(&self.client, API_TIMEOUT, method, url, body, headers)
+            .await
+    }
+
+    async fn send_json(
+        &self,
+        client: &Client,
+        timeout: Duration,
+        method: Method,
+        url: Url,
+        body: Option<&Value>,
+        headers: &[(&str, &str)],
+    ) -> Result<Response> {
         self.ensure_active()?;
-        let mut request = self
-            .client
-            .request(method.clone(), url)
-            .timeout(API_TIMEOUT);
+        let mut request = client.request(method.clone(), url).timeout(timeout);
         if method != Method::GET {
             request = request
                 .header(header::ORIGIN, &self.info.endpoint)

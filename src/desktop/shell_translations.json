@@ -1,4 +1,6 @@
 {
+  "固定播放队列": ["Pin play queue","固定播放佇列","再生キューを固定"],
+  "取消固定播放队列": ["Unpin play queue","取消固定播放佇列","再生キューの固定を解除"],
   "一键自动刮削": ["Auto-scrape albums","一鍵自動刮削","アルバムを一括取得"],
   "自动刮削当前来源和搜索条件下的所有未刮削专辑": ["Fetch metadata for all unscraped albums matching the current source and search","自動刮削目前來源和搜尋條件下的所有未刮削專輯","現在のソースと検索条件に合う未取得のアルバムすべての情報を取得します"],
   "加入任务队列": ["Add to task queue","加入任務佇列","タスクに追加"],

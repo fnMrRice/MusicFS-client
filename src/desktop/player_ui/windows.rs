@@ -1,9 +1,11 @@
 use super::controls::{heading, play_button};
 use super::lyrics::{time, Lyrics};
+mod lyrics_search;
 use crate::i18n::tr;
 use crate::task::Task;
 use crate::{icons, ui::style};
 use eframe::egui::{self, Context, RichText, ViewportBuilder, ViewportCommand, ViewportId};
+use lyrics_search::LyricsSearch;
 use musicfs_player_core::{Player, PlayerCommand, Presentation, Status};
 use musicfs_server_adapter::ServerSession;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -62,8 +64,6 @@ impl Windows {
                     }
                     egui::CentralPanel::default().show(ctx, |ui| match player.presentation() {
                         Ok(now) => {
-                            compact_header(ui, &now, &visible);
-                            ui.separator();
                             if let Ok(mut lyrics) = lyrics.lock() {
                                 lyrics.show(ui, &now, &runtime, &server);
                             }
@@ -103,21 +103,31 @@ fn active(ctx: &Context, visible: &AtomicBool) -> bool {
     visible.load(Ordering::Relaxed)
 }
 
-fn compact_header(ui: &mut egui::Ui, now: &Presentation, visible: &AtomicBool) {
-    ui.horizontal(|ui| {
-        let width = (ui.available_width() - 76.).max(60.);
-        ui.allocate_ui_with_layout(
-            egui::vec2(width, 43.),
-            egui::Layout::top_down(egui::Align::Min),
-            |ui| {
-                ui.set_width(width);
+fn compact_header<T>(
+    ui: &mut egui::Ui,
+    now: &Presentation,
+    action: impl FnOnce(&mut egui::Ui) -> T,
+) -> T {
+    ui.allocate_ui_with_layout(
+        egui::vec2(ui.available_width(), 43.),
+        egui::Layout::right_to_left(egui::Align::Center),
+        |ui| {
+            let response = action(ui);
+            ui.with_layout(egui::Layout::top_down(egui::Align::Min), |ui| {
                 heading(
                     ui,
                     now.title.as_deref().unwrap_or(tr("尚未播放")),
                     &now.artists,
                 );
-            },
-        );
+            });
+            response
+        },
+    )
+    .inner
+}
+
+fn mini_header(ui: &mut egui::Ui, now: &Presentation, visible: &AtomicBool) {
+    compact_header(ui, now, |ui| {
         if ui
             .button(tr("主窗口"))
             .on_hover_text(tr("返回主窗口"))
@@ -134,12 +144,27 @@ fn compact_header(ui: &mut egui::Ui, now: &Presentation, visible: &AtomicBool) {
     });
 }
 
+fn lyrics_header(ui: &mut egui::Ui, now: &Presentation, searching: bool, saving: bool) -> bool {
+    compact_header(ui, now, |ui| {
+        let label = if searching {
+            "返回歌词"
+        } else {
+            "查找歌词"
+        };
+        ui.add_enabled(
+            now.source_id.is_some() && !saving,
+            egui::Button::new(tr(label)),
+        )
+        .clicked()
+    })
+}
+
 #[cfg(test)]
 #[path = "../../../tests/native/windows.rs"]
 mod tests;
 
 fn mini(ui: &mut egui::Ui, player: &Player, now: &Presentation, visible: &AtomicBool) {
-    compact_header(ui, now, visible);
+    mini_header(ui, now, visible);
     let enabled = now.title.is_some();
     let playing = matches!(now.status, Status::Playing | Status::Loading);
     let error_key = egui::Id::new("mini-playback-error");
@@ -205,6 +230,7 @@ struct LyricsState {
     key: Option<(u64, u64, String)>,
     request: Option<Task<Lyrics>>,
     result: Option<Result<Lyrics, String>>,
+    search: Option<LyricsSearch>,
 }
 
 impl LyricsState {
@@ -222,6 +248,7 @@ impl LyricsState {
         if key != self.key {
             self.key = key;
             self.result = None;
+            self.search = None;
             self.request = now.source_id.clone().map(|id| {
                 let server = server.clone();
                 Task::spawn(runtime, ui.ctx(), async move {
@@ -232,6 +259,25 @@ impl LyricsState {
         if let Some(result) = self.request.as_mut().and_then(Task::poll) {
             self.result = Some(result);
             self.request = None;
+        }
+        let searching = self.search.is_some();
+        let saving = self.search.as_ref().is_some_and(LyricsSearch::saving);
+        if lyrics_header(ui, now, searching, saving) {
+            self.search = if searching {
+                None
+            } else {
+                now.source_id
+                    .as_ref()
+                    .map(|id| LyricsSearch::start(ui, runtime, server, id, now))
+            };
+        }
+        ui.separator();
+        if let Some(search) = &mut self.search {
+            if search.show(ui, runtime, server) {
+                *self = Self::default();
+                ui.ctx().request_repaint();
+            }
+            return;
         }
         ui.add_space(10.);
         match self.result.as_ref() {
@@ -275,7 +321,7 @@ impl LyricsState {
             Some(Err(error)) => {
                 ui.colored_label(ui.visuals().error_fg_color, error);
                 if ui.button(tr("重试读取歌词")).clicked() {
-                    self.key = None;
+                    *self = Self::default();
                 }
             }
             None => {

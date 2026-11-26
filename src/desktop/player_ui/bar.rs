@@ -49,7 +49,7 @@ impl PlayerUi {
         volume: f32,
         last_volume: f32,
         change: &mut Option<f32>,
-    ) {
+    ) -> egui::Response {
         let width = ui.available_width();
         let (bar, _) = ui.allocate_exact_size(egui::vec2(width, 105.), egui::Sense::hover());
         if let Some(position_ms) = self.timeline(ui, bar) {
@@ -89,7 +89,7 @@ impl PlayerUi {
                 .layout(Layout::right_to_left(Align::Center)),
         );
         extras.spacing_mut().item_spacing.x = if compact { 2. } else { 7. };
-        self.extras(&mut extras, volume, last_volume, change, compact, narrow);
+        self.extras(&mut extras, volume, last_volume, change, compact, narrow)
     }
 
     fn timeline(&mut self, ui: &mut Ui, bar: Rect) -> Option<u64> {
@@ -289,7 +289,7 @@ impl PlayerUi {
         change: &mut Option<f32>,
         compact: bool,
         narrow: bool,
-    ) {
+    ) -> egui::Response {
         let slider_width = if narrow {
             45.
         } else if compact {
@@ -341,11 +341,10 @@ impl PlayerUi {
         if icons::button(ui, "lyrics", tr("桌面歌词"), 36., 21.).clicked() {
             self.windows.open_lyrics(ui.ctx());
         }
-        if icons::button(ui, "queue", tr("播放队列"), 36., 21.).clicked() {
-            self.queue_open = !self.queue_open;
-        }
+        let queue_button = icons::button(ui, "queue", tr("播放队列"), 36., 21.);
         if icons::button(ui, "mini", tr("迷你播放器"), 36., 21.).clicked() {
             self.windows.open_mini(ui.ctx());
         }
+        queue_button
     }
 }

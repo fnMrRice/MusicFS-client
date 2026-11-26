@@ -3,6 +3,8 @@ mod bar;
 mod controls;
 pub(crate) mod cover;
 mod lyrics;
+mod queue_list;
+mod queue_window;
 mod windows;
 
 use crate::ui::style;
@@ -24,7 +26,7 @@ pub struct PlayerUi {
     last_full: Option<Instant>,
     error: Option<String>,
     seek_draft: Option<u64>,
-    queue_open: bool,
+    queue: queue_window::QueueView,
     cover: Cover,
     windows: Windows,
 }
@@ -94,12 +96,12 @@ impl PlayerUi {
             .as_deref()
             .or(self.snapshot.error.as_deref())
             .map(str::to_owned);
-        egui::TopBottomPanel::bottom("musicfs-player")
+        let bar = egui::TopBottomPanel::bottom("musicfs-player")
             .resizable(false)
             .show_separator_line(false)
             .frame(egui::Frame::new().fill(style::sidebar(ctx.style().visuals.dark_mode)))
             .show(ctx, |ui| {
-                self.bar(ui, player, volume, last_volume, &mut volume_change);
+                let queue_button = self.bar(ui, player, volume, last_volume, &mut volume_change);
                 if let Some(error) = error {
                     ui.horizontal(|ui| {
                         ui.colored_label(ui.visuals().error_fg_color, error);
@@ -110,9 +112,13 @@ impl PlayerUi {
                         }
                     });
                 }
+                queue_button
             });
-        if self.queue_open {
-            self.queue(ctx, player);
+        if let Some(command) = self
+            .queue
+            .show(ctx, bar.response.rect, &bar.inner, &self.snapshot)
+        {
+            self.run(player, command);
         }
         self.windows.show(ctx, player, server, runtime);
         ctx.request_repaint_after(TICK);
@@ -165,67 +171,5 @@ impl PlayerUi {
             Err(error) => self.error = Some(error),
         }
         self.last_poll = None;
-    }
-
-    fn queue(&mut self, ctx: &Context, player: &Player) {
-        let mut open = self.queue_open;
-        let mut command = None;
-        egui::Window::new(tr("播放队列"))
-            .id(egui::Id::new("musicfs-queue"))
-            .open(&mut open)
-            .default_width(390.)
-            .default_height(305.)
-            .min_width(255.)
-            .show(ctx, |ui| {
-                ui.horizontal(|ui| {
-                    ui.weak(
-                        tr("{0} 首曲目").replace("{0}", &self.snapshot.queue.len().to_string()),
-                    );
-                    if ui
-                        .add_enabled(
-                            !self.snapshot.queue.is_empty(),
-                            egui::Button::new(tr("清空队列")),
-                        )
-                        .clicked()
-                    {
-                        command = Some(PlayerCommand::Clear);
-                    }
-                });
-                ui.separator();
-                if self.snapshot.queue.is_empty() {
-                    ui.weak(tr("队列为空"));
-                }
-                egui::ScrollArea::vertical().show_rows(
-                    ui,
-                    24.,
-                    self.snapshot.queue.len(),
-                    |ui, range| {
-                        for index in range {
-                            let track = &self.snapshot.queue[index];
-                            let active = self.snapshot.index == Some(index);
-                            let artist = track.artists.join(" / ");
-                            let label = if artist.is_empty() {
-                                track.title.clone()
-                            } else {
-                                format!("{}   ·   {artist}", track.title)
-                            };
-                            ui.horizontal(|ui| {
-                                ui.weak(format!("{:02}", index + 1));
-                                if ui
-                                    .add(egui::SelectableLabel::new(active, label))
-                                    .on_hover_text(&track.title)
-                                    .clicked()
-                                {
-                                    command = Some(PlayerCommand::Select { index });
-                                }
-                            });
-                        }
-                    },
-                );
-            });
-        self.queue_open = open;
-        if let Some(command) = command {
-            self.run(player, command);
-        }
     }
 }

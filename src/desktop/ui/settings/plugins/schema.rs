@@ -1,5 +1,5 @@
 use super::catalog::{localized, Translations};
-use crate::i18n::tr;
+use crate::{i18n::tr, ui::style};
 use eframe::egui;
 use serde::Deserialize;
 use serde_json::{Number, Value};
@@ -71,7 +71,10 @@ impl FieldText {
     pub fn help(&self, ui: &mut egui::Ui) {
         let description = localized(&self.description, &self.localized_descriptions);
         if !description.is_empty() {
-            ui.weak(description);
+            let text = egui::RichText::new(description)
+                .size(12.5)
+                .color(style::muted(ui.visuals().dark_mode));
+            ui.add(egui::Label::new(text).wrap());
         }
     }
 }
@@ -125,17 +128,36 @@ impl Schema {
 impl Field {
     pub fn show(&self, ui: &mut egui::Ui, draft: &mut Draft) {
         let value = draft.entry(self.key.clone()).or_default();
-        let label = self.text.label();
+        let label = egui::RichText::new(self.text.label()).font(style::bold(ui, 14.));
+        ui.spacing_mut().item_spacing.y = 5.;
         if self.kind == "checkbox" {
+            style::checkbox_style(ui);
             let mut checked = value == "true";
             if ui.checkbox(&mut checked, label).changed() {
                 *value = checked.to_string();
             }
         } else {
-            let description = ui.label(label);
+            let description = ui.add(egui::Label::new(label).wrap());
+            let dark = ui.visuals().dark_mode;
+            let fill = style::background(dark);
+            let border = style::line(dark).lerp_to_gamma(style::muted(dark), 0.32);
+            let padding = egui::Margin::symmetric(12, 8);
+            ui.spacing_mut().button_padding = egui::vec2(padding.leftf(), padding.topf());
+            ui.spacing_mut().interact_size.y = 36.;
+            let widgets = &mut ui.visuals_mut().widgets;
+            widgets.inactive.weak_bg_fill = fill;
+            widgets.inactive.bg_stroke = egui::Stroke::new(1_f32, border);
+            widgets.hovered.bg_stroke = egui::Stroke::new(1_f32, style::muted(dark));
             match self.kind.as_str() {
                 "text" | "number" => {
-                    let response = ui.add(egui::TextEdit::singleline(value).desired_width(300.0));
+                    let response = ui.add(
+                        egui::TextEdit::singleline(value)
+                            .desired_width(f32::INFINITY)
+                            .min_size(egui::vec2(0., ui.spacing().interact_size.y))
+                            .margin(padding)
+                            .vertical_align(egui::Align::Center)
+                            .background_color(fill),
+                    );
                     response.labelled_by(description.id);
                 }
                 "select" => {
@@ -145,8 +167,13 @@ impl Field {
                         .find(|o| o.value == *value)
                         .map_or("", |o| o.text.label());
                     egui::ComboBox::from_id_salt(&self.key)
-                        .selected_text(selected)
+                        .width(ui.available_width())
+                        .selected_text(
+                            egui::RichText::new(selected).text_style(egui::TextStyle::Body),
+                        )
+                        .truncate()
                         .show_ui(ui, |ui| {
+                            ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
                             for o in &self.options {
                                 ui.selectable_value(value, o.value.clone(), o.text.label());
                             }

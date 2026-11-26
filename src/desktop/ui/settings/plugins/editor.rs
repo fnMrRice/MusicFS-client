@@ -1,10 +1,12 @@
+mod dialog;
+
 use super::{
-    catalog::localized,
     request,
     schema::{Draft, Job, Settings},
     segment, uncertain, Services,
 };
 use crate::{i18n::tr, task::Task};
+use dialog::DialogAction;
 use eframe::egui;
 use musicfs_server_adapter::ServerSession;
 use serde_json::{json, Value};
@@ -187,74 +189,21 @@ impl Editor {
 
     pub fn show(&mut self, ctx: &egui::Context, svc: Services<'_>) -> bool {
         self.update(ctx, svc);
-        let mut close = false;
-        let mut reload = false;
-        let mut retry = false;
-        let mut submission = None;
-        let busy = self.posting.is_some();
-        let blocked = busy || self.loading.is_some() || self.conflict || self.pending.is_some();
-        let modal = egui::Modal::new(egui::Id::new("plugin-settings-dialog")).show(ctx, |ui| {
-            ui.set_width((ctx.screen_rect().width() - 64.0).clamp(180.0, 480.0));
-            ui.heading(tr("配置 {0}").replace("{0}", &self.name));
-            ui.separator();
-            egui::ScrollArea::vertical().max_height((ctx.screen_rect().height() - 145.0).max(120.0)).show(ui, |ui| {
-                if self.loading.is_some() { ui.weak(tr("正在读取设置…")); }
-                if let Some(e) = &self.error { ui.colored_label(ui.visuals().error_fg_color, e); }
-                if self.loading.is_none() && (self.data.is_none() || self.conflict || self.pending.is_some()) {
-                    ui.horizontal_wrapped(|ui| {
-                        if self.pending.is_some() && !busy && ui.button(tr("重试上次操作")).clicked() { retry = true; }
-                        reload = ui.add_enabled(!busy, egui::Button::new(tr("重新加载设置"))).clicked();
-                    });
-                }
-                if let Some(data) = &self.data {
-                    let schema = &data.schema;
-                    ui.strong(localized(&schema.title, &schema.localized_titles));
-                    let description = localized(&schema.description, &schema.localized_descriptions);
-                    if !description.is_empty() { ui.weak(description); }
-                    ui.add_enabled_ui(!blocked, |ui| {
-                        for field in &schema.fields {
-                            ui.push_id(&field.key, |ui| field.show(ui, &mut self.draft));
-                        }
-                    });
-                    let dirty = self.draft != self.original;
-                    let values = schema.values(&self.draft);
-                    if !schema.fields.is_empty() && ui.add_enabled(!blocked && dirty && values.is_some(),
-                        egui::Button::new(tr(if busy { "正在保存…" } else { "保存设置" }))).clicked() {
-                        submission = Some(Submission::Save(json!({
-                            "expectedRevision": data.revision, "schemaRevision": schema.revision, "values": values,
-                        })));
-                    }
-                    if dirty && !schema.actions.is_empty() { ui.weak(tr("请先保存修改，再执行插件操作。")); }
-                    let active = self.job.as_ref().is_some_and(Job::active);
-                    for action in &schema.actions {
-                        if ui.add_enabled(!blocked && !dirty && !active, egui::Button::new(action.text.label())).clicked() {
-                            submission = Some(Submission::Action(action.id.clone()));
-                        }
-                        action.text.help(ui);
-                    }
-                }
-                if let Some(message) = self.message { ui.label(tr(message)); }
-                if let Some(job) = &self.job { job.show(ui); }
-                if let Some(e) = &self.job_error {
-                    ui.colored_label(ui.visuals().error_fg_color, e);
-                    if ui.add_enabled(self.job_read.is_none(), egui::Button::new(tr("重试"))).clicked() {
-                        self.job_revision = None; ctx.request_repaint();
-                    }
-                }
-            });
-            ui.separator();
-            close = ui.add_enabled(!busy, egui::Button::new(tr("取消"))).clicked();
-        });
-        if let Some(value) = submission {
-            self.pending = Some((value, Uuid::new_v4().to_string()));
-            retry = true;
+        match self.dialog(ctx) {
+            DialogAction::Close => return true,
+            DialogAction::Reload => self.reload(ctx, svc),
+            DialogAction::Retry => self.post(ctx, svc),
+            DialogAction::RetryJob => {
+                self.job_revision = None;
+                ctx.request_repaint();
+            }
+            DialogAction::Submit(value) => {
+                self.pending = Some((value, Uuid::new_v4().to_string()));
+                self.post(ctx, svc);
+            }
+            DialogAction::None => {}
         }
-        if retry {
-            self.post(ctx, svc);
-        } else if reload {
-            self.reload(ctx, svc);
-        }
-        self.posting.is_none() && (close || modal.should_close())
+        false
     }
 }
 
@@ -274,3 +223,7 @@ async fn get_settings(
     }
     Ok(data)
 }
+
+#[cfg(test)]
+#[path = "../../../../../tests/native/plugin_dialog.rs"]
+mod dialog_tests;

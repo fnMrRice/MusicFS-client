@@ -1,4 +1,7 @@
-use crate::i18n::tr;
+use crate::{
+    i18n::tr,
+    ui::style::{self, ComboBoxMotion},
+};
 use eframe::egui::{self, Ui};
 use musicfs_player_core::audio::{
     Effect, EffectKind, LocalDsp, EFFECTS, FREQUENCIES, MAX_EFFECTS, PRESETS,
@@ -31,28 +34,27 @@ pub(super) fn edit(ui: &mut Ui, dsp: &mut LocalDsp, selected: &mut EffectKind) -
                         });
                         ui.strong(format!("{}  {}", index + 1, tr(effect.kind.name())));
                         let enabled = if effect.enabled { "开启" } else { "关闭" };
-                        changed |= ui.checkbox(&mut effect.enabled, tr(enabled)).changed();
-                        if ui
-                            .add_enabled(index > 0, egui::Button::new("↑"))
+                        changed |= style::checkbox(ui, &mut effect.enabled, tr(enabled)).changed();
+                        if style::add_button(ui, index > 0, egui::Button::new("↑"))
                             .on_hover_text(tr("上移"))
                             .clicked()
                         {
                             reorder = Some((index, index - 1));
                         }
-                        if ui
-                            .add_enabled(index + 1 < count, egui::Button::new("↓"))
+                        if style::add_button(ui, index + 1 < count, egui::Button::new("↓"))
                             .on_hover_text(tr("下移"))
                             .clicked()
                         {
                             reorder = Some((index, index + 1));
                         }
-                        if ui.small_button(tr("删除")).clicked() {
+                        if style::small_button(ui, tr("删除")).clicked() {
                             remove = Some(index);
                         }
                     });
-                    egui::CollapsingHeader::new(tr("参数"))
-                        .id_salt("parameters")
-                        .show(ui, |ui| {
+                    style::collapsing(
+                        ui,
+                        egui::CollapsingHeader::new(tr("参数")).id_salt("parameters"),
+                        |ui| {
                             if effect.kind == EffectKind::GraphicEqualizer {
                                 changed |= equalizer(ui, effect);
                             } else {
@@ -69,7 +71,8 @@ pub(super) fn edit(ui: &mut Ui, dsp: &mut LocalDsp, selected: &mut EffectKind) -
                                         .changed();
                                 }
                             }
-                        });
+                        },
+                    );
                 });
             });
         if let Some(from) = payload {
@@ -89,19 +92,17 @@ pub(super) fn edit(ui: &mut Ui, dsp: &mut LocalDsp, selected: &mut EffectKind) -
     ui.horizontal_wrapped(|ui| {
         egui::ComboBox::from_label(tr("选择效果"))
             .selected_text(tr(selected.name()))
-            .show_ui(ui, |ui| {
+            .show_animated(ui, |ui| {
                 for kind in EFFECTS {
-                    ui.selectable_value(selected, kind, tr(kind.name()));
+                    style::selectable_value(ui, selected, kind, tr(kind.name()));
                 }
             });
-        if ui
-            .add_enabled(count < MAX_EFFECTS, egui::Button::new(tr("添加效果")))
-            .clicked()
+        if style::add_button(ui, count < MAX_EFFECTS, egui::Button::new(tr("添加效果"))).clicked()
         {
             dsp.chain.push(Effect::new(*selected));
             changed = true;
         }
-        if ui.button(tr("恢复本地默认")).clicked() {
+        if style::button(ui, tr("恢复本地默认")).clicked() {
             *dsp = LocalDsp::default();
             changed = true;
         }
@@ -118,16 +119,16 @@ fn equalizer(ui: &mut Ui, effect: &mut Effect) -> bool {
     ui.horizontal_wrapped(|ui| {
         egui::ComboBox::from_label(tr("均衡器预设"))
             .selected_text(tr(active))
-            .show_ui(ui, |ui| {
+            .show_animated(ui, |ui| {
                 for (label, gains) in PRESETS {
-                    if ui.selectable_label(label == active, tr(label)).clicked() {
+                    if style::selectable(ui, label == active, tr(label)).clicked() {
                         effect.values[..10].copy_from_slice(&gains);
                         effect.values[10..].fill(0.);
                         changed = true;
                     }
                 }
             });
-        if ui.button(tr("重置均衡器")).clicked() {
+        if style::button(ui, tr("重置均衡器")).clicked() {
             effect.values.fill(0.);
             changed = true;
         }

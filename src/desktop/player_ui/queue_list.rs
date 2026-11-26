@@ -86,11 +86,19 @@ fn track_row(
     let accent = style::accent(ui);
     let muted = style::muted(dark);
     let painter = ui.painter();
-    if current {
-        painter.rect_filled(row, 6, style::accent_soft(ui));
-    } else if response.hovered() || response.has_focus() {
-        painter.rect_filled(row, 6, style::hovered(dark));
-    }
+    let motion = style::interaction(ui, &response);
+    let tint = style::accent_soft(ui);
+    let fill = if current {
+        let accent_fill = style::accent_fill(ui);
+        motion.color(
+            tint,
+            tint.lerp_to_gamma(accent_fill, 0.12),
+            tint.lerp_to_gamma(accent_fill, 0.24),
+        )
+    } else {
+        motion.color(Color32::TRANSPARENT, style::hovered(dark), tint)
+    };
+    painter.rect_filled(row, 6, fill);
     if response.has_focus() {
         painter.rect_stroke(row, 6, Stroke::new(1_f32, accent), StrokeKind::Inside);
     }
@@ -139,7 +147,11 @@ fn track_row(
     } else {
         row.right() - 9.
     };
-    let title_color = if current { accent } else { style::text(dark) };
+    let title_color = if current {
+        style::highlight(dark)
+    } else {
+        style::text(dark)
+    };
     let title_y = row.center().y - if artists.is_empty() { 0. } else { 8. };
     let title_font = if current {
         style::bold(ui, 14.)

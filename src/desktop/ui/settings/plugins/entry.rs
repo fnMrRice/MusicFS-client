@@ -1,5 +1,5 @@
 use super::catalog::{localized, purpose, Instance, Online, Plugin};
-use crate::i18n::tr;
+use crate::{i18n::tr, ui::style};
 use eframe::egui;
 use std::collections::BTreeSet;
 
@@ -24,10 +24,7 @@ pub(super) fn show(
         ui.set_min_width(ui.available_width());
         ui.horizontal_wrapped(|ui| {
             let arrow = if *expanded { "▾" } else { "▸" };
-            if ui
-                .selectable_label(*expanded, format!("{arrow}  {}", plugin.name()))
-                .clicked()
-            {
+            if style::selectable(ui, *expanded, format!("{arrow}  {}", plugin.name())).clicked() {
                 *expanded = !*expanded;
             }
             if let Some(count) = plugin
@@ -46,7 +43,7 @@ pub(super) fn show(
             } else {
                 ui.weak(tr("版本：{0}").replace("{0}", &plugin.version));
             }
-            if plugin.settings_available && ui.button(tr("配置")).clicked() {
+            if plugin.settings_available && style::button(ui, tr("配置")).clicked() {
                 result = Some(Command::Configure);
             }
         });
@@ -131,7 +128,7 @@ pub(super) fn show(
                     }));
                 }
                 if plugin.plugin_id == "musicfs.plugin.source.localfiles"
-                    && ui.link(tr("管理音乐目录")).clicked()
+                    && style::link(ui, tr("管理音乐目录")).clicked()
                 {
                     result = Some(Command::Directory(instance.instance_id.clone()));
                 }
@@ -149,7 +146,7 @@ pub(super) fn show(
 
 fn switch(ui: &mut egui::Ui, configured: bool, label: &str) -> bool {
     let mut value = configured;
-    ui.checkbox(&mut value, label).changed()
+    style::checkbox(ui, &mut value, label).changed()
 }
 
 fn instance_name(plugin: &Plugin, instance: &Instance, online: Option<&Online>) -> String {

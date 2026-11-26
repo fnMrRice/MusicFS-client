@@ -1,3 +1,5 @@
+use crate::ui::style;
+use crate::ui::style::ComboBoxMotion;
 use crate::{i18n::tr, task::Task, ui::data::Services};
 use eframe::egui;
 use musicfs_server_adapter::Track;
@@ -72,7 +74,7 @@ impl Entries {
                         egui::Label::new(title).halign(egui::Align::Min).truncate(),
                     )
                     .on_hover_text(title);
-                    if ui.small_button(tr("移除")).clicked() {
+                    if style::small_button(ui, tr("移除")).clicked() {
                         removed = Some(index);
                     }
                 });
@@ -93,10 +95,11 @@ impl Entries {
                         .width(270.)
                         .truncate()
                         .selected_text(label)
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut pin, None, tr("跟随曲目默认来源"));
+                        .show_animated(ui, |ui| {
+                            style::selectable_value(ui, &mut pin, None, tr("跟随曲目默认来源"));
                             for version in group.choices() {
-                                ui.selectable_value(
+                                style::selectable_value(
+                                    ui,
                                     &mut pin,
                                     Some(version.source_track_id.clone()),
                                     &version.display_name,
@@ -126,7 +129,7 @@ impl Entries {
             ui.spinner();
         } else if let Some(error) = &self.error {
             ui.colored_label(ui.visuals().error_fg_color, error);
-            if ui.button(tr("重试")).clicked() {
+            if style::button(ui, tr("重试")).clicked() {
                 self.load(ui, svc, entries);
             }
         } else if self.tracks.len() < entries.len() && crate::ui::page_end_visible(ui) {

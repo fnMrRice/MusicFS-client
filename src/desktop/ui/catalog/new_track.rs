@@ -1,4 +1,4 @@
-use super::Services;
+use super::{style, Services};
 use crate::{i18n::tr, task::Task};
 use eframe::egui;
 use serde_json::json;
@@ -49,7 +49,7 @@ impl NewTrack {
                 }
             }
             ui.horizontal(|ui| {
-                save = super::style::primary(
+                save = style::primary(
                     ui,
                     tr(if self.key.is_some() {
                         "重试"
@@ -59,9 +59,7 @@ impl NewTrack {
                     !busy && !self.title.trim().is_empty(),
                 )
                 .clicked();
-                cancel = ui
-                    .add_enabled(!busy, egui::Button::new(tr("取消")))
-                    .clicked();
+                cancel = style::add_button(ui, !busy, egui::Button::new(tr("取消"))).clicked();
                 if busy {
                     ui.spinner();
                 }

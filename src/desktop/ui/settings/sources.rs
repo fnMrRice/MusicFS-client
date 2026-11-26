@@ -1,4 +1,4 @@
-use crate::i18n::tr;
+use crate::{i18n::tr, ui::style};
 mod accounts;
 mod album;
 mod anonymous;
@@ -49,7 +49,7 @@ impl Sources {
 
     pub(super) fn show(&mut self, ui: &mut egui::Ui, svc: Services<'_>) {
         let admin = svc.server.info.role == "admin";
-        let refresh = ui.button(tr("刷新音乐源")).clicked();
+        let refresh = style::button(ui, tr("刷新音乐源")).clicked();
         for (key, path, load) in [
             ("providers", "/provider-instances", &mut self.providers),
             ("online", "/online-instances", &mut self.online),

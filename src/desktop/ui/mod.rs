@@ -341,7 +341,8 @@ impl SignedUi {
                             },
                             msg,
                         );
-                        if msg.contains("HTTP 401") && ui.button(tr("重新登录")).clicked() {
+                        if msg.contains("HTTP 401") && style::button(ui, tr("重新登录")).clicked()
+                        {
                             action = Some(HostAction::Reauthenticate);
                         }
                     });

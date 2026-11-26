@@ -1,4 +1,4 @@
-use super::{Artwork, Category, Services, Task};
+use super::{style, Artwork, Category, Services, Task};
 use crate::{browse::resource::Resource, i18n::tr};
 use eframe::egui;
 
@@ -68,9 +68,12 @@ impl AlbumCover {
         if !path.starts_with("/api/v1/library/albums/") {
             return;
         }
-        if ui
-            .add_enabled(self.updating.is_none(), egui::Button::new(tr("更新封面")))
-            .clicked()
+        if style::add_button(
+            ui,
+            self.updating.is_none(),
+            egui::Button::new(tr("更新封面")),
+        )
+        .clicked()
         {
             let server = svc.server.clone();
             let album = id.to_owned();

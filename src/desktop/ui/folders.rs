@@ -1,4 +1,5 @@
 use super::{catalog::providers::Providers, data::Services};
+use crate::ui::style;
 use crate::{i18n::tr, task::Task};
 use eframe::egui;
 use musicfs_player_core::Track;
@@ -66,7 +67,7 @@ impl<T: Send + 'static> Pages<T> {
             false
         } else if let Some(e) = &self.error {
             ui.colored_label(ui.visuals().error_fg_color, e);
-            if ui.button(tr("重试")).clicked() {
+            if style::button(ui, tr("重试")).clicked() {
                 if self.cursor.is_none()
                     || e.contains("CURSOR")
                     || e.contains("EXPIRED")
@@ -99,12 +100,12 @@ impl Folders {
     pub(super) fn show(&mut self, ui: &mut egui::Ui, svc: Services<'_>, providers: &Providers) {
         let mut go = None;
         ui.horizontal_wrapped(|ui| {
-            if ui.link(tr("文件夹")).clicked() {
+            if style::link(ui, tr("文件夹")).clicked() {
                 go = Some(0);
             }
             for (i, folder) in self.path.iter().enumerate() {
                 ui.weak("/");
-                if ui.link(label(folder, providers)).clicked() {
+                if style::link(ui, label(folder, providers)).clicked() {
                     go = Some(i + 1);
                 }
             }
@@ -118,9 +119,9 @@ impl Folders {
         let toolbar_size = egui::vec2(ui.available_width(), ui.spacing().interact_size.y);
         let layout = egui::Layout::right_to_left(egui::Align::Center).with_main_wrap(true);
         ui.allocate_ui_with_layout(toolbar_size, layout, |ui| {
-            let refresh = ui.button(tr("刷新列表")).clicked();
-            let clear = !self.search.is_empty() && ui.button(tr("清空")).clicked();
-            let search = ui.button(tr("搜索")).clicked();
+            let refresh = style::button(ui, tr("刷新列表")).clicked();
+            let clear = !self.search.is_empty() && style::button(ui, tr("清空")).clicked();
+            let search = style::button(ui, tr("搜索")).clicked();
             let width = ui.available_size_before_wrap().x.clamp(80., 220.);
             let edit = ui.add(
                 egui::TextEdit::singleline(&mut self.draft)
@@ -165,14 +166,13 @@ impl Folders {
                 if let Some(total) = self.tracks.total {
                     ui.label(tr("{0} 首").replace("{0}", &total.to_string()));
                 }
-                if ui
-                    .add_enabled(
-                        self.all.is_none()
-                            && (self.tracks.rows.iter().any(playable)
-                                || self.tracks.cursor.is_some()),
-                        egui::Button::new(tr("播放全部")),
-                    )
-                    .clicked()
+                if style::add_button(
+                    ui,
+                    self.all.is_none()
+                        && (self.tracks.rows.iter().any(playable) || self.tracks.cursor.is_some()),
+                    egui::Button::new(tr("播放全部")),
+                )
+                .clicked()
                 {
                     self.play_all(ui, svc);
                 }
@@ -191,7 +191,7 @@ impl Folders {
                     let count = tr("{0} 首").replace("{0}", &f.track_count.to_string());
                     ui.push_id(&f.category_id, |ui| {
                         ui.horizontal_wrapped(|ui| {
-                            if ui.button(title).clicked() {
+                            if style::button(ui, title).clicked() {
                                 open = Some(f.clone());
                             }
                             ui.weak(count);
@@ -252,8 +252,7 @@ impl Folders {
                 .unwrap_or(&t.display_name);
             ui.push_id(&t.source_track_id, |ui| {
                 ui.horizontal_wrapped(|ui| {
-                    if ui
-                        .add_enabled(playable(t), egui::Button::new(title).frame(false))
+                    if style::add_button(ui, playable(t), egui::Button::new(title).frame(false))
                         .clicked()
                     {
                         play = Some(i);
@@ -266,7 +265,7 @@ impl Folders {
                         if let Some(ms) = t.duration_ms {
                             ui.weak(format!("{}:{:02}", ms / 60_000, ms / 1000 % 60));
                         }
-                        if ui.small_button(tr("加入队列")).clicked() {
+                        if style::small_button(ui, tr("加入队列")).clicked() {
                             self.message = svc.player.enqueue(queue(t)).err();
                         }
                     } else {

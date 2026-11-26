@@ -1,5 +1,6 @@
 use super::{decision::Decision, evidence::Evidence, Services};
 use crate::i18n::tr;
+use crate::ui::style;
 use eframe::egui;
 
 pub(super) fn review(
@@ -47,8 +48,7 @@ pub(super) fn review(
     for source in items {
         source.show(ui, svc, playback_error, lookup);
     }
-    ui.add_enabled(valid && enabled, egui::Button::new(tr(button)))
-        .clicked()
+    style::add_button(ui, valid && enabled, egui::Button::new(tr(button))).clicked()
 }
 
 pub(super) fn bulk(
@@ -70,7 +70,7 @@ pub(super) fn bulk(
         }
     } else {
         ui.add_enabled_ui(enabled, |ui| {
-            ui.radio_value(by_score, true, tr("按分数合并"));
+            style::radio_value(ui, by_score, true, tr("按分数合并"));
             if *by_score {
                 ui.horizontal_wrapped(|ui| {
                     let label = ui.label(tr("最低分数（0–100）"));
@@ -78,7 +78,7 @@ pub(super) fn bulk(
                         .labelled_by(label.id);
                 });
             }
-            ui.radio_value(by_score, false, tr("合并重名重作者"));
+            style::radio_value(ui, by_score, false, tr("合并重名重作者"));
         });
     }
     ui.weak(tr(if *by_score {
@@ -102,10 +102,7 @@ pub(super) fn bulk(
     } else {
         "预览合并规则"
     });
-    if ui
-        .add_enabled(enabled && valid, egui::Button::new(label))
-        .clicked()
-    {
+    if style::add_button(ui, enabled && valid, egui::Button::new(label)).clicked() {
         if *preview {
             return Some(Decision::Bulk {
                 score: if *by_score { score } else { None },
@@ -114,15 +111,13 @@ pub(super) fn bulk(
         *preview = true;
     }
     if was_preview
-        && ui
-            .add_enabled(enabled && valid, egui::Button::new(tr("加入任务队列")))
-            .clicked()
+        && style::add_button(ui, enabled && valid, egui::Button::new(tr("加入任务队列"))).clicked()
     {
         return Some(Decision::QueueBulk {
             score: if *by_score { score } else { None },
         });
     }
-    if *preview && enabled && ui.button(tr("更改规则")).clicked() {
+    if *preview && enabled && style::button(ui, tr("更改规则")).clicked() {
         *preview = false;
     }
     None

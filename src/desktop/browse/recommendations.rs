@@ -3,7 +3,7 @@ use super::playlist_detail::Detail;
 use super::{resource::Resource, QueueSelection};
 use crate::{
     i18n::tr,
-    ui::{Artwork, Services},
+    ui::{style, Artwork, Services},
 };
 pub(crate) use cards::playlist_cards;
 use eframe::egui;
@@ -30,7 +30,7 @@ impl Recommendations {
         scroll
             .show(ui, |ui| {
                 if let Some(detail) = &mut self.selected {
-                    if ui.button(tr("‹  返回推荐")).clicked() {
+                    if style::button(ui, tr("‹  返回推荐")).clicked() {
                         self.selected = None;
                         ui.ctx().request_repaint();
                         return None;
@@ -57,26 +57,23 @@ impl Recommendations {
                         .replace("{0}", &self.offset.to_string())
                         .replace("{1}", &depth.to_string()),
                 );
-                if ui
-                    .add_enabled(!self.feed.busy(), egui::Button::new(tr("返回最新推荐")))
+                if style::add_button(ui, !self.feed.busy(), egui::Button::new(tr("返回最新推荐")))
                     .clicked()
                 {
                     request = Some((0, false));
                 }
             }
             if depth > 0
-                && ui
-                    .add_enabled(
-                        !self.feed.busy() && self.offset < depth,
-                        egui::Button::new(tr("上一期")),
-                    )
-                    .clicked()
+                && style::add_button(
+                    ui,
+                    !self.feed.busy() && self.offset < depth,
+                    egui::Button::new(tr("上一期")),
+                )
+                .clicked()
             {
                 request = Some((self.offset + 1, false));
             }
-            if ui
-                .add_enabled(!self.feed.busy(), egui::Button::new(tr("刷新推荐")))
-                .clicked()
+            if style::add_button(ui, !self.feed.busy(), egui::Button::new(tr("刷新推荐"))).clicked()
             {
                 request = Some((0, true));
             }

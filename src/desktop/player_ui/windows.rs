@@ -25,6 +25,10 @@ impl Windows {
         self.mini.load(Ordering::Relaxed)
     }
 
+    pub(super) fn lyrics_open(&self) -> bool {
+        self.words.load(Ordering::Relaxed)
+    }
+
     pub fn open_mini(&self, ctx: &Context) {
         open(ctx, &self.mini, "musicfs-mini");
     }
@@ -33,7 +37,7 @@ impl Windows {
     }
 
     pub fn show(&self, ctx: &Context, player: &Player, server: &ServerSession, runtime: &Handle) {
-        if self.mini.load(Ordering::Relaxed) {
+        if self.mini_open() {
             let visible = self.mini.clone();
             let player = player.clone();
             ctx.show_viewport_deferred(
@@ -53,7 +57,7 @@ impl Windows {
                 },
             );
         }
-        if self.words.load(Ordering::Relaxed) {
+        if self.lyrics_open() {
             let visible = self.words.clone();
             let player = player.clone();
             let lyrics = self.lyrics.clone();
@@ -132,8 +136,7 @@ fn compact_header<T>(
 
 fn mini_header(ui: &mut egui::Ui, now: &Presentation, visible: &AtomicBool) {
     compact_header(ui, now, |ui| {
-        if ui
-            .button(tr("主窗口"))
+        if style::button(ui, tr("主窗口"))
             .on_hover_text(tr("返回主窗口"))
             .clicked()
         {
@@ -155,7 +158,8 @@ fn lyrics_header(ui: &mut egui::Ui, now: &Presentation, searching: bool, saving:
         } else {
             "查找歌词"
         };
-        ui.add_enabled(
+        style::add_button(
+            ui,
             now.source_id.is_some() && !saving,
             egui::Button::new(tr(label)),
         )
@@ -324,7 +328,7 @@ impl LyricsState {
             }
             Some(Err(error)) => {
                 ui.colored_label(ui.visuals().error_fg_color, error);
-                if ui.button(tr("重试读取歌词")).clicked() {
+                if style::button(ui, tr("重试读取歌词")).clicked() {
                     *self = Self::default();
                 }
             }

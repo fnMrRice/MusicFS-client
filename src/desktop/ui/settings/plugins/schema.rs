@@ -1,5 +1,8 @@
 use super::catalog::{localized, Translations};
-use crate::{i18n::tr, ui::style};
+use crate::{
+    i18n::tr,
+    ui::style::{self, ComboBoxMotion},
+};
 use eframe::egui;
 use serde::Deserialize;
 use serde_json::{Number, Value};
@@ -133,7 +136,7 @@ impl Field {
         if self.kind == "checkbox" {
             style::checkbox_style(ui);
             let mut checked = value == "true";
-            if ui.checkbox(&mut checked, label).changed() {
+            if style::checkbox(ui, &mut checked, label).changed() {
                 *value = checked.to_string();
             }
         } else {
@@ -172,10 +175,10 @@ impl Field {
                             egui::RichText::new(selected).text_style(egui::TextStyle::Body),
                         )
                         .truncate()
-                        .show_ui(ui, |ui| {
+                        .show_animated(ui, |ui| {
                             ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
                             for o in &self.options {
-                                ui.selectable_value(value, o.value.clone(), o.text.label());
+                                style::selectable_value(ui, value, o.value.clone(), o.text.label());
                             }
                         })
                         .response

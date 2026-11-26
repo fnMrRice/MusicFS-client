@@ -123,7 +123,7 @@ impl PlayerUi {
                     ui.horizontal(|ui| {
                         ui.colored_label(ui.visuals().error_fg_color, error);
                         if self.snapshot.status == Status::Error
-                            && ui.small_button(tr("重新播放")).clicked()
+                            && style::small_button(ui, tr("重新播放")).clicked()
                         {
                             self.run(player, PlayerCommand::Play);
                         }

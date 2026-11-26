@@ -1,12 +1,12 @@
 use super::action_row;
-use crate::i18n::tr;
+use crate::{i18n::tr, ui::style};
 use eframe::egui;
 
 #[test]
 fn source_action_columns_align_at_wide_and_narrow_widths() {
     let ctx = egui::Context::default();
     crate::fonts::install(&ctx);
-    crate::ui::style::apply(&ctx, "dark", "default");
+    style::apply(&ctx, "dark", "default");
     let long_name = "An unusually long source name ".repeat(16);
     let directories = [
         ("Download", "886 首 · 17.7 GiB"),
@@ -40,7 +40,7 @@ fn source_action_columns_align_at_wide_and_narrow_widths() {
                                 },
                                 |ui| {
                                     for action in actions {
-                                        buttons.push(ui.button(tr(action)).rect);
+                                        buttons.push(style::button(ui, tr(action)).rect);
                                     }
                                 },
                             );

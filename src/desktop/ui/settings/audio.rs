@@ -4,7 +4,7 @@ use super::{HostAction, Services};
 use crate::{
     i18n::tr,
     model::{audio::AudioAction, Preferences},
-    ui::style,
+    ui::style::{self, ComboBoxMotion},
 };
 use eframe::egui::{self, Ui};
 use musicfs_player_core::{
@@ -54,7 +54,7 @@ impl AudioSettingsUi {
         ui.separator();
         let mut fades = prefs.fades;
         ui.horizontal_wrapped(|ui| {
-            ui.checkbox(&mut fades.enabled, tr("淡出淡入"));
+            style::checkbox(ui, &mut fades.enabled, tr("淡出淡入"));
             ui.add_enabled_ui(fades.enabled, |ui| {
                 for (label, ms) in [
                     (tr("切歌"), &mut fades.track_ms),
@@ -77,7 +77,7 @@ impl AudioSettingsUi {
         }
         ui.separator();
         let mut level = audio.processing.auto_volume;
-        if ui.checkbox(&mut level, tr("自动音量平衡")).changed() {
+        if style::checkbox(ui, &mut level, tr("自动音量平衡")).changed() {
             *action = Some(HostAction::Audio(AudioAction::Level(level)));
         }
     }
@@ -94,17 +94,17 @@ impl AudioSettingsUi {
         let dsp = self.dsp.get_or_insert_with(|| saved.dsp.clone());
         let kind = self.kind.get_or_insert(EffectKind::Gain);
         ui.heading(tr("本地音效"));
-        let mut changed = ui.checkbox(&mut dsp.enabled, tr("启用本地音效")).changed();
+        let mut changed = style::checkbox(ui, &mut dsp.enabled, tr("启用本地音效")).changed();
         if !dsp.enabled {
             ui.weak(tr("本地音效已旁路，保留当前效果和参数。"));
         }
         egui::ComboBox::from_label(tr("DSP 缓冲区大小"))
             .selected_text(frames(dsp.buffer_frames))
-            .show_ui(ui, |ui| {
+            .show_animated(ui, |ui| {
                 for size in DSP_BUFFER_FRAMES {
-                    changed |= ui
-                        .selectable_value(&mut dsp.buffer_frames, size, frames(size))
-                        .changed();
+                    changed |=
+                        style::selectable_value(ui, &mut dsp.buffer_frames, size, frames(size))
+                            .changed();
                 }
             });
         changed |= effects::edit(ui, dsp, kind);
@@ -113,18 +113,12 @@ impl AudioSettingsUi {
         }
         ui.horizontal_wrapped(|ui| {
             let dirty = *dsp != saved.dsp;
-            if ui
-                .add_enabled(dirty, egui::Button::new(tr("撤销更改")))
-                .clicked()
-            {
+            if style::add_button(ui, dirty, egui::Button::new(tr("撤销更改"))).clicked() {
                 *dsp = saved.dsp.clone();
                 changed = true;
                 self.saved_dsp = false;
             }
-            if ui
-                .add_enabled(dirty, egui::Button::new(tr("保存")))
-                .clicked()
-            {
+            if style::add_button(ui, dirty, egui::Button::new(tr("保存"))).clicked() {
                 *action = Some(HostAction::Audio(AudioAction::SaveDsp(dsp.clone())));
                 self.saved_dsp = true;
             }
@@ -148,7 +142,7 @@ impl AudioSettingsUi {
         let max = self.status.max_channels.or(selected_max);
         egui::ComboBox::from_label(tr("输出声道"))
             .selected_text(tr(routing.layout.name()))
-            .show_ui(ui, |ui| {
+            .show_animated(ui, |ui| {
                 for layout in [
                     Layout::Source,
                     Layout::Mono,
@@ -159,11 +153,11 @@ impl AudioSettingsUi {
                     let enabled =
                         layout == Layout::Source || max.is_some_and(|n| layout.channels(n) <= n);
                     ui.add_enabled_ui(enabled, |ui| {
-                        ui.selectable_value(&mut routing.layout, layout, tr(layout.name()))
+                        style::selectable_value(ui, &mut routing.layout, layout, tr(layout.name()))
                     });
                 }
             });
-        ui.checkbox(&mut routing.expand_stereo, tr("立体声环绕扩展"));
+        style::checkbox(ui, &mut routing.expand_stereo, tr("立体声环绕扩展"));
         ui.weak(tr(
             "输出为 5.1 或 7.1 时，将双声道音乐扩展为模拟环绕；关闭时仅保留原有声道。",
         ));
@@ -177,17 +171,11 @@ impl AudioSettingsUi {
         }
         ui.horizontal_wrapped(|ui| {
             let dirty = *routing != saved.routing;
-            if ui
-                .add_enabled(dirty, egui::Button::new(tr("撤销更改")))
-                .clicked()
-            {
+            if style::add_button(ui, dirty, egui::Button::new(tr("撤销更改"))).clicked() {
                 *routing = saved.routing;
                 self.saved_routing = false;
             }
-            if ui
-                .add_enabled(dirty, egui::Button::new(tr("保存")))
-                .clicked()
-            {
+            if style::add_button(ui, dirty, egui::Button::new(tr("保存"))).clicked() {
                 *action = Some(HostAction::Audio(AudioAction::SaveRouting(*routing)));
                 self.saved_routing = true;
             }

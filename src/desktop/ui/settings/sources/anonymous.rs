@@ -2,7 +2,7 @@ use super::{
     api::{get, path_id, text, Load},
     Services,
 };
-use crate::i18n::tr;
+use crate::{i18n::tr, ui::style};
 use eframe::egui;
 use musicfs_player_core::Track;
 use musicfs_server_adapter::TrackInfo;
@@ -31,7 +31,7 @@ pub(super) struct Search {
 }
 impl Search {
     pub fn show(&mut self, ui: &mut egui::Ui, svc: Services<'_>, instance: &Value) {
-        if ui.link(tr("打开链接或编号")).clicked() {
+        if style::link(ui, tr("打开链接或编号")).clicked() {
             self.open = !self.open;
         }
         if self.resolved.poll() {
@@ -83,7 +83,8 @@ impl Search {
                     .hint_text(tr("链接或编号")),
             );
             let enter = edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-            if !self.draft.trim().is_empty() && (ui.button(tr("搜索")).clicked() || enter) {
+            if !self.draft.trim().is_empty() && (style::button(ui, tr("搜索")).clicked() || enter)
+            {
                 self.query = self.draft.trim().into();
                 self.results.clear();
                 self.seen.clear();
@@ -138,10 +139,10 @@ impl Search {
                     }
                     if supported("stream.resolve") {
                         ui.add_enabled_ui(!self.resolved.busy(), |ui| {
-                            if ui.button(tr("播放")).clicked() {
+                            if style::button(ui, tr("播放")).clicked() {
                                 action = Some((hit.clone(), true));
                             }
-                            if ui.button(tr("加入队列")).clicked() {
+                            if style::button(ui, tr("加入队列")).clicked() {
                                 action = Some((hit.clone(), false));
                             }
                         });

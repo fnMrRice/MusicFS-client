@@ -1,4 +1,4 @@
-use crate::{i18n::tr, task::Task};
+use crate::{i18n::tr, task::Task, ui::style};
 use eframe::egui;
 use musicfs_player_core::Presentation;
 use musicfs_server_adapter::{lyrics::LyricsMatches, ServerSession};
@@ -85,9 +85,12 @@ impl LyricsSearch {
             for (index, item) in matches.items().iter().enumerate() {
                 ui.push_id(index, |ui| {
                     ui.horizontal(|ui| {
-                        if ui
-                            .add_enabled(!self.saving(), egui::Button::new(tr("使用这份歌词")))
-                            .clicked()
+                        if style::add_button(
+                            ui,
+                            !self.saving(),
+                            egui::Button::new(tr("使用这份歌词")),
+                        )
+                        .clicked()
                         {
                             selected = Some(index);
                         }

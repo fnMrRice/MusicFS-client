@@ -1,3 +1,5 @@
+use crate::ui::style;
+use crate::ui::style::ComboBoxMotion;
 mod metadata;
 #[cfg(test)]
 #[path = "../../../tests/native/album_merge.rs"]
@@ -50,12 +52,12 @@ impl AlbumMerge {
         checked: &[Track],
     ) -> bool {
         let count = checked.len();
-        if ui
-            .add_enabled(
-                (2..=64).contains(&count) && !album_id.is_empty() && self.dialog.is_none(),
-                egui::Button::new(tr("合并歌曲")),
-            )
-            .clicked()
+        if style::add_button(
+            ui,
+            (2..=64).contains(&count) && !album_id.is_empty() && self.dialog.is_none(),
+            egui::Button::new(tr("合并歌曲")),
+        )
+        .clicked()
         {
             let ids = checked.iter().map(|t| t.id.clone()).collect::<Vec<_>>();
             let mut dialog = Dialog {
@@ -143,7 +145,10 @@ impl Dialog {
                 if let Some(err) = &self.error {
                     ui.colored_label(ui.visuals().error_fg_color, err);
                 }
-                if self.data.is_none() && self.read.is_none() && ui.button(tr("重试")).clicked() {
+                if self.data.is_none()
+                    && self.read.is_none()
+                    && style::button(ui, tr("重试")).clicked()
+                {
                     self.read(ui, svc);
                 }
                 let locked = self.conflict || self.save.is_some() || self.retry.is_some();
@@ -158,7 +163,8 @@ impl Dialog {
                             } else {
                                 tr("{0} 个来源版本").replace("{0}", &count.to_string())
                             };
-                            ui.radio_value(
+                            style::radio_value(
+                                ui,
                                 &mut self.target,
                                 i,
                                 format!("{} · {}", item.title, versions),
@@ -182,19 +188,19 @@ impl Dialog {
                         }
                     });
                     if self.conflict {
-                        if ui.button(tr("刷新列表并重新选择")).clicked() {
+                        if style::button(ui, tr("刷新列表并重新选择")).clicked() {
                             response = Some(true);
                         }
-                    } else if ui
-                        .add_enabled(
-                            self.save.is_none() && (self.retry.is_some() || wire.is_some()),
-                            egui::Button::new(tr(if self.retry.is_some() {
-                                "重试确认保存"
-                            } else {
-                                "确认合并"
-                            })),
-                        )
-                        .clicked()
+                    } else if style::add_button(
+                        ui,
+                        self.save.is_none() && (self.retry.is_some() || wire.is_some()),
+                        egui::Button::new(tr(if self.retry.is_some() {
+                            "重试确认保存"
+                        } else {
+                            "确认合并"
+                        })),
+                    )
+                    .clicked()
                     {
                         let (body, key) = self.retry.clone().unwrap_or_else(|| {
                             (
@@ -210,8 +216,7 @@ impl Dialog {
                         }));
                     }
                 }
-                if ui
-                    .add_enabled(self.save.is_none(), egui::Button::new(tr("取消")))
+                if style::add_button(ui, self.save.is_none(), egui::Button::new(tr("取消")))
                     .clicked()
                 {
                     response = Some(false);
@@ -242,12 +247,13 @@ fn edit_fields(
                         Choice::Custom => tr("自定义"),
                         Choice::Track(n) => &items[n].title,
                     })
-                    .show_ui(ui, |ui| {
-                        ui.selectable_value(choice, Choice::Auto, tr("自动合并"));
+                    .show_animated(ui, |ui| {
+                        style::selectable_value(ui, choice, Choice::Auto, tr("自动合并"));
                         for (n, original) in drafts.iter().enumerate() {
                             let v = original.preview(field);
                             let display = if v.is_empty() { tr("未填写") } else { &v };
-                            ui.selectable_value(
+                            style::selectable_value(
+                                ui,
                                 choice,
                                 Choice::Track(n),
                                 format!("{}. {} · {}", n + 1, items[n].title, display),

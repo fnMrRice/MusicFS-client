@@ -128,7 +128,7 @@ impl Favorites {
                 ui.visuals().error_fg_color,
                 tr("收藏状态加载失败 · {0}").replace("{0}", error),
             );
-            if ui.button(tr("重试加载收藏状态")).clicked() {
+            if style::button(ui, tr("重试加载收藏状态")).clicked() {
                 self.error = None;
             }
         } else if self.pending.is_some() {

@@ -1,4 +1,5 @@
 use super::entries::Entries;
+use crate::ui::style::ComboBoxMotion;
 use crate::{
     i18n::tr,
     icons,
@@ -120,7 +121,7 @@ impl Rules {
                             ui.with_layout(
                                 egui::Layout::right_to_left(egui::Align::Center),
                                 |ui| {
-                                    if ui.small_button(tr("移除")).clicked() {
+                                    if style::small_button(ui, tr("移除")).clicked() {
                                         change = Some(Change::Remove(index));
                                     }
                                     ui.add_enabled_ui(index + 1 < count, |ui| {
@@ -170,7 +171,7 @@ impl Rules {
             }
             None => {}
         }
-        if ui.button(tr("添加歌单来源")).clicked() {
+        if style::button(ui, tr("添加歌单来源")).clicked() {
             self.picker = !self.picker;
         }
         if self.picker {
@@ -204,15 +205,14 @@ fn choice_menu(
     egui::ComboBox::from_id_salt(("playlist-target", kind))
         .width(195.)
         .selected_text(label)
-        .show_ui(ui, |ui| {
+        .show_animated(ui, |ui| {
             let mut empty = true;
             for (id, name) in &choices.items {
                 if Some(id.as_str()) == exclude {
                     continue;
                 }
                 empty = false;
-                if ui
-                    .add_enabled(true, egui::Button::new(name).frame(false).truncate())
+                if style::add_button(ui, true, egui::Button::new(name).frame(false).truncate())
                     .on_hover_text(name)
                     .clicked()
                 {
@@ -222,7 +222,7 @@ fn choice_menu(
             }
             if let Some(error) = &choices.error {
                 ui.colored_label(ui.visuals().error_fg_color, error);
-                if ui.button(tr("重试")).clicked() {
+                if style::button(ui, tr("重试")).clicked() {
                     *choices = Choices::default();
                 }
             } else if choices.busy() || !choices.started {

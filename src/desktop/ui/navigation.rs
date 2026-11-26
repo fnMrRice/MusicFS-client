@@ -50,40 +50,30 @@ pub(super) fn entry(
         Vec2::new(ui.available_width(), if nested { 39. } else { 46. }),
         egui::Sense::click(),
     );
-    response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, title));
-    let parent = matches!(symbol, "▸" | "▾");
-    let within = nested || parent;
-    let color = if active {
-        if within {
-            style::accent(ui)
-        } else {
-            style::on_accent(ui)
-        }
-    } else {
-        ui.visuals().text_color()
-    };
+    response
+        .widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::Button, true, active, title));
+    let dark = ui.visuals().dark_mode;
+    let motion = style::interaction(ui, &response);
+    let selected = ui
+        .ctx()
+        .animate_bool_with_time(response.id.with("selected"), active, 0.14);
+    let accent = style::accent_fill(ui);
+    let base = style::sidebar(dark);
+    let color = style::text(dark).lerp_to_gamma(style::highlight(dark), selected);
+    let fill = motion.color(
+        base.lerp_to_gamma(accent, 0.17 * selected),
+        style::hovered(dark).lerp_to_gamma(accent, 0.20 * selected),
+        base.lerp_to_gamma(accent, 0.25),
+    );
     let p = ui.painter_at(rect);
-    if active || response.hovered() || response.has_focus() {
-        p.rect_filled(
-            rect,
-            7.,
-            if active {
-                if within {
-                    style::accent_soft(ui)
-                } else {
-                    style::accent_fill(ui)
-                }
-            } else {
-                ui.visuals().widgets.hovered.weak_bg_fill
-            },
-        );
-    }
-    if active && !parent {
+    p.rect_filled(rect, 7., fill);
+    let parent = matches!(symbol, "▸" | "▾");
+    if !parent && selected > 0. {
         let marker = egui::Rect::from_center_size(
             egui::pos2(rect.left() + 2., rect.center().y),
-            egui::vec2(3., 18.),
+            egui::vec2(3., 18. * selected),
         );
-        p.rect_filled(marker, 2., style::accent_fill(ui));
+        p.rect_filled(marker, 2., accent.gamma_multiply(selected));
     }
     let center = egui::pos2(rect.left() + 25., rect.center().y);
     let icon = match symbol {
@@ -159,6 +149,7 @@ impl SignedUi {
                 );
                 let top = ui.cursor().top();
                 ui.add_space(26.);
+                let brand_fill = ui.painter().add(egui::Shape::Noop);
                 let brand = ui.horizontal(|ui| {
                     ui.add_space(12.);
                     style::note(ui);
@@ -171,6 +162,19 @@ impl SignedUi {
                 link.widget_info(|| {
                     egui::WidgetInfo::labeled(egui::WidgetType::Button, true, "MusicFS")
                 });
+                let motion = style::interaction(ui, &link);
+                ui.painter().set(
+                    brand_fill,
+                    egui::Shape::rect_filled(
+                        link.rect.expand2(egui::vec2(0., 4.)),
+                        7.,
+                        motion.color(
+                            style::sidebar(dark),
+                            style::hovered(dark),
+                            style::accent_soft(ui),
+                        ),
+                    ),
+                );
                 if link.clicked() {
                     self.navigate(Screen::Library);
                 }
@@ -217,7 +221,9 @@ impl SignedUi {
                                     }
                                 }
                                 if let Some(error) = self.browse.types_error() {
-                                    if ui.button(tr("重试读取类型")).on_hover_text(error).clicked()
+                                    if style::button(ui, tr("重试读取类型"))
+                                        .on_hover_text(error)
+                                        .clicked()
                                     {
                                         self.browse.retry_types();
                                     }
@@ -265,8 +271,7 @@ impl SignedUi {
                                     }
                                 }
                                 if let Some(error) = &self.lists.error {
-                                    more = ui
-                                        .button(tr("重试读取歌单"))
+                                    more = style::button(ui, tr("重试读取歌单"))
                                         .on_hover_text(error)
                                         .clicked();
                                 } else if self.lists.can_load_more() {
@@ -319,7 +324,18 @@ fn group_button(ui: &mut egui::Ui, label: &str, collapsed: bool) -> bool {
     let (r, response) =
         ui.allocate_exact_size(Vec2::new(ui.available_width(), 29.), egui::Sense::click());
     response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, label));
-    let ink = style::muted(ui.visuals().dark_mode);
+    let dark = ui.visuals().dark_mode;
+    let motion = style::interaction(ui, &response);
+    ui.painter().rect_filled(
+        r,
+        6.,
+        motion.color(
+            style::sidebar(dark),
+            style::hovered(dark),
+            style::accent_soft(ui),
+        ),
+    );
+    let ink = motion.color(style::muted(dark), style::text(dark), style::accent(ui));
     let center = egui::pos2(r.left() + 12., r.center().y);
     let points = if collapsed {
         [(-2., -4.), (2., 0.), (-2., 4.)]

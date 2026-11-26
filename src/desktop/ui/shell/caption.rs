@@ -35,21 +35,26 @@ impl Control {
             Self::Close => "关闭窗口",
         });
         response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, label));
-        let active = response.hovered()
-            || response.has_focus()
-            || (matches!(self, Self::Maximize | Self::Restore)
-                && system::maximize_hovered(ui.ctx()));
+        let native_hover =
+            matches!(self, Self::Maximize | Self::Restore) && system::maximize_hovered(ui.ctx());
+        let motion = style::interaction_with_hover(ui, &response, native_hover);
         let dark = ui.visuals().dark_mode;
-        let mut ink = style::text(dark);
-        if active {
-            let fill = if self == Self::Close {
-                ink = Color32::WHITE;
-                Color32::from_rgb(196, 43, 52)
-            } else {
-                style::hovered(dark)
-            };
-            ui.painter().rect_filled(rect, 0., fill);
-        }
+        let (hover, pressed, ink) = if self == Self::Close {
+            let light = style::text(true);
+            (
+                Color32::from_rgb(196, 43, 52),
+                Color32::from_rgb(165, 34, 43),
+                motion.color(style::text(dark), light, light),
+            )
+        } else {
+            (
+                style::hovered(dark),
+                style::accent_soft(ui),
+                style::text(dark),
+            )
+        };
+        ui.painter()
+            .rect_filled(rect, 0., motion.color(Color32::TRANSPARENT, hover, pressed));
         let p = ui.painter();
         let c = rect.center();
         let stroke = Stroke::new(1.2_f32, ink);

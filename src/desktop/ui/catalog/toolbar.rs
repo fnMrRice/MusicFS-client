@@ -42,11 +42,10 @@ impl Catalog {
                         let text = RichText::new(tab.label()).size(16.);
                         let text = if active {
                             text.font(style::bold(ui, 16.))
-                                .color(ui.visuals().strong_text_color())
                         } else {
-                            text.color(style::muted(ui.visuals().dark_mode))
+                            text
                         };
-                        let r = ui.selectable_label(active, text);
+                        let r = style::selectable(ui, active, text);
                         if r.clicked() && !active {
                             selected = Some(tab);
                         }
@@ -144,8 +143,8 @@ impl Catalog {
     }
 
     fn all_track_actions(&mut self, ui: &mut egui::Ui, svc: Services<'_>) {
-        ui.menu_button(tr("更多"), |ui| {
-            if ui.button(tr("新建曲目")).clicked() {
+        style::menu_button(ui, tr("更多"), |ui| {
+            if style::button(ui, tr("新建曲目")).clicked() {
                 self.creation = Some(Default::default());
                 ui.close_menu();
             }
@@ -206,12 +205,12 @@ impl Catalog {
                 }
             } else {
                 ui.strong(tr("已选择 {0} 项").replace("{0}", &checked.len().to_string()));
-                if ui
-                    .add_enabled(
-                        checked.iter().any(|t| t.playable_source_id().is_some()),
-                        egui::Button::new(tr("加入队列")),
-                    )
-                    .clicked()
+                if style::add_button(
+                    ui,
+                    checked.iter().any(|t| t.playable_source_id().is_some()),
+                    egui::Button::new(tr("加入队列")),
+                )
+                .clicked()
                 {
                     match super::queue::enqueue(
                         svc,
@@ -221,21 +220,21 @@ impl Catalog {
                         Err(error) => actions.notice = Some((error, true)),
                     }
                 }
-                if ui
-                    .add_enabled(
-                        !actions.busy() && checked.iter().all(|t| !t.unresolved),
-                        egui::Button::new(tr("添加到歌单")),
-                    )
-                    .clicked()
+                if style::add_button(
+                    ui,
+                    !actions.busy() && checked.iter().all(|t| !t.unresolved),
+                    egui::Button::new(tr("添加到歌单")),
+                )
+                .clicked()
                 {
                     actions.open_many(checked, lists);
                 }
-                if ui
-                    .add_enabled(
-                        actions.can_favorite_many(checked),
-                        egui::Button::new(tr("收藏")),
-                    )
-                    .clicked()
+                if style::add_button(
+                    ui,
+                    actions.can_favorite_many(checked),
+                    egui::Button::new(tr("收藏")),
+                )
+                .clicked()
                 {
                     actions.favorite_many(ui, svc, checked);
                 }
@@ -243,13 +242,13 @@ impl Catalog {
                     refresh |= self.album_merge.show(ui, svc, id, checked);
                 }
                 if all && self.matching.selected_tracks().len() == 2 {
-                    ui.menu_button(tr("曲目关联"), |ui| {
+                    style::menu_button(ui, tr("曲目关联"), |ui| {
                         self.matching.selection_buttons(ui, true)
                     });
                 } else if matching {
                     self.matching.selection_buttons(ui, album.is_none());
                 }
-                if ui.button(tr("清空选择")).clicked() {
+                if style::button(ui, tr("清空选择")).clicked() {
                     self.matching.clear_selection();
                 }
             }
@@ -263,7 +262,7 @@ impl Catalog {
             }
             if search {
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    ui.menu_button(tr("更多操作"), |ui| self.matching.buttons(ui, svc));
+                    style::menu_button(ui, tr("更多操作"), |ui| self.matching.buttons(ui, svc));
                 });
                 return;
             }

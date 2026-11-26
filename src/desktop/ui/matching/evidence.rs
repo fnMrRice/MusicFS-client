@@ -1,5 +1,6 @@
 use super::Services;
 use crate::i18n::tr;
+use crate::ui::style;
 use eframe::egui;
 use musicfs_player_core::Track as QueueTrack;
 use musicfs_server_adapter::{SourceVersion, Track};
@@ -73,12 +74,12 @@ impl Evidence {
             if self.display_name != title {
                 ui.small(&self.display_name);
             }
-            if ui
-                .add_enabled(
-                    self.availability == "available",
-                    egui::Button::new(tr("试听")),
-                )
-                .clicked()
+            if style::add_button(
+                ui,
+                self.availability == "available",
+                egui::Button::new(tr("试听")),
+            )
+            .clicked()
             {
                 let track = QueueTrack {
                     id: self.source_track_id.clone(),

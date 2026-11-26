@@ -33,9 +33,7 @@ impl Catalog {
                     .iter()
                     .any(|t| t.playable_source_id().is_some()));
         let play = style::primary(ui, tr("播放全部"), ready).clicked();
-        let append = ui
-            .add_enabled(ready, egui::Button::new(tr("加入队列")))
-            .clicked();
+        let append = style::add_button(ui, ready, egui::Button::new(tr("加入队列"))).clicked();
         if !play && !append {
             return;
         }

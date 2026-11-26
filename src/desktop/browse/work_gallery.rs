@@ -50,7 +50,7 @@ pub(super) fn message(
                 }
                 let clicked = action.is_some_and(|label| {
                     ui.add_space(4.);
-                    ui.button(label).clicked()
+                    style::button(ui, label).clicked()
                 });
                 ui.add_space(16.);
                 clicked
@@ -80,11 +80,11 @@ pub(super) fn cards(ui: &mut egui::Ui, items: &[Work], kind: &WorkType) -> Optio
         if !ui.is_rect_visible(rect) {
             return;
         }
-        let fill = if response.hovered() || response.has_focus() {
-            style::hovered(dark)
-        } else {
-            style::surface(dark)
-        };
+        let fill = style::interaction(ui, &response).color(
+            style::surface(dark),
+            style::hovered(dark),
+            style::accent_soft(ui),
+        );
         let border = if response.has_focus() {
             style::accent(ui)
         } else {

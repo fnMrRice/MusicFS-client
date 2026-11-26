@@ -1,3 +1,4 @@
+use crate::ui::style::ComboBoxMotion;
 use crate::{
     browse::resource::Resource,
     i18n::tr,
@@ -136,7 +137,7 @@ impl Operations {
         let retry = if let Some(error) = &watch.job.error {
             ui.horizontal(|ui| {
                 ui.colored_label(ui.visuals().error_fg_color, error);
-                ui.button(tr("重试")).clicked()
+                style::button(ui, tr("重试")).clicked()
             })
             .inner
         } else {
@@ -241,9 +242,7 @@ impl Operations {
                     if let Some(error) = &link.last_error_code {
                         ui.colored_label(ui.visuals().error_fg_color, error);
                     }
-                    if ui
-                        .add_enabled(!busy, egui::Button::new(tr("解除关联")))
-                        .clicked()
+                    if style::add_button(ui, !busy, egui::Button::new(tr("解除关联"))).clicked()
                     {
                         command = Some((link.playlist_id.clone(), true));
                     }
@@ -252,14 +251,20 @@ impl Operations {
                     egui::ComboBox::from_id_salt("link-target")
                         .width(350.)
                         .selected_text(name(&dialog.target))
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(
+                        .show_animated(ui, |ui| {
+                            style::selectable_value(
+                                ui,
                                 &mut dialog.target,
                                 "favorites".into(),
                                 tr("我的收藏"),
                             );
                             for p in &local.items {
-                                ui.selectable_value(&mut dialog.target, p.id.clone(), &p.name);
+                                style::selectable_value(
+                                    ui,
+                                    &mut dialog.target,
+                                    p.id.clone(),
+                                    &p.name,
+                                );
                             }
                             if local.can_load_more() {
                                 more = crate::ui::page_end_visible(ui);
@@ -270,7 +275,7 @@ impl Operations {
                     }
                     if let Some(error) = &local.error {
                         ui.colored_label(ui.visuals().error_fg_color, error);
-                        more = ui.button(tr("重试读取歌单")).clicked();
+                        more = style::button(ui, tr("重试读取歌单")).clicked();
                     }
                     if style::primary(ui, tr("确认关联"), !busy).clicked() {
                         command = Some((dialog.target.clone(), false));
@@ -283,7 +288,7 @@ impl Operations {
                 ui.colored_label(ui.visuals().error_fg_color, error);
             }
             ui.add_space(8.);
-            close = ui.button(tr("关闭")).clicked();
+            close = style::button(ui, tr("关闭")).clicked();
         });
         if let Some((target, remove)) = command {
             let command = Command::Link {

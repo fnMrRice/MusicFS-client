@@ -1,3 +1,4 @@
+use crate::ui::style;
 use eframe::egui::{
     self, Color32, ColorImage, Id, Rect, Response, Sense, TextureHandle, TextureOptions, Ui, Vec2,
     WidgetInfo, WidgetType,
@@ -88,17 +89,60 @@ pub fn paint(ui: &Ui, name: &str, rect: Rect, tint: Color32) {
 }
 
 pub fn button(ui: &mut Ui, name: &str, label: &str, target: f32, glyph: f32) -> Response {
+    icon_button(ui, name, label, target, glyph, None)
+}
+
+pub fn selectable_button(
+    ui: &mut Ui,
+    name: &str,
+    label: &str,
+    target: f32,
+    glyph: f32,
+    selected: bool,
+) -> Response {
+    icon_button(ui, name, label, target, glyph, Some(selected))
+}
+
+fn icon_button(
+    ui: &mut Ui,
+    name: &str,
+    label: &str,
+    target: f32,
+    glyph: f32,
+    selected: Option<bool>,
+) -> Response {
     let (rect, response) = ui.allocate_exact_size(Vec2::splat(target), Sense::click());
-    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, ui.is_enabled(), label));
-    let visuals = ui.style().interact(&response);
-    if response.hovered() || response.has_focus() {
-        ui.painter().rect_filled(rect, 7, visuals.weak_bg_fill);
-    }
+    response.widget_info(|| match selected {
+        Some(selected) => WidgetInfo::selected(
+            WidgetType::SelectableLabel,
+            ui.is_enabled(),
+            selected,
+            label,
+        ),
+        None => WidgetInfo::labeled(WidgetType::Button, ui.is_enabled(), label),
+    });
+    let motion = style::interaction(ui, &response);
+    let dark = ui.visuals().dark_mode;
+    let selection = selected.map_or(0., |value| {
+        ui.ctx()
+            .animate_bool(response.id.with("icon-selected"), value)
+    });
+    let tint = ui.visuals().selection.bg_fill;
+    let fill = motion.color(
+        Color32::TRANSPARENT.lerp_to_gamma(style::accent_soft(ui), selection),
+        style::hovered(dark).lerp_to_gamma(tint, selection),
+        tint.lerp_to_gamma(style::accent_fill(ui), selection * 0.22),
+    );
+    let ink = style::text(dark).lerp_to_gamma(style::highlight(dark), selection);
+    ui.painter().rect_filled(rect.shrink(motion.press), 7, fill);
     paint(
         ui,
         name,
-        Rect::from_center_size(rect.center(), Vec2::splat(glyph)),
-        visuals.fg_stroke.color,
+        Rect::from_center_size(
+            rect.center(),
+            Vec2::splat(glyph * (1. - 0.06 * motion.press)),
+        ),
+        ink,
     );
     response
         .on_hover_cursor(egui::CursorIcon::PointingHand)

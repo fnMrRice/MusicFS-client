@@ -4,7 +4,7 @@ use super::{
     scans::Scans,
     Services,
 };
-use crate::i18n::tr;
+use crate::{i18n::tr, ui::style};
 use eframe::egui;
 use serde_json::Value;
 
@@ -64,15 +64,15 @@ impl Local {
         let reload_watch = self.watch.show(ui, svc, id, config);
         let mut action = self.queued.take();
         ui.horizontal_wrapped(|ui| {
-            if ui.button(tr("添加本地目录")).clicked() {
+            if style::button(ui, tr("添加本地目录")).clicked() {
                 action = Some(Action::Add);
             }
-            if ui
-                .add_enabled(
-                    ready && config.roots.iter().any(|r| !self.scans.active(&r.id)),
-                    egui::Button::new(tr("刷新全部目录")),
-                )
-                .clicked()
+            if style::add_button(
+                ui,
+                ready && config.roots.iter().any(|r| !self.scans.active(&r.id)),
+                egui::Button::new(tr("刷新全部目录")),
+            )
+            .clicked()
             {
                 for r in &config.roots {
                     self.scans.refresh(ui, svc, id, &r.id, &r.name);
@@ -109,18 +109,18 @@ impl Local {
                         }
                     },
                     |ui| {
-                        if ui.button(tr("编辑")).clicked() {
+                        if style::button(ui, tr("编辑")).clicked() {
                             action = Some(Action::Edit(root.id.clone()));
                         }
-                        if ui.button(tr("删除")).clicked() {
+                        if style::button(ui, tr("删除")).clicked() {
                             action = Some(Action::Remove(root.id.clone()));
                         }
-                        if ui
-                            .add_enabled(
-                                ready && !self.scans.active(&root.id),
-                                egui::Button::new(tr("刷新元数据")),
-                            )
-                            .clicked()
+                        if style::add_button(
+                            ui,
+                            ready && !self.scans.active(&root.id),
+                            egui::Button::new(tr("刷新元数据")),
+                        )
+                        .clicked()
                         {
                             self.scans.refresh(ui, svc, id, &root.id, &root.name);
                         }

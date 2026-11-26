@@ -97,7 +97,7 @@ impl LocalPlaylists {
                 }
                 if let Some(error) = &lists.error {
                     ui.colored_label(ui.visuals().error_fg_color, error);
-                    if ui.button(tr("重试")).clicked() {
+                    if style::button(ui, tr("重试")).clicked() {
                         action = Some(if lists.items.is_empty() || lists.next.is_none() {
                             LocalAction::Refresh
                         } else {
@@ -117,7 +117,7 @@ impl LocalPlaylists {
     }
 
     pub(crate) fn detail(&mut self, ui: &mut egui::Ui, playlist: &Playlist) {
-        if ui.button(tr("编辑歌单")).clicked() {
+        if style::button(ui, tr("编辑歌单")).clicked() {
             self.editor = Some(Editor::new(Some(playlist.id.clone())));
         }
     }
@@ -173,11 +173,11 @@ fn cards(ui: &mut egui::Ui, items: &[Playlist]) -> Option<String> {
             return;
         }
         let dark = ui.visuals().dark_mode;
-        let fill = if response.hovered() || response.has_focus() {
-            style::hovered(dark)
-        } else {
-            style::surface(dark)
-        };
+        let fill = style::interaction(ui, &response).color(
+            style::surface(dark),
+            style::hovered(dark),
+            style::accent_soft(ui),
+        );
         let edge = if response.has_focus() {
             style::accent(ui)
         } else {

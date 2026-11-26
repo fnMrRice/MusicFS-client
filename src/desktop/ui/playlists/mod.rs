@@ -74,7 +74,7 @@ impl Management {
             ] {
                 let active = self.tab == tab;
                 let label = tr(label);
-                let r = ui.selectable_label(active, egui::RichText::new(label).size(15.));
+                let r = style::selectable(ui, active, egui::RichText::new(label).size(15.));
                 if active {
                     let rect = egui::Rect::from_min_max(
                         egui::pos2(r.rect.left() + 5., r.rect.bottom() - 3.),
@@ -122,7 +122,7 @@ impl Management {
                 {
                     ui.add_space(16.);
                     ui.weak(tr("还没有导入的歌单。可在平台歌单中选择歌单并导入。"));
-                    if ui.button(tr("浏览平台歌单")).clicked() {
+                    if style::button(ui, tr("浏览平台歌单")).clicked() {
                         self.tab = Tab::Account;
                     }
                 }
@@ -180,17 +180,17 @@ impl Management {
                                     ui.with_layout(
                                         egui::Layout::right_to_left(egui::Align::Center),
                                         |ui| {
-                                            if ui
-                                                .add_enabled(
-                                                    !self.operations.busy(),
-                                                    egui::Button::new(tr("立即同步")),
-                                                )
-                                                .clicked()
+                                            if style::add_button(
+                                                ui,
+                                                !self.operations.busy(),
+                                                egui::Button::new(tr("立即同步")),
+                                            )
+                                            .clicked()
                                             {
                                                 self.operations.sync(ui, svc, playlist.clone());
                                             }
                                             if let Some(job) = &playlist.job_id {
-                                                if ui.button(tr("同步状态")).clicked() {
+                                                if style::button(ui, tr("同步状态")).clicked() {
                                                     self.operations.watch(job.clone());
                                                 }
                                             }
@@ -220,7 +220,7 @@ fn more<T: Send + 'static>(ui: &mut egui::Ui, pages: &Pages<T>) -> bool {
     }
     if let Some(error) = &pages.error {
         ui.colored_label(ui.visuals().error_fg_color, error);
-        return ui.button(tr("重试")).clicked();
+        return style::button(ui, tr("重试")).clicked();
     }
     pages.can_load_more() && crate::ui::page_end_visible(ui)
 }

@@ -3,7 +3,11 @@ mod plugins;
 mod sources;
 
 use super::{data::Services, themes, HostAction};
-use crate::{i18n::tr, model::Preferences};
+use crate::{
+    i18n::tr,
+    model::Preferences,
+    ui::style::{self, ComboBoxMotion},
+};
 use eframe::egui;
 
 const SECTIONS: [&str; 7] = [
@@ -41,9 +45,9 @@ pub(super) fn language_menu(ui: &mut egui::Ui, current: &str) -> Option<String> 
                 .unwrap_or(&options[0])
                 .1,
         )
-        .show_ui(ui, |ui| {
+        .show_animated(ui, |ui| {
             for (value, label) in options {
-                ui.selectable_value(&mut selected, value, label);
+                style::selectable_value(ui, &mut selected, value, label);
             }
         });
     (selected != current).then(|| selected.to_owned())
@@ -66,7 +70,7 @@ impl Settings {
     ) {
         ui.horizontal_wrapped(|ui| {
             for (i, label) in SECTIONS.iter().enumerate() {
-                ui.selectable_value(&mut self.tab, i, tr(label));
+                style::selectable_value(ui, &mut self.tab, i, tr(label));
             }
         });
         ui.separator();
@@ -96,7 +100,7 @@ impl Settings {
                     4 => {
                         ui.horizontal_wrapped(|ui| {
                             for (value, label) in themes() {
-                                if super::style::appearance_choice(
+                                if style::appearance_choice(
                                     ui,
                                     prefs.theme == value,
                                     tr(label),
@@ -108,7 +112,7 @@ impl Settings {
                                 }
                             }
                         });
-                        if let Some(value) = super::style::accent_choices(ui, &prefs.accent) {
+                        if let Some(value) = style::accent_choices(ui, &prefs.accent) {
                             *action = Some(HostAction::Accent(value));
                         }
                         ui.add_space(10.);
@@ -123,9 +127,7 @@ impl Settings {
                             info.user_name,
                             info.role
                         ));
-                        if ui
-                            .add_enabled(!busy, egui::Button::new(tr("退出登录")))
-                            .clicked()
+                        if style::add_button(ui, !busy, egui::Button::new(tr("退出登录"))).clicked()
                         {
                             *action = Some(HostAction::Logout);
                         }

@@ -1,5 +1,9 @@
 use super::{AudioAction, HostAction};
-use crate::{i18n::tr, task::Task};
+use crate::{
+    i18n::tr,
+    task::Task,
+    ui::style::{self, ComboBoxMotion},
+};
 use eframe::egui::{self, Ui};
 use musicfs_player_core::{device_channels, output_devices, OutputDeviceInfo};
 use tokio::runtime::Handle;
@@ -82,11 +86,12 @@ impl DeviceSelector {
                     .selected_text(label)
                     .width(ui.available_width().clamp(80., 280.))
                     .truncate()
-                    .show_ui(ui, |ui| {
+                    .show_animated(ui, |ui| {
                         ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
-                        ui.selectable_value(&mut choice, None, &default_label);
+                        style::selectable_value(ui, &mut choice, None, &default_label);
                         for device in devices {
-                            ui.selectable_value(
+                            style::selectable_value(
+                                ui,
                                 &mut choice,
                                 Some(device.id.as_str()),
                                 &device.name,
@@ -95,8 +100,12 @@ impl DeviceSelector {
                     })
                     .response
                     .labelled_by(caption.id);
-                ui.add_enabled(self.probe.is_none(), egui::Button::new(tr("刷新设备列表")))
-                    .clicked()
+                style::add_button(
+                    ui,
+                    self.probe.is_none(),
+                    egui::Button::new(tr("刷新设备列表")),
+                )
+                .clicked()
             })
             .inner;
         if choice != selected {

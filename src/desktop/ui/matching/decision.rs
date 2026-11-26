@@ -1,4 +1,5 @@
 use super::Services;
+use crate::ui::style;
 use crate::{i18n::tr, task::Task};
 use eframe::egui;
 use musicfs_server_adapter::{ServerSession, SessionInfo};
@@ -324,12 +325,12 @@ impl Decisions {
                     )
                 };
                 ui.label(tr(hint));
-                if ui.button(tr(label)).clicked() {
+                if style::button(ui, tr(label)).clicked() {
                     self.retry(ui.ctx(), svc);
                 }
             }
         }
-        if self.conflict && ui.button(tr("刷新列表并重新选择")).clicked() {
+        if self.conflict && style::button(ui, tr("刷新列表并重新选择")).clicked() {
             self.conflict = false;
             self.error = None;
             return true;

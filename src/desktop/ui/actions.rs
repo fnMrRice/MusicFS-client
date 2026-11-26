@@ -3,6 +3,7 @@ use super::favorites::Favorites;
 use super::style;
 use crate::i18n::tr;
 use crate::task::Task;
+use crate::ui::style::ComboBoxMotion;
 use eframe::egui;
 use musicfs_server_adapter::{Playlist, Track};
 use uuid::Uuid;
@@ -239,11 +240,17 @@ impl Actions {
                                     })
                                     .unwrap_or(tr("跟随曲目默认来源")),
                             )
-                            .show_ui(ui, |ui| {
-                                ui.selectable_value(&mut ed.pin, None, tr("跟随曲目默认来源"));
+                            .show_animated(ui, |ui| {
+                                style::selectable_value(
+                                    ui,
+                                    &mut ed.pin,
+                                    None,
+                                    tr("跟随曲目默认来源"),
+                                );
                                 if let Some(group) = &ed.track.sources {
                                     for v in group.choices() {
-                                        ui.selectable_value(
+                                        style::selectable_value(
+                                            ui,
                                             &mut ed.pin,
                                             Some(v.source_track_id.clone()),
                                             &v.display_name,
@@ -262,10 +269,15 @@ impl Actions {
                             (None, Some(_)) => tr("未找到已选歌单"),
                             (None, None) => tr("新建歌单…"),
                         })
-                        .show_ui(ui, |ui| {
-                            ui.selectable_value(&mut ed.target_id, None, tr("新建歌单…"));
+                        .show_animated(ui, |ui| {
+                            style::selectable_value(ui, &mut ed.target_id, None, tr("新建歌单…"));
                             for p in &lists.items {
-                                ui.selectable_value(&mut ed.target_id, Some(p.id.clone()), &p.name);
+                                style::selectable_value(
+                                    ui,
+                                    &mut ed.target_id,
+                                    Some(p.id.clone()),
+                                    &p.name,
+                                );
                             }
                             if lists.can_load_more() {
                                 more = super::page_end_visible(ui);
@@ -275,7 +287,7 @@ impl Actions {
                         ui.spinner();
                     } else if let Some(error) = &lists.error {
                         ui.colored_label(ui.visuals().error_fg_color, error);
-                        more = ui.button(tr("重试读取歌单")).clicked();
+                        more = style::button(ui, tr("重试读取歌单")).clicked();
                     }
                     if ed.target_id.is_none() {
                         ui.label(tr("新歌单名称"));
@@ -328,9 +340,7 @@ impl Actions {
                         refs.extend(ed.other_refs.iter().cloned());
                         apply = Some((target, key, refs, ed.prepared.take()));
                     }
-                    close = ui
-                        .add_enabled(!busy, egui::Button::new(tr("取消")))
-                        .clicked();
+                    close = style::add_button(ui, !busy, egui::Button::new(tr("取消"))).clicked();
                 });
             });
         if close {

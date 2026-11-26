@@ -1,5 +1,5 @@
 use super::{
-    widgets::{credit, title_control},
+    widgets::{credit, title_control, TitleControl},
     *,
 };
 use eframe::egui::{
@@ -52,17 +52,23 @@ fn frame(ctx: &Context, events: Vec<Event>, enabled: bool) -> (TreeUpdate, Click
     let output = ctx.run(input, |ctx| {
         egui::CentralPanel::default().show(ctx, |ui| {
             let rect = |y: f32| Rect::from_min_size(egui::pos2(20., y), egui::vec2(210., 24.));
-            clicks.play =
-                title_control(ui, rect(25.), "play", "Track", "Play Track", enabled, false)
-                    .clicked();
+            clicks.play = title_control(
+                ui,
+                rect(25.),
+                TitleControl::Play {
+                    enabled,
+                    current: false,
+                },
+                "Track",
+                "Play Track",
+            )
+            .clicked();
             clicks.disclosure = title_control(
                 ui,
                 rect(56.),
-                "chevron",
+                TitleControl::Versions { open: false },
                 "2 sources",
                 "Expand sources",
-                true,
-                true,
             )
             .clicked();
             let credit_event = credit(

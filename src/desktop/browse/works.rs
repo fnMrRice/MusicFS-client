@@ -35,7 +35,7 @@ impl Works {
             };
         }
         if let Some(detail) = &mut self.detail {
-            if ui.button(tr("‹  返回作品列表")).clicked() {
+            if style::button(ui, tr("‹  返回作品列表")).clicked() {
                 self.detail = None;
             } else {
                 ui.add_space(6.);
@@ -206,7 +206,7 @@ impl History {
             };
         }
         if let Some(detail) = &mut self.detail {
-            if ui.button(tr("‹  返回播放记录")).clicked() {
+            if style::button(ui, tr("‹  返回播放记录")).clicked() {
                 self.detail = None;
             } else {
                 ui.add_space(10.0);
@@ -214,9 +214,9 @@ impl History {
             }
         }
         self.data.poll();
-        let refresh = ui
-            .add_enabled(!self.data.busy(), egui::Button::new(tr("刷新播放记录")))
-            .clicked();
+        let refresh =
+            style::add_button(ui, !self.data.busy(), egui::Button::new(tr("刷新播放记录")))
+                .clicked();
         let retry = self.data.status(ui, tr("正在读取播放记录…"));
         if !self.data.started || refresh || retry {
             let (server, kind) = (svc.server.clone(), self.kind.clone());
@@ -231,7 +231,7 @@ impl History {
             }
             for entry in entries {
                 ui.horizontal_wrapped(|ui| {
-                    if ui.link(&entry.work_title).clicked() {
+                    if style::link(ui, &entry.work_title).clicked() {
                         self.detail = Some(Detail::new(entry.work_id.clone()));
                         ui.ctx().request_repaint();
                     }

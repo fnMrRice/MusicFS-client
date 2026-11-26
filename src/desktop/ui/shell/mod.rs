@@ -35,6 +35,10 @@ fn popup(ui: &Ui, key: &str, button: &egui::Response, width: f32, contents: impl
     );
 }
 
+fn popup_open(ui: &Ui, key: &str) -> bool {
+    ui.memory(|m| m.is_popup_open(ui.make_persistent_id(key)))
+}
+
 impl Shell {
     fn check(&mut self, ui: &Ui, svc: Services<'_>) {
         let server = svc.server.clone();
@@ -70,7 +74,8 @@ impl Shell {
             Some(Err(_)) => (ui.visuals().error_fg_color, tr("服务异常")),
             None => (ui.visuals().weak_text_color(), tr("正在检查…")),
         };
-        let response = icons::button(ui, "server", tr("服务状态"), 36., 22.);
+        let open = popup_open(ui, "server-status");
+        let response = icons::selectable_button(ui, "server", tr("服务状态"), 36., 22., open);
         let dot = response.rect.center() + egui::vec2(10., 10.);
         ui.painter().circle(
             dot,
@@ -86,8 +91,7 @@ impl Shell {
             if let Some(Err(message)) = &self.result {
                 ui.colored_label(ui.visuals().error_fg_color, message);
             }
-            if ui
-                .add_enabled(self.health.is_none(), egui::Button::new(tr("重新检查")))
+            if style::add_button(ui, self.health.is_none(), egui::Button::new(tr("重新检查")))
                 .clicked()
             {
                 self.check(ui, svc);
@@ -128,7 +132,17 @@ impl SignedUi {
         if icons::button(&mut left, "back", tr("返回"), 36., 22.).clicked() {
             self.back(wide);
         }
-        if !wide && icons::button(&mut left, "grid", tr("主导航"), 36., 20.).clicked() {
+        if !wide
+            && icons::selectable_button(
+                &mut left,
+                "grid",
+                tr("主导航"),
+                36.,
+                20.,
+                self.shell.navigation.unwrap_or(false),
+            )
+            .clicked()
+        {
             self.shell.navigation = Some(!self.shell.navigation.unwrap_or(false));
         }
         let drag_left = left.min_rect().right();
@@ -152,11 +166,21 @@ impl SignedUi {
             self.catalog.artwork = Default::default();
             self.catalog.reset_tracks();
         }
-        if icons::button(&mut right, "settings", tr("设置"), 36., 22.).clicked() {
+        if icons::selectable_button(
+            &mut right,
+            "settings",
+            tr("设置"),
+            36.,
+            22.,
+            self.screen == Screen::Settings,
+        )
+        .clicked()
+        {
             self.navigate(Screen::Settings);
         }
         caption::separator(&mut right);
-        let theme = icons::button(&mut right, "theme", tr("换肤"), 36., 22.);
+        let theme_open = popup_open(&right, "theme-menu");
+        let theme = icons::selectable_button(&mut right, "theme", tr("换肤"), 36., 22., theme_open);
         popup(&right, "theme-menu", &theme, 160., |ui| {
             for (key, label) in themes() {
                 if style::appearance_choice(ui, prefs.theme == key, tr(label), None).clicked() {
@@ -171,53 +195,65 @@ impl SignedUi {
         });
         let (r, avatar) = right.allocate_exact_size(egui::Vec2::splat(36.), egui::Sense::click());
         let dark = right.visuals().dark_mode;
-        let ink = if avatar.hovered() {
-            style::accent(&right)
+        let open = popup_open(&right, "account-menu");
+        let motion = style::interaction(&right, &avatar);
+        let ink = if open {
+            style::highlight(dark)
         } else {
-            style::text(dark)
+            motion.color(style::text(dark), style::accent(&right), style::text(dark))
+        };
+        let fill = if open {
+            style::accent_soft(&right)
+        } else {
+            style::surface(dark)
         };
         right.painter().circle(
             r.center(),
-            18.,
-            style::hovered(dark),
-            egui::Stroke::new(1.0_f32, style::line(dark)),
+            18. - motion.press,
+            motion.color(fill, style::hovered(dark), style::accent_soft(&right)),
+            egui::Stroke::new(
+                1.0_f32,
+                if open {
+                    style::accent(&right)
+                } else {
+                    style::line(dark)
+                },
+            ),
         );
         icons::paint(
             &right,
             "user",
-            egui::Rect::from_center_size(r.center(), egui::Vec2::splat(21.)),
+            egui::Rect::from_center_size(r.center(), egui::Vec2::splat(21. - motion.press)),
             ink,
         );
         avatar.widget_info(|| {
-            egui::WidgetInfo::labeled(egui::WidgetType::Button, true, tr("账号菜单"))
+            egui::WidgetInfo::selected(egui::WidgetType::Button, true, open, tr("账号菜单"))
         });
         let avatar = avatar.on_hover_text(tr("账号菜单"));
         popup(&right, "account-menu", &avatar, 240., |ui| {
             ui.strong(&svc.server.info.user_name);
             ui.weak(&svc.server.info.endpoint);
             ui.separator();
-            if ui.button(tr("账号与设置")).clicked() {
+            if style::button(ui, tr("账号与设置")).clicked() {
                 self.navigate(Screen::Settings);
                 ui.memory_mut(|m| m.close_popup());
             }
-            if ui.button(tr("退出登录")).clicked() {
+            if style::button(ui, tr("退出登录")).clicked() {
                 *action = Some(HostAction::Logout);
                 ui.memory_mut(|m| m.close_popup());
             }
         });
         caption::separator(&mut right);
-        let active = self
-            .player
-            .mini_open()
-            .then(|| right.painter().add(egui::Shape::Noop));
-        let mini = icons::button(&mut right, "mini", tr("迷你播放器"), 36., 21.);
-        if let Some(shape) = active {
-            right.painter().set(
-                shape,
-                egui::Shape::rect_filled(mini.rect, 7., style::accent_soft(&right)),
-            );
-        }
-        if mini.clicked() {
+        if icons::selectable_button(
+            &mut right,
+            "mini",
+            tr("迷你播放器"),
+            36.,
+            21.,
+            self.player.mini_open(),
+        )
+        .clicked()
+        {
             self.player.open_mini(right.ctx());
         }
         if custom {

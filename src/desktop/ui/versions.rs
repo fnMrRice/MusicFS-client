@@ -86,7 +86,9 @@ impl Versions {
             ui.horizontal_wrapped(|ui| {
                 ui.colored_label(ui.visuals().error_fg_color, error);
             });
-            if self.revision.is_none() && self.pending.is_none() && ui.button(tr("刷新")).clicked()
+            if self.revision.is_none()
+                && self.pending.is_none()
+                && style::button(ui, tr("刷新")).clicked()
             {
                 self.load_revision(ui, svc);
             }
@@ -188,38 +190,34 @@ impl Versions {
                 egui::PopupCloseBehavior::CloseOnClick,
                 |ui| {
                     ui.set_min_width(146.);
-                    if ui
-                        .add_enabled(available, egui::Button::new(tr("播放此版本")))
+                    if style::add_button(ui, available, egui::Button::new(tr("播放此版本")))
                         .clicked()
                     {
                         choice = Some(Choice::Play);
                     }
-                    if ui.button(tr("加入歌单")).clicked() {
+                    if style::button(ui, tr("加入歌单")).clicked() {
                         choice = Some(Choice::Add);
                     }
-                    if ui
-                        .add_enabled(!busy, egui::Button::new(tr("收藏此版本")))
-                        .clicked()
+                    if style::add_button(ui, !busy, egui::Button::new(tr("收藏此版本"))).clicked()
                     {
                         choice = Some(Choice::Favorite(true));
                     }
-                    if ui
-                        .add_enabled(!busy, egui::Button::new(tr("收藏并跟随默认来源")))
+                    if style::add_button(ui, !busy, egui::Button::new(tr("收藏并跟随默认来源")))
                         .clicked()
                     {
                         choice = Some(Choice::Favorite(false));
                     }
                     if group.recording_id.is_some()
-                        && ui
-                            .add_enabled(
-                                !busy && self.revision.is_some(),
-                                egui::Button::new(tr(if manual {
-                                    "取消默认"
-                                } else {
-                                    "设为默认"
-                                })),
-                            )
-                            .clicked()
+                        && style::add_button(
+                            ui,
+                            !busy && self.revision.is_some(),
+                            egui::Button::new(tr(if manual {
+                                "取消默认"
+                            } else {
+                                "设为默认"
+                            })),
+                        )
+                        .clicked()
                     {
                         choice = Some(Choice::Default);
                     }

@@ -91,7 +91,7 @@ impl Catalog {
         if let Some((id, name)) = self.category.clone() {
             let mut back = false;
             ui.horizontal(|ui| {
-                back = ui.link(tr("返回分类")).clicked();
+                back = style::link(ui, tr("返回分类")).clicked();
                 ui.weak("/");
                 ui.strong(if name.is_empty() {
                     tr("未知{0}").replace("{0}", self.tabs.label())
@@ -142,7 +142,7 @@ impl Catalog {
         ui.add_space(6.0);
         if let Some(error) = self.categories.error.as_ref() {
             ui.colored_label(ui.visuals().error_fg_color, error);
-            if ui.button(tr("重试加载分类")).clicked() {
+            if style::button(ui, tr("重试加载分类")).clicked() {
                 load = true;
             }
         } else if self.categories.started

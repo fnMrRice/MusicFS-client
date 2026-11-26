@@ -1,4 +1,6 @@
 use super::Services;
+use crate::ui::style;
+use crate::ui::style::ComboBoxMotion;
 use crate::{
     i18n::{language_tags, tr},
     task::Task,
@@ -43,7 +45,7 @@ pub(super) fn disabled_select(
             ui.disable();
             let response = dropdown(id, width)
                 .selected_text("")
-                .show_ui(ui, |_| {})
+                .show_animated(ui, |_| {})
                 .response;
             response.widget_info(|| {
                 egui::WidgetInfo::labeled(egui::WidgetType::ComboBox, false, label)
@@ -155,7 +157,7 @@ impl Providers {
     pub fn status(&mut self, ui: &mut egui::Ui) {
         if let Some(error) = &self.error {
             ui.colored_label(ui.visuals().error_fg_color, error);
-            if ui.button(tr("重试")).clicked() {
+            if style::button(ui, tr("重试")).clicked() {
                 self.started = false;
                 self.error = None;
             }

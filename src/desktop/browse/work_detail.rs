@@ -1,4 +1,5 @@
 use super::{resource::Resource, work_gallery as gallery, QueueSelection};
+use crate::ui::style::ComboBoxMotion;
 use crate::{
     i18n::tr,
     ui::{style, Artwork, Services},
@@ -98,9 +99,9 @@ impl Detail {
             egui::ComboBox::from_id_salt(("work-copy", &self.id))
                 .selected_text(&data.packages[self.copy].name)
                 .width(210.)
-                .show_ui(ui, |ui| {
+                .show_animated(ui, |ui| {
                     for (index, copy) in data.packages.iter().enumerate() {
-                        ui.selectable_value(&mut self.copy, index, &copy.name);
+                        style::selectable_value(ui, &mut self.copy, index, &copy.name);
                     }
                 });
         });
@@ -231,12 +232,12 @@ fn show_audio(
                 ui.label(RichText::new(name).font(style::bold(ui, 15.)));
                 ui.weak(tr("{0} 条音轨").replace("{0}", &nodes.len().to_string()));
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui
-                        .add_enabled(
-                            nodes.iter().any(|n| n.source_track_id.is_some()),
-                            egui::Button::new(tr("播放此目录")),
-                        )
-                        .clicked()
+                    if style::add_button(
+                        ui,
+                        nodes.iter().any(|n| n.source_track_id.is_some()),
+                        egui::Button::new(tr("播放此目录")),
+                    )
+                    .clicked()
                     {
                         choice = group_queue(nodes, None);
                     }
@@ -280,11 +281,11 @@ fn track_row(
     let dark = ui.visuals().dark_mode;
     let muted = style::muted(dark);
     let fill = if can_play {
-        if response.hovered() || response.has_focus() {
-            style::hovered(dark)
-        } else {
-            style::surface(dark)
-        }
+        style::interaction(ui, &response).color(
+            style::surface(dark),
+            style::hovered(dark),
+            style::accent_soft(ui),
+        )
     } else {
         style::surface(dark)
     };

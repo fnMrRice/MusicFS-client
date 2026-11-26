@@ -103,13 +103,13 @@ impl Editor {
             && (self.data.is_none() || self.conflict || self.pending.is_some())
         {
             ui.horizontal_wrapped(|ui| {
-                if self.pending.is_some() && !busy && ui.button(tr("重试上次操作")).clicked()
+                if self.pending.is_some()
+                    && !busy
+                    && style::button(ui, tr("重试上次操作")).clicked()
                 {
                     *action = DialogAction::Retry;
                 }
-                if ui
-                    .add_enabled(!busy, egui::Button::new(tr("重新加载设置")))
-                    .clicked()
+                if style::add_button(ui, !busy, egui::Button::new(tr("重新加载设置"))).clicked()
                 {
                     *action = DialogAction::Reload;
                 }
@@ -141,12 +141,12 @@ impl Editor {
                 }
                 let active = self.job.as_ref().is_some_and(|job| job.active());
                 for item in &schema.actions {
-                    if ui
-                        .add_enabled(
-                            !blocked && !dirty && !active,
-                            egui::Button::new(item.text.label()),
-                        )
-                        .clicked()
+                    if style::add_button(
+                        ui,
+                        !blocked && !dirty && !active,
+                        egui::Button::new(item.text.label()),
+                    )
+                    .clicked()
                     {
                         *action = DialogAction::Submit(Submission::Action(item.id.clone()));
                     }
@@ -162,8 +162,7 @@ impl Editor {
         }
         if let Some(error) = &self.job_error {
             ui.colored_label(ui.visuals().error_fg_color, error);
-            if ui
-                .add_enabled(self.job_read.is_none(), egui::Button::new(tr("重试")))
+            if style::add_button(ui, self.job_read.is_none(), egui::Button::new(tr("重试")))
                 .clicked()
             {
                 *action = DialogAction::RetryJob;
@@ -192,7 +191,7 @@ impl Editor {
             }
         }
         let cancel = egui::Button::new(tr("取消")).min_size(egui::vec2(72., BUTTON_HEIGHT));
-        if ui.add_enabled(!busy, cancel).clicked() {
+        if style::add_button(ui, !busy, cancel).clicked() {
             *action = DialogAction::Close;
         }
     }

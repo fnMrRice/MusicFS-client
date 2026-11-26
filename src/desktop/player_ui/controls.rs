@@ -22,8 +22,9 @@ pub(super) fn playback_mode_menu(ui: &mut Ui, current: PlaybackMode) -> Option<P
     };
     let (_, label) = PLAYBACK_MODES.iter().find(|(mode, _)| *mode == current)?;
     let hint = tr("播放顺序：{0}").replace("{0}", tr(label));
-    let button = icons::button(ui, icon, &hint, 36., 21.);
-    let id = button.id.with("playback-order");
+    let id = ui.next_auto_id().with("playback-order");
+    let open = ui.memory(|m| m.is_popup_open(id));
+    let button = icons::selectable_button(ui, icon, &hint, 36., 21., open);
     if button.clicked() {
         ui.memory_mut(|m| m.toggle_popup(id));
     }
@@ -36,8 +37,9 @@ pub(super) fn playback_mode_menu(ui: &mut Ui, current: PlaybackMode) -> Option<P
         egui::PopupCloseBehavior::CloseOnClickOutside,
         |ui| {
             ui.set_min_width(136.);
+            let mut selected = current;
             for (mode, label) in PLAYBACK_MODES {
-                let option = ui.radio(current == mode, tr(label));
+                let option = style::radio_value(ui, &mut selected, mode, tr(label));
                 if button.clicked() && button.has_focus() && mode == current {
                     option.request_focus();
                 }
@@ -63,18 +65,22 @@ pub(super) fn play_button(ui: &mut Ui, playing: bool, enabled: bool, size: f32) 
         .add_enabled_ui(enabled, |ui| {
             let (rect, r) = ui.allocate_exact_size(egui::Vec2::splat(size), egui::Sense::click());
             r.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, label));
-            let fill = style::accent_fill(ui);
-            ui.painter().circle_filled(rect.center(), size / 2., fill);
+            let motion = style::interaction(ui, &r);
+            let diameter = size * (1. - 0.06 * motion.press);
+            ui.painter()
+                .circle_filled(rect.center(), diameter / 2., motion.primary_fill(ui));
             icons::paint(
                 ui,
                 if playing { "pause" } else { "play" },
-                egui::Rect::from_center_size(rect.center(), egui::Vec2::splat(size * 0.46)),
-                style::on_accent(ui),
+                egui::Rect::from_center_size(rect.center(), egui::Vec2::splat(diameter * 0.46)),
+                style::ON_ACCENT,
             );
             r
         })
         .inner;
-    response.on_hover_text(label)
+    response
+        .on_hover_cursor(egui::CursorIcon::PointingHand)
+        .on_hover_text(label)
 }
 
 pub(super) fn heading(ui: &mut Ui, title: &str, artists: &[String]) {

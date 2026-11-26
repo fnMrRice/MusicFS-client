@@ -1,6 +1,6 @@
 #[path = "task_row.rs"]
 mod task_row;
-use super::{popup, Services};
+use super::{popup, style, Services};
 use crate::{i18n::tr, icons, task::Task};
 use eframe::egui::{self, Ui};
 use musicfs_server_adapter::{
@@ -111,7 +111,7 @@ impl Queue {
         };
         if let Some(error) = &self.history_error {
             ui.colored_label(ui.visuals().error_fg_color, error);
-            if !ui.button(tr("重试")).clicked() {
+            if !style::button(ui, tr("重试")).clicked() {
                 return;
             }
         } else if !crate::ui::page_end_visible(ui) {
@@ -203,17 +203,18 @@ impl Queue {
                 }
             }
         }
-        let r = icons::button(ui, "queue", tr("任务队列"), 36., 22.);
+        let open = super::popup_open(ui, "tasks");
+        let r = icons::selectable_button(ui, "queue", tr("任务队列"), 36., 22., open);
         if self.page.active_count > 0 {
             let center = r.rect.right_top() + egui::vec2(-4., 6.);
             ui.painter()
-                .circle_filled(center, 8., super::style::accent_fill(ui));
+                .circle_filled(center, 8., style::accent_fill(ui));
             ui.painter().text(
                 center,
                 egui::Align2::CENTER_CENTER,
                 self.page.active_count.min(99),
                 egui::FontId::proportional(10.),
-                egui::Color32::WHITE,
+                style::ON_ACCENT,
             );
         }
         popup(ui, "tasks", &r, 315., |ui| {
@@ -221,8 +222,8 @@ impl Queue {
             if svc.server.info.role == "admin" {
                 let before = self.all;
                 ui.horizontal(|ui| {
-                    ui.selectable_value(&mut self.all, false, tr("我的任务"));
-                    ui.selectable_value(&mut self.all, true, tr("所有任务"));
+                    style::selectable_value(ui, &mut self.all, false, tr("我的任务"));
+                    style::selectable_value(ui, &mut self.all, true, tr("所有任务"));
                 });
                 if self.all != before {
                     *self = Self {
@@ -234,7 +235,7 @@ impl Queue {
             }
             if let Some(e) = self.subscription_error.as_ref().or(self.error.as_ref()) {
                 ui.colored_label(ui.visuals().error_fg_color, e);
-                if ui.button(tr("重试")).clicked() {
+                if style::button(ui, tr("重试")).clicked() {
                     self.subscribe(svc);
                 }
             } else if self.page.items.is_empty() {
@@ -265,16 +266,16 @@ impl Queue {
                                 ui.small(&task.owner_name);
                             }
                             if task.cancellable
-                                && ui
-                                    .add_enabled(
-                                        self.cancel.is_none(),
-                                        egui::Button::new(tr(if task.status == "queued" {
-                                            "取消"
-                                        } else {
-                                            "中断"
-                                        })),
-                                    )
-                                    .clicked()
+                                && style::add_button(
+                                    ui,
+                                    self.cancel.is_none(),
+                                    egui::Button::new(tr(if task.status == "queued" {
+                                        "取消"
+                                    } else {
+                                        "中断"
+                                    })),
+                                )
+                                .clicked()
                             {
                                 cancel = Some(task.id.clone());
                             }

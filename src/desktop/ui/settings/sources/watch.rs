@@ -3,7 +3,7 @@ use super::{
     directories::{apply, Config},
     Services,
 };
-use crate::i18n::tr;
+use crate::{i18n::tr, ui::style};
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -51,15 +51,15 @@ impl Watch {
             self.save.error = None;
         }
         let mut reload = false;
-        ui.collapsing(tr("目录变更监听"), |ui| {
+        let header = egui::CollapsingHeader::new(tr("目录变更监听"));
+        style::collapsing(ui, header, |ui| {
             let mut changed = false;
             let conflict = self.save.error.as_ref().is_some_and(|e| {
                 e.contains("HTTP 409") || e.contains("HTTP 412") || e.contains("superseded")
             });
             ui.add_enabled_ui(!self.save.busy() && !conflict, |ui| {
-                changed |= ui
-                    .checkbox(&mut draft.enabled, tr("监听音乐目录变更"))
-                    .changed();
+                changed |=
+                    style::checkbox(ui, &mut draft.enabled, tr("监听音乐目录变更")).changed();
                 ui.add_enabled_ui(draft.enabled, |ui| {
                     ui.horizontal(|ui| {
                         ui.label(tr("变更合并等待时间（毫秒）"));
@@ -91,8 +91,7 @@ impl Watch {
                     self.key = None;
                     self.save.error = None;
                 }
-                if ui
-                    .add_enabled(draft != saved, egui::Button::new(tr("保存监听设置")))
+                if style::add_button(ui, draft != saved, egui::Button::new(tr("保存监听设置")))
                     .clicked()
                 {
                     let key = self
@@ -114,7 +113,7 @@ impl Watch {
             if let Some(e) = &self.save.error {
                 ui.colored_label(ui.visuals().error_fg_color, e);
             }
-            if conflict && ui.button(tr("重新加载设置")).clicked() {
+            if conflict && style::button(ui, tr("重新加载设置")).clicked() {
                 reload = true;
             }
             if self.save.busy() {

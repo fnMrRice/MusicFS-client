@@ -1,5 +1,6 @@
 use crate::i18n::tr;
 use crate::task::Task;
+use crate::ui::style;
 use eframe::egui;
 use musicfs_server_adapter::Page;
 use std::{collections::HashSet, future::Future};
@@ -66,7 +67,7 @@ impl<T: Send + 'static> Resource<T> {
         self.error.as_ref().is_some_and(|error| {
             ui.horizontal_wrapped(|ui| {
                 ui.colored_label(ui.visuals().error_fg_color, error);
-                ui.button(tr("重试")).clicked()
+                style::button(ui, tr("重试")).clicked()
             })
             .inner
         })

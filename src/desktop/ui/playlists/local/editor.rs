@@ -192,7 +192,7 @@ impl Editor {
                         ui.weak(tr("歌单已在其他位置更改，重新载入后可继续编辑。"));
                     }
                     if editing && (!ready || self.conflict) && self.loading.is_none() {
-                        reload = ui.button(tr("重新载入歌单")).clicked();
+                        reload = style::button(ui, tr("重新载入歌单")).clicked();
                     }
                 }
                 ui.add_space(5.);
@@ -214,10 +214,7 @@ impl Editor {
                         && self.dirty)
                         || retry;
                     submit = style::primary(ui, label, valid).clicked() || (valid && submit);
-                    if ui
-                        .add_enabled(!busy, egui::Button::new(tr("取消")))
-                        .clicked()
-                    {
+                    if style::add_button(ui, !busy, egui::Button::new(tr("取消"))).clicked() {
                         outcome = Outcome::Close;
                     }
                 });

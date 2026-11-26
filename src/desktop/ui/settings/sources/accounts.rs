@@ -3,7 +3,7 @@ use super::{
     api::{decode, get, path_id, text, Load},
     Services,
 };
-use crate::i18n::tr;
+use crate::{i18n::tr, ui::style};
 use base64::Engine;
 use eframe::egui;
 use musicfs_server_adapter::ServerSession;
@@ -142,10 +142,10 @@ impl Account {
             ui.add_enabled_ui(!self.view.busy(), |ui| {
                 if bound {
                     ui.horizontal(|ui| {
-                        if ui.button(tr("校验登录状态")).clicked() {
+                        if style::button(ui, tr("校验登录状态")).clicked() {
                             action = Some("check");
                         }
-                        if ui.button(tr("退出平台账号")).clicked() {
+                        if style::button(ui, tr("退出平台账号")).clicked() {
                             action = Some("logout");
                         }
                     });
@@ -155,12 +155,12 @@ impl Account {
                     .as_ref()
                     .is_some_and(|o| o.method == "musicKit")
                 {
-                    if ui
-                        .add_enabled(
-                            configured && !offline,
-                            egui::Button::new(tr("打开 Apple 授权")),
-                        )
-                        .clicked()
+                    if style::add_button(
+                        ui,
+                        configured && !offline,
+                        egui::Button::new(tr("打开 Apple 授权")),
+                    )
+                    .clicked()
                     {
                         // 平台授权在同一服务端的官方 MusicKit 页面完成，凭据不会进入浏览器地址。
                         ui.ctx().open_url(egui::OpenUrl::new_tab(format!(
@@ -174,13 +174,12 @@ impl Account {
                         ui.weak(tr(
                             "请在浏览器中登录同一 MusicFS 账号并完成 Apple Music 授权。",
                         ));
-                        if ui.button(tr("刷新账号状态")).clicked() {
+                        if style::button(ui, tr("刷新账号状态")).clicked() {
                             action = Some("read");
                         }
                     }
                 } else if !pending
-                    && ui
-                        .add_enabled(configured && !offline, egui::Button::new(tr("登录")))
+                    && style::add_button(ui, configured && !offline, egui::Button::new(tr("登录")))
                         .clicked()
                 {
                     action = Some("begin");
@@ -206,11 +205,11 @@ impl Account {
                         }
                     }
                     ui.weak(tr("请使用平台手机应用扫码并确认登录。"));
-                    if ui.button(tr("刷新扫码状态")).clicked() {
+                    if style::button(ui, tr("刷新扫码状态")).clicked() {
                         action = Some("poll");
                     }
                 }
-                if pending && ui.button(tr("取消登录")).clicked() {
+                if pending && style::button(ui, tr("取消登录")).clicked() {
                     action = Some("cancel");
                 }
             });

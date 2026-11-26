@@ -44,11 +44,21 @@ pub(super) fn show(
     let dark = ui.visuals().dark_mode;
     let row = ui.interact(rect, ui.id().with("row"), Sense::click());
     let selected = data.matching.selected(t);
-    if current || selected {
-        ui.painter().rect_filled(rect, 0, style::accent_soft(ui));
-    } else if ui.rect_contains_pointer(rect) {
-        ui.painter().rect_filled(rect, 0, style::hovered(dark));
-    }
+    let marked = current || selected;
+    let motion = style::interaction_with_hover(ui, &row, ui.rect_contains_pointer(rect));
+    let base = if marked {
+        style::accent_soft(ui)
+    } else {
+        style::background(dark)
+    };
+    let hover = if marked {
+        style::hovered(dark).lerp_to_gamma(style::accent_fill(ui), 0.10)
+    } else {
+        style::hovered(dark)
+    };
+    let pressed = hover.lerp_to_gamma(style::accent_fill(ui), 0.15);
+    ui.painter()
+        .rect_filled(rect, 0, motion.color(base, hover, pressed));
     let [check, num, title, artist, album, provider, format, duration, buttons] = c.cells(rect);
     let mut check_ui = contents(ui, check_rect(check), "check");
     style::checkbox_style(&mut check_ui);
@@ -82,11 +92,12 @@ pub(super) fn show(
     if title_control(
         ui,
         line(rect.center().y - 9.),
-        "play",
+        TitleControl::Play {
+            enabled: playable,
+            current,
+        },
         name,
         &tr("播放 {0}").replace("{0}", name),
-        playable,
-        false,
     )
     .clicked()
     {
@@ -109,11 +120,9 @@ pub(super) fn show(
         if title_control(
             ui,
             second,
-            if open { "chevron-up" } else { "chevron" },
+            TitleControl::Versions { open },
             &description,
             &toggle,
-            true,
-            true,
         )
         .clicked()
         {
@@ -251,10 +260,7 @@ pub(super) fn show(
                 (Action::Add, tr("加入歌单"), !t.unresolved),
                 (Action::Versions, tr("来源版本"), count > 0 && !multi),
             ] {
-                if ui
-                    .add_enabled(enabled, egui::Button::new(label).frame(false))
-                    .clicked()
-                {
+                if style::add_button(ui, enabled, egui::Button::new(label).frame(false)).clicked() {
                     result = Some(RowEvent::Action(action, multi));
                 }
             }

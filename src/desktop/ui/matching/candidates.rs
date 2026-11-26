@@ -1,4 +1,5 @@
 use super::{evidence::Evidence, Services};
+use crate::ui::style;
 use crate::{i18n::tr, task::Task};
 use eframe::egui;
 use serde::Deserialize;
@@ -116,23 +117,24 @@ impl Candidates {
         ui.label(tr("插件自动找出疑似重复歌曲。确认属于同一录音后再合并；现场版、翻唱和不同录音可选择排除。"));
         ui.weak(tr("评分表示优先核对顺序，不是相同概率。"));
         ui.horizontal_wrapped(|ui| {
-            if ui
-                .add_enabled(
-                    self.task.is_none() && !locked,
-                    egui::Button::new(tr("刷新候选")),
-                )
-                .clicked()
+            if style::add_button(
+                ui,
+                self.task.is_none() && !locked,
+                egui::Button::new(tr("刷新候选")),
+            )
+            .clicked()
             {
                 *self = Self::default();
                 self.load(ui.ctx(), svc);
             }
-            if svc.server.info.role == "admin" && ui.button(tr("打开插件设置")).clicked() {
+            if svc.server.info.role == "admin" && style::button(ui, tr("打开插件设置")).clicked()
+            {
                 choice = Some(Choice::Settings);
             }
         });
         if let Some(error) = &self.error {
             ui.colored_label(ui.visuals().error_fg_color, error);
-            if !self.stale && ui.button(tr("重试")).clicked() {
+            if !self.stale && style::button(ui, tr("重试")).clicked() {
                 self.load(ui.ctx(), svc);
             }
         }
@@ -172,13 +174,13 @@ impl Candidates {
                 if let Some(rev) = self.revision {
                     ui.add_enabled_ui(!locked && !self.stale && self.task.is_none(), |ui| {
                         ui.horizontal(|ui| {
-                            if ui.button(tr("合并歌曲")).clicked() {
+                            if style::button(ui, tr("合并歌曲")).clicked() {
                                 choice = Some(Choice::Merge(
                                     vec![c.left_track.clone(), c.right_track.clone()],
                                     rev,
                                 ));
                             }
-                            if ui.button(tr("不是同一录音")).clicked() {
+                            if style::button(ui, tr("不是同一录音")).clicked() {
                                 choice = Some(Choice::Exclude(
                                     vec![c.left_track.clone(), c.right_track.clone()],
                                     rev,

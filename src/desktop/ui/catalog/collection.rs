@@ -9,15 +9,14 @@ impl Catalog {
     pub(super) fn album_filters(&mut self, ui: &mut egui::Ui) {
         for (mode, icon, label) in [(false, "grid", "卡片视图"), (true, "queue", "列表视图")]
         {
-            let b = crate::icons::button(ui, icon, tr(label), 32., 16.);
-            b.widget_info(|| {
-                egui::WidgetInfo::selected(
-                    egui::WidgetType::SelectableLabel,
-                    true,
-                    self.album_list == mode,
-                    tr(label),
-                )
-            });
+            let b = crate::icons::selectable_button(
+                ui,
+                icon,
+                tr(label),
+                32.,
+                16.,
+                self.album_list == mode,
+            );
             if b.clicked() {
                 self.album_list = mode;
             }
@@ -31,9 +30,7 @@ impl Catalog {
         }
         ui.scope(|ui| {
             style::checkbox_style(ui);
-            if ui
-                .checkbox(&mut self.unscraped_only, tr("仅显示未刮削专辑"))
-                .changed()
+            if style::checkbox(ui, &mut self.unscraped_only, tr("仅显示未刮削专辑")).changed()
             {
                 self.categories = Default::default();
             }
@@ -121,11 +118,11 @@ impl Catalog {
                 let dark = ui.visuals().dark_mode;
                 let fg = ui.visuals().text_color();
                 let secondary = style::muted(dark);
-                let fill = if response.hovered() || response.has_focus() {
-                    style::hovered(dark)
-                } else {
-                    style::surface(dark)
-                };
+                let fill = style::interaction(ui, &response).color(
+                    style::surface(dark),
+                    style::hovered(dark),
+                    style::accent_soft(ui),
+                );
                 ui.painter().rect_filled(r, if list { 0 } else { 8 }, fill);
                 if list {
                     ui.painter().hline(

@@ -1,8 +1,6 @@
 use super::queue_list;
 use crate::{i18n::tr, icons, ui::style};
-use eframe::egui::{
-    self, Align, Align2, FontId, Layout, Rect, RichText, Sense, Stroke, Ui, UiBuilder,
-};
+use eframe::egui::{self, Align, Align2, FontId, Layout, RichText, Sense, Stroke, Ui, UiBuilder};
 use musicfs_player_core::{PlayerCommand, PlayerSnapshot};
 
 #[derive(Default)]
@@ -39,32 +37,10 @@ pub(super) fn show(ui: &mut Ui, snapshot: &PlayerSnapshot, pinned: bool) -> Pane
     } else {
         "固定播放队列"
     });
-    let (pin_rect, pin) = controls.allocate_exact_size(egui::Vec2::splat(28.), Sense::click());
-    pin.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, pin_label));
-    let pin_color = if pinned {
-        style::accent(ui)
-    } else {
-        style::text(dark)
-    };
-    if pinned || pin.hovered() || pin.has_focus() {
-        let fill = if pinned {
-            style::accent_soft(ui)
-        } else {
-            style::hovered(dark)
-        };
-        ui.painter().rect_filled(pin_rect, 6, fill);
-    }
-    icons::paint(
-        ui,
-        "pin",
-        Rect::from_center_size(pin_rect.center(), egui::Vec2::splat(15.)),
-        pin_color,
-    );
-    result.toggle_pin = pin
-        .on_hover_cursor(egui::CursorIcon::PointingHand)
-        .on_hover_text(pin_label)
-        .clicked();
-    let clear = controls.add_enabled(
+    let pin = icons::selectable_button(&mut controls, "pin", pin_label, 28., 15., pinned);
+    result.toggle_pin = pin.clicked();
+    let clear = style::add_button(
+        &mut controls,
         !snapshot.queue.is_empty(),
         egui::Button::new(RichText::new(tr("清空队列")).size(12.)).frame(false),
     );
@@ -113,7 +89,7 @@ pub(super) fn show(ui: &mut Ui, snapshot: &PlayerSnapshot, pinned: bool) -> Pane
         && ui.input(|input| {
             input.pointer.button_pressed(egui::PointerButton::Primary)
                 && input.pointer.interact_pos().is_some_and(|pos| {
-                    ![clear.rect, pin_rect, close.rect]
+                    ![clear.rect, pin.rect, close.rect]
                         .iter()
                         .any(|rect| rect.contains(pos))
                 })

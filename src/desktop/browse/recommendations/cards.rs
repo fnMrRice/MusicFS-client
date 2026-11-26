@@ -66,11 +66,11 @@ pub(crate) fn playlist_cards<'a>(
                 return;
             }
             let dark = ui.visuals().dark_mode;
-            let fill = if response.hovered() || response.has_focus() {
-                style::hovered(dark)
-            } else {
-                style::surface(dark)
-            };
+            let fill = style::interaction(ui, &response).color(
+                style::surface(dark),
+                style::hovered(dark),
+                style::accent_soft(ui),
+            );
             let border = if response.has_focus() {
                 style::accent(ui)
             } else if dark {

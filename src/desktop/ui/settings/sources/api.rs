@@ -1,6 +1,7 @@
 use super::Services;
 use crate::i18n::{locale, tr};
 use crate::task::Task;
+use crate::ui::style;
 use eframe::egui;
 use musicfs_server_adapter::ServerSession;
 use serde::{de::DeserializeOwned, Deserialize};
@@ -63,7 +64,7 @@ impl<T: Send + 'static> Load<T> {
         }
         if let Some(e) = &self.error {
             ui.colored_label(ui.visuals().error_fg_color, e);
-            return ui.button(tr("重试")).clicked();
+            return style::button(ui, tr("重试")).clicked();
         }
         false
     }

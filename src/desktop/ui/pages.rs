@@ -1,7 +1,7 @@
 use super::{
     data::{Pages, Services, TrackQuery},
     navigation::Screen,
-    table, SignedUi,
+    style, table, SignedUi,
 };
 use crate::i18n::tr;
 use eframe::egui;
@@ -27,9 +27,14 @@ impl SignedUi {
             Screen::Favorites => TrackQuery::Favorites,
             Screen::History => {
                 ui.horizontal_wrapped(|ui| {
-                    ui.selectable_value(&mut self.history_type, String::new(), tr("音乐"));
+                    style::selectable_value(ui, &mut self.history_type, String::new(), tr("音乐"));
                     for t in self.browse.types().iter().filter(|t| t.separate_history) {
-                        ui.selectable_value(&mut self.history_type, t.id.clone(), tr(&t.name));
+                        style::selectable_value(
+                            ui,
+                            &mut self.history_type,
+                            t.id.clone(),
+                            tr(&t.name),
+                        );
                     }
                 });
                 ui.separator();
@@ -71,7 +76,7 @@ impl SignedUi {
                         ui.spinner();
                     } else if let Some(error) = &self.lists.error {
                         ui.colored_label(ui.visuals().error_fg_color, error);
-                        if ui.button(tr("重试读取歌单")).clicked() {
+                        if style::button(ui, tr("重试读取歌单")).clicked() {
                             self.lists = Pages::default();
                             ui.ctx().request_repaint();
                         }
@@ -81,7 +86,7 @@ impl SignedUi {
                     } else {
                         ui.weak(tr("此歌单已删除或无法访问。"));
                     }
-                    if ui.button(tr("返回歌单列表")).clicked() {
+                    if style::button(ui, tr("返回歌单列表")).clicked() {
                         self.navigate(Screen::Playlists);
                     }
                     return;
@@ -90,12 +95,12 @@ impl SignedUi {
                 if p.stale {
                     ui.horizontal(|ui| {
                         ui.weak(tr("歌单有未应用的更改。"));
-                        if ui
-                            .add_enabled(
-                                !self.actions.busy(),
-                                egui::Button::new(tr("更新歌单内容")),
-                            )
-                            .clicked()
+                        if style::add_button(
+                            ui,
+                            !self.actions.busy(),
+                            egui::Button::new(tr("更新歌单内容")),
+                        )
+                        .clicked()
                         {
                             self.actions.rebuild(ui, svc, p);
                         }

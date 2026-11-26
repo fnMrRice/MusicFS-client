@@ -2,7 +2,10 @@ use super::{
     api::{decode, get, list, text, Load},
     Services,
 };
-use crate::i18n::tr;
+use crate::{
+    i18n::tr,
+    ui::style::{self, ComboBoxMotion},
+};
 use eframe::egui;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -55,7 +58,9 @@ impl Order {
             .error
             .as_ref()
             .is_some_and(|e| e.contains("HTTP 409") || e.contains("HTTP 412"));
-        if self.settings.initial() || retry || conflict && ui.button(tr("重新加载设置")).clicked()
+        if self.settings.initial()
+            || retry
+            || conflict && style::button(ui, tr("重新加载设置")).clicked()
         {
             self.save.error = None;
             let s = svc.server.clone();
@@ -85,21 +90,25 @@ impl Order {
                                 ui.add(egui::Label::new(name(id)).truncate());
                             },
                             |ui| {
-                                if ui.add_enabled(i > 0, egui::Button::new("↑")).clicked() {
+                                if style::add_button(ui, i > 0, egui::Button::new("↑")).clicked()
+                                {
                                     move_to = Some((i, i - 1));
                                 }
-                                if ui
-                                    .add_enabled(i + 1 < self.draft.len(), egui::Button::new("↓"))
-                                    .clicked()
+                                if style::add_button(
+                                    ui,
+                                    i + 1 < self.draft.len(),
+                                    egui::Button::new("↓"),
+                                )
+                                .clicked()
                                 {
                                     move_to = Some((i, i + 1));
                                 }
-                                if ui
-                                    .add_enabled(
-                                        self.draft.len() > 1,
-                                        egui::Button::new(tr("移除")),
-                                    )
-                                    .clicked()
+                                if style::add_button(
+                                    ui,
+                                    self.draft.len() > 1,
+                                    egui::Button::new(tr("移除")),
+                                )
+                                .clicked()
                                 {
                                     remove = Some(i);
                                 }
@@ -118,7 +127,7 @@ impl Order {
                 }
                 egui::ComboBox::from_id_salt("scraper-add")
                     .selected_text(tr("添加刮削来源"))
-                    .show_ui(ui, |ui| {
+                    .show_animated(ui, |ui| {
                         for v in scrapers {
                             let id = text(v, "pluginId");
                             if v["available"] == true
@@ -129,7 +138,7 @@ impl Order {
                                         .is_some_and(|a| a.iter().any(|x| x == *f))
                                 })
                                 && !self.draft.iter().any(|p| p == id)
-                                && ui.button(name(id)).clicked()
+                                && style::button(ui, name(id)).clicked()
                             {
                                 self.draft.push(id.into());
                                 changed = true;
@@ -142,12 +151,12 @@ impl Order {
                     self.save.error = None;
                     self.saved = false;
                 }
-                if ui
-                    .add_enabled(
-                        self.draft != settings.local_plugin_order,
-                        egui::Button::new(tr("保存设置")),
-                    )
-                    .clicked()
+                if style::add_button(
+                    ui,
+                    self.draft != settings.local_plugin_order,
+                    egui::Button::new(tr("保存设置")),
+                )
+                .clicked()
                 {
                     let key = self
                         .key

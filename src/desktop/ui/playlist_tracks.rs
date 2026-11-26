@@ -1,4 +1,8 @@
-use crate::{i18n::tr, icons};
+use crate::{
+    i18n::tr,
+    icons,
+    ui::style::{self, ComboBoxMotion},
+};
 use eframe::egui;
 use musicfs_server_adapter::Track;
 
@@ -60,10 +64,10 @@ impl PlaylistTools {
             egui::ComboBox::from_id_salt("playlist-track-sort")
                 .width(108.)
                 .selected_text(self.order.label())
-                .show_ui(ui, |ui| {
+                .show_animated(ui, |ui| {
                     ui.with_layout(egui::Layout::top_down_justified(egui::Align::Min), |ui| {
                         for order in [Order::Original, Order::Title, Order::Artist, Order::Album] {
-                            ui.selectable_value(&mut self.order, order, order.label());
+                            style::selectable_value(ui, &mut self.order, order, order.label());
                         }
                     });
                 });

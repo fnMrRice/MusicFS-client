@@ -1,3 +1,4 @@
+use crate::ui::style;
 mod candidates;
 mod decision;
 mod evidence;
@@ -46,8 +47,10 @@ impl Matching {
             .iter()
             .position(|t| row_key(t) == row_key(track));
         let mut checked = position.is_some();
-        let response = ui.add_enabled(
+        let response = style::add_checkbox(
+            ui,
             !self.decisions.locked(),
+            checked,
             egui::Checkbox::without_text(&mut checked),
         );
         response.widget_info(|| {
@@ -71,9 +74,12 @@ impl Matching {
     }
 
     pub fn unlink_button(&mut self, ui: &mut egui::Ui, src: &SourceVersion, track: &Track) -> bool {
-        let clicked = ui
-            .add_enabled(!self.decisions.locked(), egui::Button::new(tr("解除关联")))
-            .clicked();
+        let clicked = style::add_button(
+            ui,
+            !self.decisions.locked(),
+            egui::Button::new(tr("解除关联")),
+        )
+        .clicked();
         if clicked {
             self.dialog = Some(Dialog::Review {
                 action: Decision::Unlink(src.source_track_id.clone()),
@@ -119,7 +125,7 @@ impl Matching {
         }
         if let Some(error) = &self.error {
             ui.colored_label(ui.visuals().error_fg_color, error);
-            if ui.button(tr("重试")).clicked() {
+            if style::button(ui, tr("重试")).clicked() {
                 self.revision(&ctx, svc);
             }
         }
@@ -143,8 +149,7 @@ impl Matching {
         provider: Option<&str>,
         query: &str,
     ) {
-        if ui
-            .add_enabled(!self.locked(), egui::Button::new(tr("一键自动刮削")))
+        if style::add_button(ui, !self.locked(), egui::Button::new(tr("一键自动刮削")))
             .on_hover_text(tr("自动刮削当前来源和搜索条件下的所有未刮削专辑"))
             .clicked()
         {
@@ -160,9 +165,12 @@ impl Matching {
         }
     }
     pub(super) fn buttons(&mut self, ui: &mut egui::Ui, svc: Services<'_>) {
-        if ui
-            .add_enabled(!self.locked(), egui::Button::new(tr("一键合并重复音乐")))
-            .clicked()
+        if style::add_button(
+            ui,
+            !self.locked(),
+            egui::Button::new(tr("一键合并重复音乐")),
+        )
+        .clicked()
         {
             ui.close_menu();
             self.dialog = Some(Dialog::Bulk {
@@ -174,7 +182,7 @@ impl Matching {
                 self.revision(ui.ctx(), svc);
             }
         }
-        if ui.button(tr("重复识别")).clicked() {
+        if style::button(ui, tr("重复识别")).clicked() {
             ui.close_menu();
             self.dialog = Some(Dialog::Candidates);
         }
@@ -184,9 +192,7 @@ impl Matching {
         if !self.selected.is_empty() {
             let editable = self.selected.len() >= 2 && !self.decisions.locked();
             if allow_manual
-                && ui
-                    .add_enabled(editable, egui::Button::new(tr("合并歌曲")))
-                    .clicked()
+                && style::add_button(ui, editable, egui::Button::new(tr("合并歌曲"))).clicked()
             {
                 let items = evidence::selected(&self.selected);
                 self.dialog = Some(merge(items, self.revision, false));
@@ -199,7 +205,7 @@ impl Matching {
                     if a.source_track_id != b.source_track_id {
                         for (excluded, label) in [(true, "不是同一录音"), (false, "撤销排除")]
                         {
-                            if ui.button(tr(label)).clicked() {
+                            if style::button(ui, tr(label)).clicked() {
                                 self.dialog = Some(exclusion(
                                     vec![
                                         Evidence::version(&self.selected[0], a),
@@ -332,11 +338,11 @@ impl Matching {
                     }
                     if let Some(e) = &self.error {
                         ui.colored_label(ui.visuals().error_fg_color, e);
-                        reload = ui.button(tr("重试")).clicked();
+                        reload = style::button(ui, tr("重试")).clicked();
                     }
                 });
             ui.separator();
-            close = ui.button(tr("关闭")).clicked();
+            close = style::button(ui, tr("关闭")).clicked();
         });
         self.dialog = if close || modal.should_close() {
             if matches!(

@@ -1,4 +1,6 @@
 use crate::i18n::tr;
+use crate::ui::style;
+use crate::ui::style::ComboBoxMotion;
 use eframe::egui;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -212,7 +214,7 @@ impl Draft {
                         changed |= ui
                             .add(egui::TextEdit::singleline(&mut row.title).hint_text(tr("别名")))
                             .changed();
-                        if ui.small_button(tr("移除")).clicked() {
+                        if style::small_button(ui, tr("移除")).clicked() {
                             remove = Some(i);
                         }
                     })
@@ -222,9 +224,12 @@ impl Draft {
                 self.aliases.remove(i);
                 changed = true;
             }
-            if ui
-                .add_enabled(self.aliases.len() < 64, egui::Button::new(tr("添加别名")))
-                .clicked()
+            if style::add_button(
+                ui,
+                self.aliases.len() < 64,
+                egui::Button::new(tr("添加别名")),
+            )
+            .clicked()
             {
                 self.aliases.push(Alias::default());
                 changed = true;
@@ -249,10 +254,10 @@ impl Draft {
                 } else {
                     value.as_str()
                 })
-                .show_ui(ui, |ui| {
-                    ui.selectable_value(value, String::new(), tr("未评分"));
+                .show_animated(ui, |ui| {
+                    style::selectable_value(ui, value, String::new(), tr("未评分"));
                     for i in 1..=5 {
-                        ui.selectable_value(value, i.to_string(), i.to_string());
+                        style::selectable_value(ui, value, i.to_string(), i.to_string());
                     }
                 });
             return prev != *value;

@@ -1,5 +1,5 @@
 use super::{get, path_id, Load, Root, Services};
-use crate::i18n::tr;
+use crate::{i18n::tr, ui::style};
 use eframe::egui;
 use serde::Deserialize;
 use std::collections::HashSet;
@@ -56,9 +56,12 @@ impl Browser {
         }
         let mut load = self.revision.is_none() && self.page.initial();
         ui.horizontal_wrapped(|ui| {
-            if ui
-                .add_enabled(!self.path.is_empty(), egui::Button::new(tr("返回上一级")))
-                .clicked()
+            if style::add_button(
+                ui,
+                !self.path.is_empty(),
+                egui::Button::new(tr("返回上一级")),
+            )
+            .clicked()
             {
                 self.path.pop();
                 self.reset();
@@ -88,12 +91,13 @@ impl Browser {
                                 .as_ref()
                                 .is_some_and(|id| roots.iter().any(|r| &r.id == id));
                             let mut on = saved || selected.iter().any(|(_, _, p)| p == &item.path);
-                            if ui
-                                .add_enabled(
-                                    !saved && item.available,
-                                    egui::Checkbox::new(&mut on, &item.name),
-                                )
-                                .changed()
+                            if style::add_checkbox(
+                                ui,
+                                !saved && item.available,
+                                on,
+                                egui::Checkbox::new(&mut on, &item.name),
+                            )
+                            .changed()
                             {
                                 if on {
                                     selected.push((
@@ -105,8 +109,7 @@ impl Browser {
                                     selected.retain(|(_, _, p)| p != &item.path);
                                 }
                             }
-                            if ui
-                                .add_enabled(item.available, egui::Button::new(tr("打开")))
+                            if style::add_button(ui, item.available, egui::Button::new(tr("打开")))
                                 .clicked()
                             {
                                 open = Some(item.path.clone());
@@ -157,7 +160,7 @@ impl Browser {
         for (i, (_, name, path)) in selected.iter().enumerate() {
             ui.horizontal(|ui| {
                 ui.label(name).on_hover_text(path);
-                if ui.small_button("−").clicked() {
+                if style::small_button(ui, "−").clicked() {
                     remove = Some(i);
                 }
             });

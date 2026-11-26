@@ -349,20 +349,37 @@ impl PlayerUi {
             *change = Some(BarChange::Volume(volume));
         }
         let muted = volume == 0.;
-        if icons::button(
+        if icons::selectable_button(
             ui,
             if muted { "volume-muted" } else { "volume" },
             tr(if muted { "取消静音" } else { "静音" }),
             36.,
             21.,
+            muted,
         )
         .clicked()
         {
             *change = Some(BarChange::Volume(if muted { last_volume } else { 0. }));
         }
-        if icons::button(ui, "lyrics", tr("桌面歌词"), 36., 21.).clicked() {
+        if icons::selectable_button(
+            ui,
+            "lyrics",
+            tr("桌面歌词"),
+            36.,
+            21.,
+            self.windows.lyrics_open(),
+        )
+        .clicked()
+        {
             self.windows.open_lyrics(ui.ctx());
         }
-        icons::button(ui, "queue", tr("播放队列"), 36., 21.)
+        icons::selectable_button(
+            ui,
+            "queue",
+            tr("播放队列"),
+            36.,
+            21.,
+            !matches!(self.queue, super::queue_window::QueueView::Hidden),
+        )
     }
 }

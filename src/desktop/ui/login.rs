@@ -1,7 +1,7 @@
 use super::style;
 use crate::i18n::tr;
 use crate::model::DesktopState;
-use eframe::egui::{self, Align, Layout, RichText, Vec2};
+use eframe::egui::{self, Align, Layout, Vec2};
 
 #[derive(Default)]
 pub struct Login {
@@ -69,7 +69,7 @@ impl Login {
                                 ui.colored_label(ui.visuals().error_fg_color, error);
                             }
                             ui.add_enabled_ui(!state.busy, |ui| {
-                                ui.checkbox(&mut self.remember, tr("在此设备上保持登录"));
+                                style::checkbox(ui, &mut self.remember, tr("在此设备上保持登录"));
                             });
                             ui.add_space(12.0);
                             let enabled = !state.busy
@@ -77,19 +77,15 @@ impl Login {
                                 && !self.token.trim().is_empty();
                             let enter = password.lost_focus()
                                 && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                            let button = egui::Button::new(
-                                RichText::new(if state.busy {
-                                    tr("正在连接…")
-                                } else {
-                                    tr("连接并登录")
-                                })
-                                .strong()
-                                .color(style::on_accent(ui)),
-                            )
-                            .fill(style::accent_fill(ui))
-                            .corner_radius(7)
-                            .min_size(Vec2::new(ui.available_width(), 40.0));
-                            if ui.add_enabled(enabled, button).clicked() || (enabled && enter) {
+                            let label = tr(if state.busy {
+                                "正在连接…"
+                            } else {
+                                "连接并登录"
+                            });
+                            let size = Vec2::new(ui.available_width(), 40.);
+                            if style::primary_sized(ui, label, enabled, size).clicked()
+                                || (enabled && enter)
+                            {
                                 let token = std::mem::take(&mut self.token);
                                 state.connect(
                                     self.endpoint.trim().to_owned(),
@@ -101,10 +97,10 @@ impl Login {
                             }
                             if !state.busy && state.prefs.saved_login.is_some() {
                                 ui.horizontal_wrapped(|ui| {
-                                    if ui.button(tr("重试已保存的登录")).clicked() {
+                                    if style::button(ui, tr("重试已保存的登录")).clicked() {
                                         state.restore(ctx);
                                     }
-                                    if ui.button(tr("忘记已保存的登录")).clicked() {
+                                    if style::button(ui, tr("忘记已保存的登录")).clicked() {
                                         state.forget();
                                     }
                                 });

@@ -131,7 +131,7 @@ impl LibrarySearch {
         ui.horizontal(|ui| {
             ui.label(RichText::new(tr("最近搜索")).font(style::bold(ui, 17.)));
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                if ui.link(tr("清空记录")).clicked() {
+                if style::link(ui, tr("清空记录")).clicked() {
                     self.recent.clear();
                 }
             });
@@ -140,7 +140,7 @@ impl LibrarySearch {
         let mut chosen = None;
         ui.horizontal_wrapped(|ui| {
             for q in &self.recent {
-                if ui.add(Button::new(q).corner_radius(8)).clicked() {
+                if style::add_button(ui, true, Button::new(q).corner_radius(8)).clicked() {
                     chosen = Some(q.clone());
                 }
             }
@@ -163,10 +163,7 @@ impl LibrarySearch {
                 (CategoryTab::Album, "专辑"),
                 (CategoryTab::Artist, "歌手"),
             ] {
-                if ui
-                    .selectable_value(&mut self.section, tab, tr(key))
-                    .changed()
-                {
+                if style::selectable_value(ui, &mut self.section, tab, tr(key)).changed() {
                     self.results = Default::default();
                 }
             }
@@ -300,5 +297,5 @@ fn loading(ui: &mut egui::Ui) {
 
 fn retry(ui: &mut egui::Ui, error: &str) -> bool {
     ui.colored_label(ui.visuals().error_fg_color, error);
-    ui.button(tr("重试")).clicked()
+    style::button(ui, tr("重试")).clicked()
 }

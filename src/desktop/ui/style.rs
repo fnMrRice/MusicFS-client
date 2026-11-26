@@ -1,6 +1,16 @@
 use eframe::egui::{self, Color32, FontId, Pos2, Rect, Response, RichText, Sense, Stroke, Vec2};
 
+mod choices;
+mod motion;
+pub use choices::{collapsing, ComboBoxMotion};
+use motion::with_motion;
+pub use motion::{
+    add_button, add_checkbox, button, checkbox, interaction, interaction_with_hover, link,
+    menu_button, primary_sized, radio_value, selectable, selectable_value, small_button,
+};
+
 pub const ACCENT: Color32 = Color32::from_rgb(255, 54, 88);
+pub const ON_ACCENT: Color32 = Color32::from_rgb(22, 27, 33);
 
 pub fn background(dark: bool) -> Color32 {
     if dark {
@@ -36,9 +46,16 @@ pub fn muted(dark: bool) -> Color32 {
 
 pub fn text(dark: bool) -> Color32 {
     if dark {
-        Color32::from_rgb(237, 240, 242)
+        Color32::from_rgb(216, 222, 228)
     } else {
-        Color32::from_rgb(38, 49, 61)
+        Color32::from_rgb(52, 62, 73)
+    }
+}
+pub fn highlight(dark: bool) -> Color32 {
+    if dark {
+        Color32::WHITE
+    } else {
+        Color32::BLACK
     }
 }
 pub fn input(dark: bool) -> Color32 {
@@ -85,13 +102,6 @@ pub fn accent(ui: &egui::Ui) -> Color32 {
         (_, color) => color,
     }
 }
-pub fn on_accent(ui: &egui::Ui) -> Color32 {
-    if accent_fill(ui) == ACCENT {
-        Color32::WHITE
-    } else {
-        sidebar(true)
-    }
-}
 pub fn accent_soft(ui: &egui::Ui) -> Color32 {
     // 按 Web 的 sRGB 色值混合。GPU 透明叠色在线性空间会让整行的底色过亮。
     blend(background(ui.visuals().dark_mode), accent_fill(ui), 0.09)
@@ -129,6 +139,8 @@ pub fn checkbox_style(ui: &mut egui::Ui) {
         widget.bg_fill = fill;
     }
     widgets.active.bg_stroke = Stroke::new(1_f32, accent);
+    widgets.hovered.bg_fill = fill.lerp_to_gamma(accent, 0.10);
+    widgets.active.bg_fill = fill.lerp_to_gamma(accent, 0.23);
 }
 pub fn bold(ui: &egui::Ui, size: f32) -> FontId {
     crate::fonts::bold(ui.ctx(), size)
@@ -169,14 +181,14 @@ pub fn apply(ctx: &egui::Context, value: &str, accent_key: &str) {
             v.faint_bg_color = surface(dark);
             v.hyperlink_color = text(dark);
             v.selection.bg_fill = blend(background(dark), fill, 0.2);
-            v.selection.stroke = Stroke::new(1_f32, text(dark));
+            v.selection.stroke = Stroke::new(1_f32, highlight(dark));
             v.striped = false;
             let w = &mut v.widgets;
             for (widget, bg) in [
                 (&mut w.noninteractive, background(dark)),
                 (&mut w.inactive, surface(dark)),
                 (&mut w.hovered, hovered(dark)),
-                (&mut w.active, hovered(dark)),
+                (&mut w.active, blend(hovered(dark), fill, 0.19)),
                 (&mut w.open, hovered(dark)),
             ] {
                 widget.bg_fill = bg;
@@ -194,6 +206,8 @@ pub fn apply(ctx: &egui::Context, value: &str, accent_key: &str) {
                 widget.expansion = 0.;
             }
             w.noninteractive.bg_stroke = border;
+            w.hovered.fg_stroke.color = blend(text(dark), highlight(dark), 0.48);
+            w.hovered.bg_stroke.color = blend(line(dark), muted(dark), 0.48);
             w.active.bg_stroke = Stroke::new(1_f32, fill);
         });
     }
@@ -216,27 +230,21 @@ pub fn appearance_choice(
                 Color32::PLACEHOLDER,
             ),
         );
-        let response = ui.selectable_label(selected, job);
+        let response = selectable(ui, selected, job);
         let x = response.rect.left() + ui.spacing().button_padding.x + radius;
         ui.painter()
             .circle_filled(egui::pos2(x, response.rect.center().y), radius, color);
         response
     } else {
-        ui.selectable_label(selected, label)
+        selectable(ui, selected, label)
     };
     let dark = ui.visuals().dark_mode;
     let border = if selected && dark {
         blend(background(true), accent(ui), 0.65)
     } else if selected {
         accent(ui)
-    } else if response.hovered() || response.has_focus() {
-        if dark {
-            blend(background(true), muted(true), 0.6)
-        } else {
-            muted(false)
-        }
     } else {
-        choice_border(dark)
+        interaction(ui, &response).color(choice_border(dark), muted(dark), accent(ui))
     };
     let width: f32 = if response.has_focus() {
         2.
@@ -281,14 +289,7 @@ pub fn accent_choices(ui: &mut egui::Ui, current: &str) -> Option<String> {
 }
 
 pub fn primary(ui: &mut egui::Ui, label: &str, enabled: bool) -> Response {
-    ui.add_enabled(
-        enabled,
-        egui::Button::new(RichText::new(label).color(on_accent(ui)))
-            .fill(accent_fill(ui))
-            .stroke(Stroke::NONE)
-            .corner_radius(7)
-            .min_size(Vec2::new(82., 36.)),
-    )
+    primary_sized(ui, label, enabled, Vec2::new(82., 36.))
 }
 
 pub fn note(ui: &mut egui::Ui) {

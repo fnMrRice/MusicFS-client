@@ -65,12 +65,20 @@ pub(super) fn header(ui: &mut egui::Ui, rect: Rect, c: &Columns, data: &mut Cata
     let mut check = contents(ui, check_rect(cells[0]), "select-all");
     let partial = count > 0 && !all;
     style::checkbox_style(&mut check);
-    let response = check.add_enabled(
-        !data.matching.locked() && !data.tracks.items.is_empty(),
+    let enabled = !data.matching.locked() && !data.tracks.items.is_empty();
+    let response = style::add_checkbox(
+        &mut check,
+        enabled,
+        all || partial,
         egui::Checkbox::without_text(&mut all).indeterminate(partial),
     );
     response.widget_info(|| {
-        egui::WidgetInfo::selected(egui::WidgetType::Checkbox, true, all, tr("全选已加载曲目"))
+        egui::WidgetInfo::selected(
+            egui::WidgetType::Checkbox,
+            enabled,
+            all,
+            tr("全选已加载曲目"),
+        )
     });
     if response.on_hover_text(tr("全选已加载曲目")).changed() {
         data.matching.select_rows(&data.tracks.items, all);
@@ -133,13 +141,14 @@ pub(super) fn credit(
         .x;
     let mut chosen = None;
     if credits.len() > 1 && natural > child.available_width() {
-        let button = child
-            .add(
-                egui::Button::new(RichText::new(&full).size(13.).underline())
-                    .frame(false)
-                    .truncate(),
-            )
-            .on_hover_text(&full);
+        let button = style::add_button(
+            &mut child,
+            true,
+            egui::Button::new(RichText::new(&full).size(13.).underline())
+                .frame(false)
+                .truncate(),
+        )
+        .on_hover_text(&full);
         let id = button.id.with("credits");
         if button.clicked() {
             child.memory_mut(|m| m.toggle_popup(id));
@@ -151,9 +160,7 @@ pub(super) fn credit(
             egui::PopupCloseBehavior::CloseOnClick,
             |ui| {
                 for c in credits {
-                    if ui
-                        .add_enabled(!c.id.is_empty(), egui::Button::new(&c.name))
-                        .clicked()
+                    if style::add_button(ui, !c.id.is_empty(), egui::Button::new(&c.name)).clicked()
                     {
                         chosen = Some(c);
                     }
@@ -161,27 +168,19 @@ pub(super) fn credit(
             },
         );
     } else {
+        child.style_mut().wrap_mode = Some(egui::TextWrapMode::Truncate);
         for (j, c) in credits.iter().enumerate() {
             if j > 0 {
                 child.label(" / ");
             }
-            let mut text = RichText::new(&c.name).size(13.);
-            if !c.id.is_empty() {
-                text = text.underline();
-            }
-            let r = child.add(egui::Label::new(text).truncate().sense(if c.id.is_empty() {
-                Sense::hover()
-            } else {
-                Sense::click()
-            }));
-            if !c.id.is_empty() {
-                r.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Link, true, &c.name));
-                if r.on_hover_text(&c.name)
-                    .on_hover_cursor(egui::CursorIcon::PointingHand)
-                    .clicked()
-                {
-                    chosen = Some(c);
-                }
+            let text = RichText::new(&c.name).size(13.);
+            if c.id.is_empty() {
+                child.add(egui::Label::new(text).truncate());
+            } else if style::link(&mut child, text.underline())
+                .on_hover_text(&c.name)
+                .clicked()
+            {
+                chosen = Some(c);
             }
         }
     }
@@ -243,45 +242,72 @@ pub(super) fn playback_indicator(ui: &mut egui::Ui, r: Rect, status: Status, num
         .request_repaint_after(std::time::Duration::from_millis(80));
 }
 
+pub(super) enum TitleControl {
+    Play { enabled: bool, current: bool },
+    Versions { open: bool },
+}
+
 pub(super) fn title_control(
     ui: &mut egui::Ui,
     rect: Rect,
-    icon: &str,
+    control: TitleControl,
     text: &str,
     accessible: &str,
-    enabled: bool,
-    secondary: bool,
 ) -> Response {
-    let mut child = contents(ui, rect, icon);
+    let dark = ui.visuals().dark_mode;
+    let (icon, enabled, selected, size, base) = match control {
+        TitleControl::Play { enabled, current } => {
+            ("play", enabled, current, 14., style::text(dark))
+        }
+        TitleControl::Versions { open } => (
+            if open { "chevron-up" } else { "chevron" },
+            true,
+            open,
+            12.,
+            style::muted(dark),
+        ),
+    };
+    let id = if matches!(control, TitleControl::Play { .. }) {
+        "play"
+    } else {
+        "versions"
+    };
+    let mut child = contents(ui, rect, id);
     if !enabled {
         child.disable();
     }
     let hit = child.interact(rect, child.id().with("button"), Sense::click());
     hit.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, enabled, accessible));
-    let color = if hit.hovered() && enabled {
-        style::accent(ui)
-    } else if secondary || !enabled {
-        style::muted(ui.visuals().dark_mode)
+    let motion = style::interaction(&child, &hit);
+    let color = if !enabled {
+        style::muted(dark)
+    } else if selected {
+        child.painter().rect_filled(
+            rect,
+            4.,
+            motion.color(
+                Color32::TRANSPARENT,
+                style::hovered(dark),
+                style::accent_soft(ui),
+            ),
+        );
+        style::highlight(dark)
     } else {
-        ui.visuals().text_color()
+        motion.color(base, style::accent(ui), style::text(dark))
     };
     let center = pos2(rect.left() + 7., rect.center().y);
     icons::paint(
         ui,
         icon,
-        Rect::from_center_size(center, Vec2::splat(14.)),
+        Rect::from_center_size(center, Vec2::splat(14. - motion.press)),
         color,
     );
     let mut text_rect = rect;
     text_rect.min.x += 19.;
     contents(&mut child, text_rect, "title-text").add(
-        egui::Label::new(
-            RichText::new(text)
-                .size(if secondary { 12. } else { 14. })
-                .color(color),
-        )
-        .truncate()
-        .selectable(false),
+        egui::Label::new(RichText::new(text).size(size).color(color))
+            .truncate()
+            .selectable(false),
     );
     hit.on_hover_text(accessible)
         .on_hover_cursor(egui::CursorIcon::PointingHand)

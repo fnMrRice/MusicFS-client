@@ -56,7 +56,7 @@ pub fn tracks(
     }
     if let Some(error) = data.tracks.error.as_ref() {
         ui.colored_label(ui.visuals().error_fg_color, error);
-        if ui.button(tr("重试加载曲目")).clicked() {
+        if style::button(ui, tr("重试加载曲目")).clicked() {
             data.more(ui, svc);
         }
     }

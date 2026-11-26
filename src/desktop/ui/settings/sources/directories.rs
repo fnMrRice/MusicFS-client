@@ -6,7 +6,7 @@ use super::{
     api::{get, path_id, text, Load},
     scans, Services,
 };
-use crate::i18n::tr;
+use crate::{i18n::tr, ui::style};
 use eframe::egui;
 use musicfs_server_adapter::{activity::ActivityRevisions, ServerSession};
 use serde::{Deserialize, Serialize};
@@ -143,17 +143,17 @@ impl Editor {
                     Action::Edit(id)=>self.config.roots.iter().find(|r|&r.id==id).is_some_and(|r|
                         !self.name.trim().is_empty() && (self.name.trim()!=r.name || self.options!=self.original_options(r)))
                 };
-                if ui.add_enabled(can,egui::Button::new(tr(match self.action {Action::Add=>"添加所选目录",Action::Remove(_)=>"删除",_=>"保存"}))).clicked(){submit=true;}
+                if style::add_button(ui, can,egui::Button::new(tr(match self.action {Action::Add=>"添加所选目录",Action::Remove(_)=>"删除",_=>"保存"}))).clicked(){submit=true;}
             });
             if self.save.busy(){ ui.spinner();ui.weak(tr("正在应用目录设置…")); }
             if let Some(e)=&self.save.error {
                 ui.colored_label(ui.visuals().error_fg_color,e);
                 let conflict=e.contains("HTTP 412")||e.contains("HTTP 409")||e.contains("superseded")||e.contains("failed");
                 if conflict {
-                    if ui.button(tr("重新读取配置并放弃未保存选择")).clicked(){event=Some(Event::Reload);}
-                }else if ui.button(tr("继续确认保存结果")).clicked(){submit=true;}
+                    if style::button(ui, tr("重新读取配置并放弃未保存选择")).clicked(){event=Some(Event::Reload);}
+                }else if style::button(ui, tr("继续确认保存结果")).clicked(){submit=true;}
             }
-            if !self.save.busy() && ui.button(tr("取消")).clicked(){event=Some(Event::Close);}
+            if !self.save.busy() && style::button(ui, tr("取消")).clicked(){event=Some(Event::Close);}
             if submit {self.submit(ui,svc,instance);}
         });
         event
@@ -268,15 +268,12 @@ pub(super) async fn apply(
 fn options_ui(ui: &mut egui::Ui, o: &mut Options) {
     ui.separator();
     ui.strong(tr("查找设置"));
-    if ui
-        .checkbox(&mut o.recursive, tr("递归查找子目录"))
-        .changed()
-        && !o.recursive
+    if style::checkbox(ui, &mut o.recursive, tr("递归查找子目录")).changed() && !o.recursive
     {
         o.max_depth = 0;
     }
-    ui.checkbox(&mut o.import_lyrics, tr("导入歌词"));
-    ui.collapsing(tr("高级选项"), |ui| {
+    style::checkbox(ui, &mut o.import_lyrics, tr("导入歌词"));
+    style::collapsing(ui, egui::CollapsingHeader::new(tr("高级选项")), |ui| {
         ui.add_enabled_ui(o.recursive, |ui| {
             ui.horizontal(|ui| {
                 ui.label(tr("递归深度"));
@@ -285,10 +282,10 @@ fn options_ui(ui: &mut egui::Ui, o: &mut Options) {
             })
         });
         let mut hidden = !o.skip_hidden;
-        if ui.checkbox(&mut hidden, tr("包含隐藏文件和目录")).changed() {
+        if style::checkbox(ui, &mut hidden, tr("包含隐藏文件和目录")).changed() {
             o.skip_hidden = !hidden;
         }
-        ui.checkbox(&mut o.respect_no_media, tr("遵循 .nomedia 标记"));
-        ui.checkbox(&mut o.import_artwork, tr("导入曲目封面"));
+        style::checkbox(ui, &mut o.respect_no_media, tr("遵循 .nomedia 标记"));
+        style::checkbox(ui, &mut o.import_artwork, tr("导入曲目封面"));
     });
 }

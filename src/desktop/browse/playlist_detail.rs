@@ -4,7 +4,7 @@ use crate::{
     ui::{
         page_end_visible,
         playlist_tracks::{Metadata, PlaylistTools},
-        Artwork, Services,
+        style, Artwork, Services,
     },
 };
 use eframe::egui;
@@ -201,9 +201,12 @@ impl Detail {
                     }
                     if self.can_play
                         && !entry.unavailable
-                        && ui
-                            .add_enabled(!self.playback.busy(), egui::Button::new(tr("播放")))
-                            .clicked()
+                        && style::add_button(
+                            ui,
+                            !self.playback.busy(),
+                            egui::Button::new(tr("播放")),
+                        )
+                        .clicked()
                     {
                         play = Some(track.clone());
                     }

@@ -1,4 +1,5 @@
 use super::{more, Management};
+use crate::ui::style::ComboBoxMotion;
 use crate::{
     browse::{playlist_cards, OnlinePlaylistDetail, QueueSelection},
     i18n::{language_tags, tr},
@@ -34,7 +35,7 @@ impl Management {
             .collect();
         if sources.is_empty() {
             ui.weak(tr("服务器没有可用的平台歌单来源。"));
-            outcome.settings = ui.button(tr("音乐源设置")).clicked();
+            outcome.settings = style::button(ui, tr("音乐源设置")).clicked();
             return outcome;
         }
         if !sources.iter().any(|s| s.instance_id == self.selected) {
@@ -57,9 +58,10 @@ impl Management {
             egui::ComboBox::from_id_salt("playlist-source")
                 .width(240.)
                 .selected_text(current.label(language_tags()))
-                .show_ui(ui, |ui| {
+                .show_animated(ui, |ui| {
                     for source in sources {
-                        ui.selectable_value(
+                        style::selectable_value(
+                            ui,
                             &mut self.selected,
                             source.instance_id.clone(),
                             source.label(language_tags()),
@@ -93,12 +95,12 @@ impl Management {
         }
         if current.availability != "available" {
             ui.weak(tr("请检查音乐源设置中的平台账号与连接状态。"));
-            outcome.settings = ui.button(tr("音乐源设置")).clicked();
+            outcome.settings = style::button(ui, tr("音乐源设置")).clicked();
             return outcome;
         }
         art.poll(ui.ctx());
         if self.detail.is_some() {
-            if ui.button(tr("返回平台歌单")).clicked() {
+            if style::button(ui, tr("返回平台歌单")).clicked() {
                 self.back();
                 return outcome;
             }
@@ -129,12 +131,12 @@ impl Management {
                     egui::TextEdit::singleline(&mut self.reference).hint_text(hint),
                 );
                 submit = r.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-                submit |= ui
-                    .add_enabled(
-                        !self.reference.trim().is_empty() && !self.resolved.busy(),
-                        egui::Button::new(tr("预览歌单")),
-                    )
-                    .clicked();
+                submit |= style::add_button(
+                    ui,
+                    !self.reference.trim().is_empty() && !self.resolved.busy(),
+                    egui::Button::new(tr("预览歌单")),
+                )
+                .clicked();
             });
             let retry = self.resolved.status(ui, tr("正在读取在线歌单…"));
             if (submit || retry) && !self.resolved.busy() && !self.reference.trim().is_empty() {
@@ -185,7 +187,7 @@ impl Management {
             }
         } else if !current.available("playlist.observe") {
             ui.weak(tr("此来源暂不提供歌单浏览。"));
-            outcome.settings = ui.button(tr("音乐源设置")).clicked();
+            outcome.settings = style::button(ui, tr("音乐源设置")).clicked();
         }
         outcome
     }
@@ -256,7 +258,7 @@ impl Management {
             if current.available("playlist.addTracks")
                 && current.account_id.is_some()
                 && detail.playlist().is_some()
-                && ui.button(tr("本地歌单关联")).clicked()
+                && style::button(ui, tr("本地歌单关联")).clicked()
             {
                 self.operations
                     .open_link(current.clone(), external.clone(), writable);

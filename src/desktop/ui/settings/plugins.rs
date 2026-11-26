@@ -7,7 +7,7 @@ mod switches;
 mod tests;
 
 use super::Services;
-use crate::{i18n::tr, task::Task};
+use crate::{i18n::tr, task::Task, ui::style};
 use catalog::{purpose, Online, Snapshot};
 use editor::Editor;
 use eframe::egui;
@@ -52,13 +52,13 @@ impl Plugins {
             ui.add(
                 egui::TextEdit::singleline(&mut self.search).hint_text(tr("按 ID 或名称筛选插件")),
             );
-            if ui
-                .add_enabled(
-                    !self.list.busy() && !self.online.busy(),
-                    egui::Button::new(tr("刷新")),
-                )
-                .on_hover_text(tr("刷新插件列表"))
-                .clicked()
+            if style::add_button(
+                ui,
+                !self.list.busy() && !self.online.busy(),
+                egui::Button::new(tr("刷新")),
+            )
+            .on_hover_text(tr("刷新插件列表"))
+            .clicked()
             {
                 refresh = true;
             }
@@ -76,15 +76,12 @@ impl Plugins {
             ui.strong(tr("插件类型")).on_hover_text(tr(
                 "可多选；按住 Shift 点击可仅选择该类型；未选择时显示全部。",
             ));
-            if ui
-                .selectable_label(self.purposes.is_empty(), tr("全部"))
-                .clicked()
-            {
+            if style::selectable(ui, self.purposes.is_empty(), tr("全部")).clicked() {
                 self.purposes.clear();
             }
             for item in options {
                 let mut selected = self.purposes.contains(&item);
-                if ui.checkbox(&mut selected, tr(purpose(&item))).clicked() {
+                if style::checkbox(ui, &mut selected, tr(purpose(&item))).clicked() {
                     if ui.input(|i| i.modifiers.shift) {
                         self.purposes.clear();
                         selected = true;
@@ -97,10 +94,7 @@ impl Plugins {
                 }
             }
         });
-        if ui
-            .checkbox(&mut self.all_users, tr("显示所有用户实例"))
-            .changed()
-        {
+        if style::checkbox(ui, &mut self.all_users, tr("显示所有用户实例")).changed() {
             self.list = Resource::default();
             ctx.request_repaint();
         } else if refresh {
@@ -218,7 +212,7 @@ impl<T: DeserializeOwned + Send + 'static> Resource<T> {
         self.error.as_ref().is_some_and(|e| {
             ui.horizontal_wrapped(|ui| {
                 ui.colored_label(ui.visuals().error_fg_color, e);
-                ui.button(tr("重试")).clicked()
+                style::button(ui, tr("重试")).clicked()
             })
             .inner
         })

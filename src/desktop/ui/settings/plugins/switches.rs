@@ -1,5 +1,5 @@
 use super::{request, segment, uncertain, Services};
-use crate::{i18n::tr, task::Task};
+use crate::{i18n::tr, task::Task, ui::style};
 use eframe::egui;
 use serde::Deserialize;
 use serde_json::json;
@@ -153,10 +153,10 @@ impl Switches {
             ui.colored_label(ui.visuals().error_fg_color, error);
             if self.busy() {
                 ui.horizontal(|ui| {
-                    if ui.button(tr("重试上次操作")).clicked() {
+                    if style::button(ui, tr("重试上次操作")).clicked() {
                         self.submit(ui.ctx(), svc);
                     }
-                    if ui.button(tr("刷新插件列表")).clicked() {
+                    if style::button(ui, tr("刷新插件列表")).clicked() {
                         *self = Self::default();
                         refresh = true;
                     }

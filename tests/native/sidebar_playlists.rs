@@ -14,23 +14,14 @@ fn frame(
     screen: &mut SignedUi,
     ctx: &egui::Context,
     svc: Services<'_>,
-    click: Option<NodeId>,
+    event: Option<egui::Event>,
 ) -> TreeUpdate {
     let input = egui::RawInput {
         screen_rect: Some(egui::Rect::from_min_size(
             egui::Pos2::ZERO,
             egui::vec2(1280., 1200.),
         )),
-        events: click
-            .into_iter()
-            .map(|target| {
-                egui::Event::AccessKitActionRequest(ActionRequest {
-                    action: Action::Click,
-                    target,
-                    data: None,
-                })
-            })
-            .collect(),
+        events: event.into_iter().collect(),
         ..Default::default()
     };
     ctx.run(input, |ctx| {
@@ -43,6 +34,14 @@ fn frame(
     .platform_output
     .accesskit_update
     .unwrap()
+}
+
+fn action(action: Action, target: NodeId) -> Option<egui::Event> {
+    Some(egui::Event::AccessKitActionRequest(ActionRequest {
+        action,
+        target,
+        data: None,
+    }))
 }
 
 fn wait_for(label: &str, mut frame: impl FnMut() -> TreeUpdate) -> NodeId {
@@ -67,7 +66,7 @@ fn sidebar_lists_and_opens_account_playlists_without_importing() {
     let (record, calls) = mpsc::channel();
     let swapped = Arc::new(AtomicBool::new(false));
     let switched = Arc::clone(&swapped);
-    let server = rt.block_on(http_fixture::session(move |url| match url.path() {
+    let observe = move |url: &url::Url| match url.path() {
         "/api/v1/online-instances" => json!({"items":[{
             "instanceId":"netease","platform":"netease","name":"NetEase","authentication":"platform",
             "availability":"available","accountId": if switched.load(Ordering::SeqCst) {"other"} else {"sample"},
@@ -75,8 +74,10 @@ fn sidebar_lists_and_opens_account_playlists_without_importing() {
                             {"name":"stream.resolve","supported":true}]
         },{"instanceId":"offline","availability":"offline","capabilities":[{"name":"playlist.list","supported":true}]}]}),
         "/api/v1/online-instances/netease/playlists" => {
-            let more = url.query_pairs().any(|(k,v)| k=="cursor" && v=="second");
-            record.send(if more {"second"} else {"first"}).unwrap();
+            let more = url
+                .query_pairs()
+                .any(|(k, v)| k == "cursor" && v == "second");
+            record.send(if more { "second" } else { "first" }).unwrap();
             if switched.load(Ordering::SeqCst) {
                 json!({"items":[{"externalId":"saved","title":"Other account list","writable":true}]})
             } else if more {
@@ -84,18 +85,33 @@ fn sidebar_lists_and_opens_account_playlists_without_importing() {
             } else {
                 json!({"items":[{"externalId":"owned","title":"Owned mix","writable":true}],"nextCursor":"second"})
             }
-        },
-        "/api/v1/online-instances/netease/playlists/saved/tracks" => {
+        }
+        "/api/v1/online-instances/netease/playlists/saved" => {
             record.send("detail").unwrap();
             json!({"playlist":{"externalId":"saved","title":"Saved collection"},"complete":true,"observedAt":"2026-11-26",
-                "items":[{"position":0,"externalId":"sample-track","track":{"externalId":"sample-track","title":"Sample song","artists":["Sample artist"]}}]})
-        },
+            "entries":[
+                    {"position":0,"externalTrackId":"other-track","track":{"externalId":"other-track","title":"Other song","artists":["Other artist"]}},
+                {"position":1,"externalTrackId":"missing","unavailable":true},
+                    {"position":2,"externalTrackId":"metadata-pending"},
+                    {"position":3,"externalTrackId":"sample-track","track":{"externalId":"sample-track","title":"Sample song","artists":["Sample artist"]}}
+            ]})
+        }
         "/api/v1/online-instances/netease/tracks/sample-track/resolve" => {
             record.send("resolve").unwrap();
             json!({"sourceTrackId":"resolved","providerInstanceId":"netease","assetId":"asset","availability":"available"})
         }
         "/api/v1/online-instances/offline/playlists" => panic!("Requested offline account"),
         _ => json!({"items":[]}),
+    };
+    let server = rt.block_on(http_fixture::session_with_response(move |_, url| {
+        if url.path() == "/api/v1/online-instances/netease/playlists/saved/tracks" {
+            return ("404 Not Found", "application/json", b"{}".to_vec());
+        }
+        (
+            "200 OK",
+            "application/json",
+            observe(url).to_string().into_bytes(),
+        )
     }));
     let player = Player::new(|_| Err("No media in fixture".into())).unwrap();
     let activity = server.listen_activity(|| {});
@@ -113,16 +129,52 @@ fn sidebar_lists_and_opens_account_playlists_without_importing() {
     let saved = wait_for(crate::i18n::tr("收藏的歌单"), || {
         frame(&mut screen, &ctx, svc, None)
     });
-    frame(&mut screen, &ctx, svc, Some(saved));
+    frame(&mut screen, &ctx, svc, action(Action::Click, saved));
     let item = wait_for("Saved collection", || frame(&mut screen, &ctx, svc, None));
-    frame(&mut screen, &ctx, svc, Some(item));
+    frame(&mut screen, &ctx, svc, action(Action::Click, item));
     assert!(matches!(&screen.screen, Screen::SourcePlaylist(key) if key.external == "saved"));
     assert_eq!(screen.title(), "Saved collection");
-    wait_for("Sample song", || frame(&mut screen, &ctx, svc, None));
-    let play = wait_for(crate::i18n::tr("播放"), || {
+    let play_title = |title: &str| crate::i18n::tr("播放 {0}").replace("{0}", title);
+    wait_for(&play_title("Sample song"), || {
         frame(&mut screen, &ctx, svc, None)
     });
-    frame(&mut screen, &ctx, svc, Some(play));
+    let tree = frame(&mut screen, &ctx, svc, None);
+    for title in [crate::i18n::tr("曲目已失效"), "metadata-pending"] {
+        let label = play_title(title);
+        let (id, button) = tree
+            .nodes
+            .iter()
+            .find(|(_, node)| {
+                node.role() == egui::accesskit::Role::Button && node.label() == Some(&label)
+            })
+            .expect("Expected a disabled track title");
+        assert!(button.is_disabled(), "Expected disabled title: {title}");
+        frame(&mut screen, &ctx, svc, action(Action::Click, *id));
+    }
+    let edit = tree
+        .nodes
+        .iter()
+        .find(|(_, n)| n.role() == egui::accesskit::Role::TextInput)
+        .unwrap()
+        .0;
+    frame(&mut screen, &ctx, svc, action(Action::Focus, edit));
+    frame(
+        &mut screen,
+        &ctx,
+        svc,
+        Some(egui::Event::Text("Sample song".into())),
+    );
+    let tree = frame(&mut screen, &ctx, svc, None);
+    let title = play_title("Sample song");
+    let other = play_title("Other song");
+    assert!(!tree.nodes.iter().any(|(_, n)| n.label() == Some(&other)));
+    let play = tree
+        .nodes
+        .iter()
+        .find(|(_, n)| n.label() == Some(&title))
+        .unwrap()
+        .0;
+    frame(&mut screen, &ctx, svc, action(Action::Click, play));
     let deadline = Instant::now() + Duration::from_secs(8);
     while player.snapshot().unwrap().queue.is_empty() {
         frame(&mut screen, &ctx, svc, None);

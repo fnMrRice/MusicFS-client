@@ -30,6 +30,9 @@ pub(super) fn show(
         &playlist.external_id,
         playlist.cover_url.clone(),
         source.can_play_online,
+        source
+            .label(crate::i18n::language_tags())
+            .unwrap_or_default(),
     ))
 }
 

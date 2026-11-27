@@ -1,8 +1,12 @@
 #[cfg(test)]
 mod interaction_tests;
 mod layout;
+mod online;
 mod row;
+mod view;
 mod widgets;
+
+pub(crate) use online::online_tracks;
 
 use super::{
     actions::Actions,
@@ -12,7 +16,9 @@ use super::{
 };
 use crate::i18n::tr;
 use eframe::egui;
-use layout::{Columns, Line, Lines, HEADER, HEIGHT};
+#[cfg(test)]
+use layout::HEIGHT;
+use layout::{Columns, Line, Lines};
 use musicfs_player_core::Status;
 use musicfs_server_adapter::Playlist;
 use row::{Action, RowEvent};
@@ -36,12 +42,7 @@ pub fn tracks(
     active_source: Option<&str>,
     status: Status,
 ) {
-    let screen = ui.ctx().screen_rect();
-    let right_margin = if screen.width() <= 850. { 18. } else { 30. };
-    let right = screen.right() - right_margin;
-    let table_width = (right - ui.next_widget_position().x)
-        .min(ui.available_width())
-        .max(0.);
+    let table_width = view::width(ui);
     data.sync(ui, svc, &query);
     data.artwork.poll(ui.ctx());
     data.providers.sync(ui, svc);
@@ -67,7 +68,9 @@ pub fn tracks(
                 return;
             }
             let label = match &query {
-                _ if query.is_playlist() && data.playlist.tools.searching() => tr("没有找到相关曲目"),
+                _ if query.is_playlist() && data.playlist.tools.searching() => {
+                    tr("没有找到相关曲目")
+                }
                 TrackQuery::Library(q)
                 | TrackQuery::AvailableSources { query: q }
                 | TrackQuery::Category { query: q, .. }
@@ -104,80 +107,60 @@ pub fn tracks(
     let mut event = None;
     let mut more = false;
     let dark = ui.visuals().dark_mode;
-    let stroke = egui::Stroke::new(1_f32, style::line(dark));
-    egui::Frame::new()
-        .stroke(stroke)
-        .corner_radius(9)
-        .inner_margin(0)
-        .show(ui, |ui| {
-            ui.spacing_mut().item_spacing.y = 0.;
-            let width = (table_width - 2.).min(ui.available_width()).max(0.);
-            ui.set_width(width);
-            let cols = Columns::new(width, !library);
-            let (hdr, _) = ui.allocate_exact_size(egui::vec2(width, HEADER), egui::Sense::hover());
-            widgets::header(ui, hdr, &cols, data);
-            ui.painter().hline(hdr.x_range(), hdr.bottom(), stroke);
-            egui::ScrollArea::vertical()
-                .id_salt("track-data")
-                .auto_shrink([false, true])
-                .show_rows(ui, HEIGHT, lines.len, |ui, range| {
-                    for line in range {
-                        let (rect, _) = ui.allocate_exact_size(
-                            egui::vec2(width.min(ui.available_width()), HEIGHT),
-                            egui::Sense::hover(),
-                        );
-                        let display = lines.at(line);
-                        let mut cell = ui.new_child(
-                            egui::UiBuilder::new()
-                                .id_salt(("track-slot", line))
-                                .max_rect(rect)
-                                .layout(egui::Layout::left_to_right(egui::Align::Center)),
-                        );
-                        match display {
-                            Line::Track(i) => {
-                                if let Some(result) = row::show(
-                                    &mut cell,
-                                    rect,
-                                    &cols,
-                                    data,
-                                    actions,
-                                    svc,
-                                    i,
-                                    favorites,
-                                    library,
-                                    active_source,
-                                    status,
-                                ) {
-                                    event = Some((i, result));
-                                }
-                            }
-                            Line::Source(i, n) => {
-                                ui.painter().rect_filled(rect, 0, style::surface(dark));
-                                data.versions.source(
-                                    &mut cell,
-                                    svc,
-                                    &data.tracks.items,
-                                    i,
-                                    n,
-                                    &data.providers,
-                                    can_match.then_some(&mut data.matching),
-                                    actions,
-                                    lists,
-                                );
-                            }
-                            Line::More => {
-                                more = data.tracks.can_load_more() && ui.is_rect_visible(rect);
-                                if data.tracks.busy() {
-                                    cell.spinner();
-                                }
-                            }
-                        }
-                        if line + 1 < lines.len {
-                            ui.painter().hline(rect.x_range(), rect.bottom(), stroke);
-                        }
-                    }
+    view::show(
+        ui,
+        egui::ScrollArea::vertical().id_salt("track-data"),
+        table_width,
+        |w| Columns::new(w, !library),
+        lines.len,
+        |ui, rect, cols, slot| {
+            let Some(line) = slot else {
+                widgets::header(ui, rect, cols, |ui, rect| {
+                    widgets::select_all(ui, rect, data)
                 });
-        });
+                return;
+            };
+            match lines.at(line) {
+                Line::Track(i) => {
+                    if let Some(result) = row::show(
+                        ui,
+                        rect,
+                        cols,
+                        data,
+                        actions,
+                        svc,
+                        i,
+                        favorites,
+                        library,
+                        active_source,
+                        status,
+                    ) {
+                        event = Some((i, result));
+                    }
+                }
+                Line::Source(i, n) => {
+                    ui.painter().rect_filled(rect, 0, style::surface(dark));
+                    data.versions.source(
+                        ui,
+                        svc,
+                        &data.tracks.items,
+                        i,
+                        n,
+                        &data.providers,
+                        can_match.then_some(&mut data.matching),
+                        actions,
+                        lists,
+                    );
+                }
+                Line::More => {
+                    more = data.tracks.can_load_more() && ui.is_rect_visible(rect);
+                    if data.tracks.busy() {
+                        ui.spinner();
+                    }
+                }
+            }
+        },
+    );
     if let Some((i, event)) = event {
         apply(ui, svc, data, actions, lists, i, event, favorites);
     } else if more {

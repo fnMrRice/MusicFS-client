@@ -17,9 +17,25 @@ pub struct Columns {
 
 impl Columns {
     pub fn new(width: f32, show_provider: bool) -> Self {
-        let check = if width >= 680. { 40. } else { 30. };
+        Self::for_table(width, show_provider, true)
+    }
+
+    pub fn online(width: f32) -> Self {
+        Self::for_table(width, true, false)
+    }
+
+    fn for_table(width: f32, show_provider: bool, catalog: bool) -> Self {
+        let check = if !catalog {
+            0.
+        } else if width >= 680. {
+            40.
+        } else {
+            30.
+        };
         let number = if width >= 680. { 33. } else { 25. };
-        let actions = if width >= 810. {
+        let actions = if !catalog {
+            0.
+        } else if width >= 810. {
             (width * 0.205).clamp(166., 265.)
         } else if width >= 615. {
             90.
@@ -33,7 +49,7 @@ impl Columns {
         } else {
             48.
         };
-        let format = if width >= 720. {
+        let format = if catalog && width >= 720. {
             (width * 0.078).clamp(57., 90.)
         } else {
             0.
@@ -154,12 +170,18 @@ mod tests {
     #[test]
     fn columns_fit_the_visible_table_at_each_breakpoint() {
         for width in [320., 500., 660., 720., 810., 900., 1092., 1500.] {
-            for provider in [false, true] {
-                let c = Columns::new(width, provider);
+            for c in [
+                Columns::new(width, false),
+                Columns::new(width, true),
+                Columns::online(width),
+            ] {
                 let row = egui::Rect::from_min_size(egui::pos2(10., 0.), egui::vec2(width, HEIGHT));
                 assert!((c.cells(row)[8].right() - row.right()).abs() < 0.01);
                 assert!(c.title >= 100.);
             }
+            let online = Columns::online(width);
+            assert_eq!((online.check, online.format, online.actions), (0., 0., 0.));
+            assert!(online.title > Columns::new(width, true).title);
         }
     }
 }

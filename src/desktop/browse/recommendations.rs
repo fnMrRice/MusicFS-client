@@ -6,6 +6,7 @@ use crate::{
     ui::{style, Artwork, Services},
 };
 pub(crate) use cards::playlist_cards;
+
 use eframe::egui;
 use musicfs_server_adapter::RecommendationFeed;
 
@@ -25,23 +26,19 @@ impl Recommendations {
         artwork: &mut Artwork,
     ) -> Option<QueueSelection> {
         artwork.poll(ui.ctx());
-        let scroll = egui::ScrollArea::vertical()
-            .id_salt(("recommendations", self.selected.as_ref().map(Detail::key)));
-        scroll
-            .show(ui, |ui| {
-                if let Some(detail) = &mut self.selected {
-                    if style::button(ui, tr("‹  返回推荐")).clicked() {
-                        self.selected = None;
-                        ui.ctx().request_repaint();
-                        return None;
-                    }
-                    ui.add_space(12.);
-                    return detail.show(ui, svc, artwork);
-                }
-                self.feed(ui, svc, artwork);
-                None
-            })
-            .inner
+        if let Some(detail) = &mut self.selected {
+            if style::button(ui, tr("‹  返回推荐")).clicked() {
+                self.selected = None;
+                ui.ctx().request_repaint();
+                return None;
+            }
+            ui.add_space(12.);
+            return detail.show(ui, svc, artwork);
+        }
+        egui::ScrollArea::vertical()
+            .id_salt("recommendations")
+            .show(ui, |ui| self.feed(ui, svc, artwork));
+        None
     }
 
     fn feed(&mut self, ui: &mut egui::Ui, svc: Services<'_>, artwork: &mut Artwork) {

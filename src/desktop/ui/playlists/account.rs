@@ -114,6 +114,7 @@ impl Management {
                     &id,
                     None,
                     current.available("stream.resolve"),
+                    current.label(language_tags()),
                 ));
                 self.resolved = Default::default();
                 ui.ctx().request_repaint();
@@ -169,6 +170,7 @@ impl Management {
                             &p.external_id,
                             p.cover_url.clone(),
                             current.available("stream.resolve"),
+                            current.label(language_tags()),
                         ));
                         ui.ctx().request_repaint();
                     }
@@ -219,6 +221,7 @@ impl Management {
                 &key.external,
                 self.known(key).and_then(|p| p.cover_url.clone()),
                 source.available("stream.resolve"),
+                source.label(language_tags()),
             ));
         }
         art.poll(ui.ctx());
@@ -266,11 +269,7 @@ impl Management {
         });
         outcome.more_local = self.operations.link_dialog(ui.ctx(), svc, local);
         ui.add_space(8.);
-        outcome.play = egui::ScrollArea::vertical()
-            .id_salt(("playlist-tracks", &external))
-            .auto_shrink([false, false])
-            .show(ui, |ui| detail.show(ui, svc, art))
-            .inner;
+        outcome.play = detail.show(ui, svc, art);
         outcome
     }
 }

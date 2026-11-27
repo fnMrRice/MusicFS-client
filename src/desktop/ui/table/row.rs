@@ -1,6 +1,6 @@
 use super::{layout::Columns, widgets::*, *};
 use crate::icons;
-use egui::{pos2, vec2, Rect, Sense, Vec2};
+use egui::{vec2, Rect};
 use musicfs_player_core::Status;
 
 #[derive(Clone, Copy)]
@@ -42,23 +42,8 @@ pub(super) fn show(
                         .any(|s| Some(s.source_track_id.as_str()) == active)
                 })));
     let dark = ui.visuals().dark_mode;
-    let row = ui.interact(rect, ui.id().with("row"), Sense::click());
     let selected = data.matching.selected(t);
-    let marked = current || selected;
-    let motion = style::interaction_with_hover(ui, &row, ui.rect_contains_pointer(rect));
-    let base = if marked {
-        style::accent_soft(ui)
-    } else {
-        style::background(dark)
-    };
-    let hover = if marked {
-        style::hovered(dark).lerp_to_gamma(style::accent_fill(ui), 0.10)
-    } else {
-        style::hovered(dark)
-    };
-    let pressed = hover.lerp_to_gamma(style::accent_fill(ui), 0.15);
-    ui.painter()
-        .rect_filled(rect, 0, motion.color(base, hover, pressed));
+    let row = view::row_background(ui, rect, current || selected);
     let [check, num, title, artist, album, provider, format, duration, buttons] = c.cells(rect);
     let mut check_ui = contents(ui, check_rect(check), "check");
     style::checkbox_style(&mut check_ui);
@@ -76,12 +61,9 @@ pub(super) fn show(
         );
     }
     let mut result = None;
-    let left = title.left() + if c.title > 150. { 14. } else { 4. };
-    let cover = Rect::from_center_size(pos2(left + 21., rect.center().y), Vec2::splat(42.));
+    let (cover, title, second) = view::title_rects(title);
     data.artwork
         .paint(ui, cover, svc, t.cover().or_else(|| t.online_cover()));
-    let tx = cover.right() + if c.title > 170. { 12. } else { 5. };
-    let line = |y: f32| Rect::from_min_max(pos2(tx, y - 11.), pos2(title.right() - 3., y + 11.));
     let count = t.sources.as_ref().map_or(0, |g| g.choices().count());
     let artist_names = t.artists.join(" / ");
     let name = if t.title.is_empty() {
@@ -91,7 +73,7 @@ pub(super) fn show(
     };
     if title_control(
         ui,
-        line(rect.center().y - 9.),
+        title,
         TitleControl::Play {
             enabled: playable,
             current,
@@ -103,7 +85,6 @@ pub(super) fn show(
     {
         result = Some(RowEvent::Action(Action::Play, false));
     }
-    let second = line(rect.center().y + 12.);
     if count > 0 {
         let description = if count == 1 {
             tr("1 个来源版本").to_owned()

@@ -18,8 +18,8 @@ async fn fixture() -> (ServerSession, Receiver<(String, Option<String>)>) {
         } else {
             "Other title"
         };
-        json!({"trackId":id,"title":title,"artists":[{"name":"Performer"}],"albums":[{"name":"Album"}],
-            "selectedSource":{"sourceTrackId":id,"providerInstanceId":"files","displayName":title,"availability":"available"}})
+        json!({"trackId":id,"title":title,"artists":[{"name":"Performer"}],"albums":[{"name":"Fixture album"}],
+            "selectedSource":{"sourceTrackId":id,"providerInstanceId":"files","displayName":title,"availability":"available","durationMs":185000}})
     };
     let session = super::http_fixture::session(move |url| match url.path() {
         "/api/v1/playlists/local/snapshots/1" => {
@@ -48,7 +48,7 @@ async fn fixture() -> (ServerSession, Receiver<(String, Option<String>)>) {
                 let id = format!("song-{i}");
                 let title = if i == 50 { "Needle" } else { "Other title" };
                 if online {
-                    json!({"externalId":id,"position":i,"track":{"externalId":id,"title":title,"artists":["Performer"],"album":"Album"}})
+                    json!({"externalId":id,"position":i,"track":{"externalId":id,"title":title,"artists":["Performer"],"album":"Fixture album","durationMs":185000}})
                 } else {
                     json!({"musicTrack":server_track(&id)})
                 }
@@ -90,7 +90,8 @@ fn all_playlist_routes_search_later_pages_without_scrolling() {
         });
         let ctx = egui::Context::default();
         ctx.enable_accesskit();
-        let mut detail = OnlinePlaylistDetail::new("test", "remote", None, false);
+        let mut detail =
+            OnlinePlaylistDetail::new("test", "remote", None, false, "Test source".into());
         let mut frame = |events: Vec<Event>| {
             let input = egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
@@ -103,8 +104,7 @@ fn all_playlist_routes_search_later_pages_without_scrolling() {
             ctx.run(input, |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     if online {
-                        egui::ScrollArea::vertical()
-                            .show(ui, |ui| detail.show(ui, svc, &mut signed.catalog.artwork));
+                        detail.show(ui, svc, &mut signed.catalog.artwork);
                     } else {
                         signed.page(ui, svc);
                     }
@@ -114,26 +114,47 @@ fn all_playlist_routes_search_later_pages_without_scrolling() {
             .accesskit_update
             .unwrap()
         };
+        let other = tr("播放 {0}").replace("{0}", "Other title");
+        let needle = tr("播放 {0}").replace("{0}", "Needle");
         let tree = wait(&mut frame, |tree| {
-            tree.nodes.iter().any(|(_, n)| {
-                n.label()
-                    .or(n.value())
-                    .is_some_and(|s| s.contains("Other title"))
-            })
+            tree.nodes.iter().any(|(_, n)| n.label() == Some(&other))
         });
+        for text in [
+            tr("曲名"),
+            tr("歌手"),
+            tr("专辑"),
+            tr("时长"),
+            "Performer",
+            "Fixture album",
+            "03:05",
+        ] {
+            assert!(
+                tree.nodes
+                    .iter()
+                    .any(|(_, n)| n.label().or(n.value()) == Some(text)),
+                "Missing {text} on {scope}"
+            );
+        }
+        let visible_rows = tree
+            .nodes
+            .iter()
+            .filter(|(_, n)| n.role() == Role::Button && n.label() == Some(&other))
+            .count();
+        assert!(
+            (1..50).contains(&visible_rows),
+            "Expected virtualized rows on {scope}"
+        );
         let (edit, search) = tree
             .nodes
             .iter()
             .find(|(_, n)| n.role() == Role::TextInput)
             .unwrap();
-        let sort = tree
+        let (sort_id, sort) = tree
             .nodes
             .iter()
             .find(|(_, n)| n.role() == Role::ComboBox)
-            .unwrap()
-            .1
-            .bounds()
             .unwrap();
+        let sort = sort.bounds().unwrap();
         let search = search.bounds().unwrap();
         assert!(search.x1 <= sort.x0 && search.y0 < sort.y1 && sort.y0 < search.y1);
         assert_eq!(
@@ -147,12 +168,16 @@ fn all_playlist_routes_search_later_pages_without_scrolling() {
         })]);
         frame(vec![Event::Text("NEEDLE performer album".into())]);
         let tree = wait(&mut frame, |tree| {
-            tree.nodes.iter().any(|(_, n)| {
-                n.label()
-                    .or(n.value())
-                    .is_some_and(|s| s.contains("Needle"))
-            })
+            tree.nodes.iter().any(|(_, n)| n.label() == Some(&needle))
         });
+        let hit = &tree
+            .nodes
+            .iter()
+            .find(|(_, n)| n.label() == Some(&needle))
+            .unwrap()
+            .1;
+        assert_eq!(hit.role(), Role::Button);
+        assert_eq!(hit.is_disabled(), online);
         assert!(!tree.nodes.iter().any(|(_, n)| n
             .label()
             .or(n.value())
@@ -235,7 +260,57 @@ fn all_playlist_routes_search_later_pages_without_scrolling() {
             });
             assert_eq!(signed.catalog.tracks.items.len(), 1);
             assert_eq!(signed.catalog.tracks.items[0].id, "imported");
-        } else if !online {
+        } else if online {
+            let needle_is_visible =
+                |tree: &TreeUpdate| tree.nodes.iter().any(|(_, n)| n.label() == Some(&needle));
+            frame(vec![
+                Event::PointerMoved(egui::pos2(450., 350.)),
+                Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Page,
+                    delta: egui::vec2(0., -30.),
+                    modifiers: Modifiers::NONE,
+                },
+            ]);
+            wait(&mut frame, needle_is_visible);
+            let click = |target| {
+                Event::AccessKitActionRequest(ActionRequest {
+                    action: Action::Click,
+                    target,
+                    data: None,
+                })
+            };
+            let sort_center = egui::pos2(
+                (sort.x0 + sort.x1) as f32 * 0.5,
+                (sort.y0 + sort.y1) as f32 * 0.5,
+            );
+            frame(vec![Event::PointerMoved(sort_center), click(*sort_id)]);
+            let menu = wait(&mut frame, |tree| {
+                tree.nodes
+                    .iter()
+                    .any(|(_, n)| n.label() == Some(tr("曲名")) && n.role() == Role::Button)
+            });
+            let title_sort = menu
+                .nodes
+                .iter()
+                .find(|(_, n)| n.label() == Some(tr("曲名")) && n.role() == Role::Button)
+                .unwrap()
+                .0;
+            frame(vec![click(title_sort)]);
+            let sorted = wait(&mut frame, needle_is_visible);
+            let row_y = |label: &str| {
+                sorted
+                    .nodes
+                    .iter()
+                    .find(|(_, n)| n.label() == Some(label))
+                    .unwrap()
+                    .1
+                    .bounds()
+                    .unwrap()
+                    .y0
+            };
+            assert!(row_y(&needle) < row_y(&other));
+            assert!(requests.try_iter().next().is_none());
+        } else {
             assert_eq!(signed.catalog.tracks.items.len(), 51);
             assert_eq!(signed.catalog.tracks.items.last().unwrap().id, "song-50");
         }

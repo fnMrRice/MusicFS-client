@@ -2,9 +2,9 @@ use super::{resource::Resource, QueueSelection};
 use crate::{
     i18n::tr,
     ui::{
-        page_end_visible,
+        online_tracks,
         playlist_tracks::{Metadata, PlaylistTools},
-        style, Artwork, Services,
+        Artwork, Services,
     },
 };
 use eframe::egui;
@@ -14,6 +14,7 @@ use std::collections::HashSet;
 
 pub(crate) struct Detail {
     instance: String,
+    source_name: String,
     external: String,
     cover_url: Option<String>,
     can_play: bool,
@@ -21,15 +22,25 @@ pub(crate) struct Detail {
     playback: Resource<Track>,
     details: Option<RecommendedPlaylistDetail>,
     seen: HashSet<String>,
-    visible: usize,
     tools: PlaylistTools,
     order: Vec<usize>,
 }
 
 impl Detail {
-    pub fn new(instance: &str, external: &str, cover_url: Option<String>, can_play: bool) -> Self {
+    pub fn new(
+        instance: &str,
+        external: &str,
+        cover_url: Option<String>,
+        can_play: bool,
+        source_name: String,
+    ) -> Self {
         Self {
             instance: instance.into(),
+            source_name: if source_name.trim().is_empty() || source_name == instance {
+                tr("未知来源").to_owned()
+            } else {
+                source_name
+            },
             external: external.into(),
             cover_url,
             can_play,
@@ -37,7 +48,6 @@ impl Detail {
             playback: Resource::default(),
             details: None,
             seen: HashSet::new(),
-            visible: 50,
             tools: Default::default(),
             order: Vec::new(),
         }
@@ -87,9 +97,6 @@ impl Detail {
                     if let Some(old) = &mut self.details {
                         old.entries.append(&mut page.entries);
                         std::mem::swap(&mut old.entries, &mut page.entries);
-                        if !self.tools.active() {
-                            self.visible = self.visible.saturating_add(50);
-                        }
                     }
                     self.details = Some(page);
                 }
@@ -136,9 +143,6 @@ impl Detail {
         ui.add_space(10.0);
         let changed = ui.horizontal(|ui| self.tools.show(ui)).inner;
         if changed {
-            self.visible = 50;
-        }
-        if changed {
             self.order.clear();
             first_new = Some(0);
         }
@@ -158,83 +162,56 @@ impl Detail {
                     },
                 }
             };
-            self.order
-                .extend((start..detail.entries.len()).filter(|&i| self.tools.matches(&metadata(i))));
+            self.order.extend(
+                (start..detail.entries.len()).filter(|&i| self.tools.matches(&metadata(i))),
+            );
             if self.tools.sorted() {
                 self.order
                     .sort_by_cached_key(|&i| self.tools.sort_key(metadata(i)));
             }
         }
-        let searching_pages = self.tools.active() && detail.next_cursor.is_some();
-        let retry_search = searching_pages && self.request.status(ui, tr("正在读取在线歌单…"));
-        ui.separator();
-        if self.order.is_empty() && detail.next_cursor.is_none() && self.request.error.is_none() {
-            ui.weak(if self.tools.searching() {
-                tr("没有找到相关曲目")
-            } else {
-                tr("此歌单暂无可见曲目。")
-            });
-        }
-        let mut play = None;
+        let has_more = detail.next_cursor.is_some();
+        let retry = has_more && self.request.status(ui, tr("正在读取在线歌单…"));
         if self.playback.busy() {
             ui.spinner();
         }
         if let Some(error) = &self.playback.error {
             ui.colored_label(ui.visuals().error_fg_color, error);
         }
-        for &index in self.order.iter().take(self.visible) {
-            let entry = &detail.entries[index];
-            ui.horizontal_wrapped(|ui| {
-                ui.weak(format!("{:02}", entry.position + 1));
-                if let Some(track) = &entry.track {
-                    let (rect, _) =
-                        ui.allocate_exact_size(egui::Vec2::splat(36.), egui::Sense::hover());
-                    if ui.is_rect_visible(rect) {
-                        artwork.paint(ui, rect, svc, track.cover_url.as_deref());
-                    }
-                    ui.label(&track.title);
-                    if !track.artists.is_empty() {
-                        ui.weak(track.artists.join(" / "));
-                    }
-                    if let Some(ms) = track.duration_ms {
-                        ui.small(format!("{}:{:02}", ms / 60_000, ms / 1000 % 60));
-                    }
-                    if self.can_play
-                        && !entry.unavailable
-                        && style::add_button(
-                            ui,
-                            !self.playback.busy(),
-                            egui::Button::new(tr("播放")),
-                        )
-                        .clicked()
-                    {
-                        play = Some(track.clone());
-                    }
-                } else if entry.unavailable {
-                    ui.weak(tr("曲目已失效"));
+        if self.order.is_empty() && !has_more {
+            ui.vertical_centered(|ui| {
+                ui.add_space(70.);
+                ui.weak(if self.tools.searching() {
+                    tr("没有找到相关曲目")
                 } else {
-                    ui.label(&entry.external_track_id);
-                }
+                    tr("此歌单暂无可见曲目。")
+                });
             });
-            ui.separator();
+            return result;
         }
-        let hidden = self.order.len() > self.visible;
-        if hidden {
-            if page_end_visible(ui) {
-                self.visible = self.visible.saturating_add(50);
-                ui.ctx().request_repaint();
-            }
+        let mut scroll =
+            egui::ScrollArea::vertical().id_salt(("online-playlist-tracks", self.key()));
+        if changed {
+            scroll = scroll.vertical_scroll_offset(0.);
         }
-        if detail.next_cursor.is_some() {
-            let retry = retry_search
-                || (!searching_pages && self.request.status(ui, tr("正在读取在线歌单…")));
-            if retry
+        let (selected, at_end) = online_tracks(
+            ui,
+            scroll,
+            detail,
+            &self.order,
+            &self.source_name,
+            self.can_play && !self.playback.busy(),
+            has_more && self.request.error.is_none(),
+            |ui, rect, url| artwork.paint(ui, rect, svc, url),
+        );
+        let play = selected.and_then(|i| detail.entries[i].track.clone());
+        if has_more
+            && (retry
                 || (!self.request.busy()
                     && self.request.error.is_none()
-                    && (self.tools.active() || (!hidden && page_end_visible(ui))))
-            {
-                self.load(ui.ctx(), svc);
-            }
+                    && (self.tools.active() || at_end)))
+        {
+            self.load(ui.ctx(), svc);
         }
         if let Some(track) = play {
             self.play_track(ui, svc, track);

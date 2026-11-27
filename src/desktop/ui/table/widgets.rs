@@ -37,7 +37,12 @@ pub(super) fn label(
         .on_hover_text(text);
 }
 
-pub(super) fn header(ui: &mut egui::Ui, rect: Rect, c: &Columns, data: &mut Catalog) {
+pub(super) fn header(
+    ui: &mut egui::Ui,
+    rect: Rect,
+    c: &Columns,
+    checkbox: impl FnOnce(&mut egui::Ui, Rect),
+) {
     let dark = ui.visuals().dark_mode;
     ui.painter().rect_filled(
         rect,
@@ -50,6 +55,27 @@ pub(super) fn header(ui: &mut egui::Ui, rect: Rect, c: &Columns, data: &mut Cata
         style::surface(dark),
     );
     let cells = c.cells(rect);
+    if c.check > 0. {
+        checkbox(ui, check_rect(cells[0]));
+    }
+    for (idx, name) in [
+        (1, "#"),
+        (2, "曲名"),
+        (3, "歌手"),
+        (4, "专辑"),
+        (5, "来源"),
+        (6, "格式"),
+        (7, "时长"),
+    ] {
+        let mut r = cells[idx];
+        if idx == 2 {
+            r.min.x += 6.;
+        }
+        label(ui, r, name, tr(name), style::muted(dark), 13.);
+    }
+}
+
+pub(super) fn select_all(ui: &mut egui::Ui, rect: Rect, data: &mut Catalog) {
     let selected: std::collections::HashSet<_> =
         data.matching.selected_tracks().iter().map(key).collect();
     let count = if selected.is_empty() {
@@ -62,7 +88,7 @@ pub(super) fn header(ui: &mut egui::Ui, rect: Rect, c: &Columns, data: &mut Cata
             .count()
     };
     let mut all = count > 0 && count == data.tracks.items.len();
-    let mut check = contents(ui, check_rect(cells[0]), "select-all");
+    let mut check = contents(ui, rect, "select-all");
     let partial = count > 0 && !all;
     style::checkbox_style(&mut check);
     let enabled = !data.matching.locked() && !data.tracks.items.is_empty();
@@ -82,21 +108,6 @@ pub(super) fn header(ui: &mut egui::Ui, rect: Rect, c: &Columns, data: &mut Cata
     });
     if response.on_hover_text(tr("全选已加载曲目")).changed() {
         data.matching.select_rows(&data.tracks.items, all);
-    }
-    for (idx, name) in [
-        (1, "#"),
-        (2, "曲名"),
-        (3, "歌手"),
-        (4, "专辑"),
-        (5, "来源"),
-        (6, "格式"),
-        (7, "时长"),
-    ] {
-        let mut r = cells[idx];
-        if idx == 2 {
-            r.min.x += 6.;
-        }
-        label(ui, r, name, tr(name), style::muted(dark), 13.);
     }
 }
 

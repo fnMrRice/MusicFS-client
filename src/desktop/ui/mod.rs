@@ -56,6 +56,7 @@ pub(crate) use catalog::card_grid;
 use catalog::Catalog;
 use data::Pages;
 pub(crate) use data::{resolve_online_queue_track, Services};
+pub(crate) use table::online_tracks;
 use eframe::egui;
 use musicfs_player_core::{FadeSettings, PlaybackMode, PlayerCommand};
 use musicfs_server_adapter::Playlist;

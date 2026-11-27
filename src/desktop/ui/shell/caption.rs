@@ -1,11 +1,12 @@
 use super::style;
 use crate::{i18n::tr, system};
 use eframe::egui::{
-    self, pos2, vec2, Align, Color32, Layout, Rect, Sense, Stroke, StrokeKind, Ui, UiBuilder,
+    self, vec2, Align, Color32, Layout, Rect, Sense, Stroke, StrokeKind, Ui, UiBuilder,
     ViewportCommand,
 };
 
 const BUTTON_WIDTH: f32 = 44.;
+pub(super) const HEIGHT: f32 = 64.;
 pub(super) const WIDTH: f32 = 3. * BUTTON_WIDTH;
 
 pub(super) fn separator(ui: &mut Ui) {
@@ -121,17 +122,12 @@ pub(super) fn controls(ui: &mut Ui, header: Rect, drag: &[Rect]) {
     system::publish_titlebar(ui.ctx(), drag, max_rect);
 }
 
-pub(in crate::ui) fn login_title_bar(ctx: &egui::Context) {
-    if system::has_custom_titlebar(ctx) {
-        egui::TopBottomPanel::top("login-title-bar")
-            .frame(egui::Frame::NONE.fill(style::background(ctx.style().visuals.dark_mode)))
-            .exact_height(36.)
-            .show(ctx, |ui| {
-                let rect = ui.max_rect();
-                let drag = Rect::from_min_max(rect.min, pos2(rect.right() - WIDTH, rect.bottom()));
-                controls(ui, rect, &[drag]);
-            });
-    }
+// 窗口控件叠在登录页背景上，返回下方可交互的表单区域。
+pub(in crate::ui) fn login_title_bar(ui: &mut Ui) -> Rect {
+    let bounds = ui.max_rect();
+    let header = bounds.with_max_y(bounds.top() + HEIGHT);
+    controls(ui, header, &[header.with_max_x(header.right() - WIDTH)]);
+    bounds.with_min_y(header.bottom())
 }
 
 #[cfg(test)]
@@ -159,8 +155,8 @@ mod tests {
                     egui::CentralPanel::default()
                         .frame(egui::Frame::NONE)
                         .show(ctx, |ui| {
-                            let rect = ui.max_rect().with_max_y(36.);
-                            controls(ui, rect, &[rect.with_max_x(rect.right() - WIDTH)]);
+                            let form_area = login_title_bar(ui);
+                            assert_eq!(form_area, ui.max_rect().with_min_y(HEIGHT));
                         });
                 })
             };
@@ -191,6 +187,8 @@ mod tests {
                     f64::from(800. - WIDTH + index as f32 * BUTTON_WIDTH)
                 );
                 assert_eq!(bounds.width(), f64::from(BUTTON_WIDTH));
+                assert_eq!(bounds.y0, 0.);
+                assert_eq!(bounds.y1, f64::from(HEIGHT));
                 let output = frame(vec![egui::Event::AccessKitActionRequest(ActionRequest {
                     target: *id,
                     action: Action::Click,

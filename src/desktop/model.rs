@@ -124,7 +124,7 @@ impl DesktopState {
             .map(|dir| dir.join("preferences.json"));
         Self::at_settings(runtime, settings_file)
     }
-    fn at_settings(runtime: Handle, settings_file: Option<PathBuf>) -> Self {
+    pub(crate) fn at_settings(runtime: Handle, settings_file: Option<PathBuf>) -> Self {
         let prefs = settings_file
             .as_ref()
             .and_then(|file| fs::read(file).ok())

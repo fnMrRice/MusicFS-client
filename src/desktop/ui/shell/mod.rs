@@ -109,7 +109,7 @@ impl SignedUi {
         action: &mut Option<HostAction>,
     ) {
         let custom = crate::system::has_custom_titlebar(ui.ctx());
-        let height = if custom { 64. } else { 88. };
+        let height = if custom { caption::HEIGHT } else { 88. };
         let (mut rect, _) = ui.allocate_exact_size(
             egui::vec2(ui.available_width(), height),
             egui::Sense::hover(),

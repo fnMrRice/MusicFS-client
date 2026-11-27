@@ -1,3 +1,7 @@
+mod cards;
+mod header;
+mod recordings;
+
 use super::{catalog::providers::Providers, data::Services};
 use crate::ui::style;
 use crate::{i18n::tr, task::Task};
@@ -98,54 +102,13 @@ pub(super) struct Folders {
 }
 impl Folders {
     pub(super) fn show(&mut self, ui: &mut egui::Ui, svc: Services<'_>, providers: &Providers) {
-        let mut go = None;
-        ui.horizontal_wrapped(|ui| {
-            if style::link(ui, tr("文件夹")).clicked() {
-                go = Some(0);
-            }
-            for (i, folder) in self.path.iter().enumerate() {
-                ui.weak("/");
-                if style::link(ui, label(folder, providers)).clicked() {
-                    go = Some(i + 1);
-                }
-            }
-        });
-        if let Some(n) = go {
-            if n != self.path.len() {
-                self.path.truncate(n);
-                self.change_folder();
-            }
+        if let Some(depth) = header::ancestors(ui, &self.path, providers) {
+            self.path.truncate(depth);
+            self.change_folder();
         }
-        let toolbar_size = egui::vec2(ui.available_width(), ui.spacing().interact_size.y);
-        let layout = egui::Layout::right_to_left(egui::Align::Center).with_main_wrap(true);
-        ui.allocate_ui_with_layout(toolbar_size, layout, |ui| {
-            let refresh = style::button(ui, tr("刷新列表")).clicked();
-            let clear = !self.search.is_empty() && style::button(ui, tr("清空")).clicked();
-            let search = style::button(ui, tr("搜索")).clicked();
-            let width = ui.available_size_before_wrap().x.clamp(80., 220.);
-            let edit = ui.add(
-                egui::TextEdit::singleline(&mut self.draft)
-                    .char_limit(256)
-                    .hint_text(tr(if self.path.is_empty() {
-                        "搜索分类"
-                    } else {
-                        "搜索当前列表"
-                    }))
-                    .desired_width(width),
-            );
-            let enter = edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-            if clear {
-                self.draft.clear();
-                self.search.clear();
-            } else if search || enter {
-                self.search = self.draft.trim().into();
-            }
-            if refresh || clear || search || enter {
-                self.reload();
-            }
-        });
         self.children.poll();
         self.tracks.poll();
+        self.toolbar(ui, providers);
         if let Some(result) = self.all.as_mut().and_then(Task::poll) {
             self.all = None;
             self.message = result
@@ -161,64 +124,29 @@ impl Folders {
             ui.colored_label(ui.visuals().error_fg_color, e);
         }
         let folder = self.path.last().map(|f| f.category_id.clone());
-        if folder.is_some() {
-            ui.horizontal(|ui| {
-                if let Some(total) = self.tracks.total {
-                    ui.label(tr("{0} 首").replace("{0}", &total.to_string()));
-                }
-                if style::add_button(
-                    ui,
-                    self.all.is_none()
-                        && (self.tracks.rows.iter().any(playable) || self.tracks.cursor.is_some()),
-                    egui::Button::new(tr("播放全部")),
-                )
-                .clicked()
-                {
-                    self.play_all(ui, svc);
-                }
-                if self.all.is_some() {
-                    ui.spinner();
-                }
-            });
-        }
-        let mut open = None;
-        egui::ScrollArea::vertical()
+        let open = egui::ScrollArea::vertical()
             .id_salt(("catalog-folders", folder.as_deref(), &self.search))
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                for f in &self.children.rows {
-                    let title = label(f, providers);
-                    let count = tr("{0} 首").replace("{0}", &f.track_count.to_string());
-                    ui.push_id(&f.category_id, |ui| {
-                        ui.horizontal_wrapped(|ui| {
-                            if style::button(ui, title).clicked() {
-                                open = Some(f.clone());
-                            }
-                            ui.weak(count);
-                            ui.weak(providers.label(&f.provider_instance_id));
-                        })
-                    });
-                }
-                if self.children.request(ui) {
-                    let (s, parent, cursor) = (
-                        svc.server.clone(),
-                        folder.clone(),
-                        self.children.cursor.clone(),
-                    );
-                    let q = if parent.is_none() {
-                        self.search.clone()
-                    } else {
-                        String::new()
-                    };
-                    self.children.load(ui, svc, async move {
-                        s.folders(None, parent.as_deref(), &q, cursor).await
-                    });
-                }
-                if folder.is_none() && self.children.total == Some(0) {
-                    ui.weak(tr("没有可浏览的音乐文件夹。"));
+                let mut open = None;
+                if folder.is_none() || self.search.is_empty() {
+                    open = self.folder_grid(ui, svc, providers, folder.as_deref());
                 }
                 if let Some(id) = folder.as_ref() {
-                    ui.separator();
+                    ui.horizontal(|ui| {
+                        header::section(ui, tr("目录曲目"), self.tracks.total);
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            let enabled = self.all.is_none()
+                                && (self.tracks.rows.iter().any(playable)
+                                    || self.tracks.cursor.is_some());
+                            if style::primary(ui, tr("播放全部"), enabled).clicked() {
+                                self.play_all(ui, svc);
+                            }
+                            if self.all.is_some() {
+                                ui.spinner();
+                            }
+                        });
+                    });
                     self.recordings(ui, svc, providers);
                     if self.tracks.request(ui) {
                         let (s, id, q, cursor) = (
@@ -232,59 +160,70 @@ impl Folders {
                         });
                     }
                     if self.tracks.total == Some(0) {
-                        ui.weak(tr("没有找到相关曲目"));
+                        let (icon, message) = if self.search.is_empty() {
+                            ("music", "此文件夹中暂无曲目")
+                        } else {
+                            ("search", "没有找到相关曲目")
+                        };
+                        header::empty(ui, icon, tr(message));
                     }
                 }
-            });
-        if let Some(f) = open {
-            self.path.push(f);
+                open
+            })
+            .inner;
+        if let Some(index) = open {
+            self.path.push(self.children.rows[index].clone());
             self.change_folder();
             ui.ctx().request_repaint();
         }
     }
-    fn recordings(&mut self, ui: &mut egui::Ui, svc: Services<'_>, providers: &Providers) {
-        let mut play = None;
-        for (i, t) in self.tracks.rows.iter().enumerate() {
-            let title = t
-                .title
-                .as_deref()
-                .filter(|s| !s.is_empty())
-                .unwrap_or(&t.display_name);
-            ui.push_id(&t.source_track_id, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    if style::add_button(ui, playable(t), egui::Button::new(title).frame(false))
-                        .clicked()
-                    {
-                        play = Some(i);
-                    }
-                    if let Some(artists) = &t.artists {
-                        ui.weak(artists.join(" / "));
-                    }
-                    ui.weak(providers.label(&t.provider_instance_id));
-                    if playable(t) {
-                        if let Some(ms) = t.duration_ms {
-                            ui.weak(format!("{}:{:02}", ms / 60_000, ms / 1000 % 60));
-                        }
-                        if style::small_button(ui, tr("加入队列")).clicked() {
-                            self.message = svc.player.enqueue(queue(t)).err();
-                        }
-                    } else {
-                        ui.weak(tr("不可播放"));
-                    }
-                })
+    fn folder_grid(
+        &mut self,
+        ui: &mut egui::Ui,
+        svc: Services<'_>,
+        providers: &Providers,
+        parent: Option<&str>,
+    ) -> Option<usize> {
+        if parent.is_some() && !self.children.rows.is_empty() {
+            ui.horizontal(|ui| header::section(ui, tr("子文件夹"), self.children.total));
+        }
+        let open = cards::grid(ui, &self.children.rows, providers);
+        if self.children.request(ui) {
+            let server = svc.server.clone();
+            let parent = parent.map(str::to_owned);
+            let query = self.search.clone();
+            let cursor = self.children.cursor.clone();
+            self.children.load(ui, svc, async move {
+                server
+                    .folders(None, parent.as_deref(), &query, cursor)
+                    .await
             });
         }
-        if let Some(i) = play {
-            let position = self.tracks.rows[..i].iter().filter(|r| playable(r)).count();
-            let q = self
-                .tracks
-                .rows
-                .iter()
-                .filter(|r| playable(r))
-                .map(queue)
-                .collect();
-            self.message = svc.player.set_queue(q, position).err();
+        if parent.is_none() && self.children.total == Some(0) {
+            let (icon, message) = if self.search.is_empty() {
+                ("folder", "没有可浏览的音乐文件夹。")
+            } else {
+                ("search", "没有找到相关文件夹")
+            };
+            header::empty(ui, icon, tr(message));
         }
+        if parent.is_some() && !self.children.rows.is_empty() {
+            ui.add_space(12.);
+        }
+        open
+    }
+    fn recordings(&mut self, ui: &mut egui::Ui, svc: Services<'_>, providers: &Providers) {
+        use recordings::Action;
+        let rows = &self.tracks.rows;
+        self.message = match recordings::list(ui, rows, providers) {
+            Some(Action::Play(i)) => {
+                let position = rows[..i].iter().filter(|r| playable(r)).count();
+                let q = rows.iter().filter(|r| playable(r)).map(queue).collect();
+                svc.player.set_queue(q, position).err()
+            }
+            Some(Action::Enqueue(i)) => svc.player.enqueue(queue(&rows[i])).err(),
+            None => return,
+        };
     }
     fn play_all(&mut self, ui: &egui::Ui, svc: Services<'_>) {
         let Some(id) = self.path.last().map(|f| f.category_id.clone()) else {
